@@ -22,12 +22,17 @@ interface Position {
   size: number;
   avgPrice: number;
   curPrice: number;
+  initialValue?: number;
+  currentValue?: number;
   cashPnl: number;
   realizedPnl: number;
   redeemable: boolean;
   endDate?: string;
   slug?: string;
 }
+
+/** Cost basis in USDC; the data API can lag avgPrice right after a fill. */
+const costOf = (p: Position) => (p.initialValue && p.initialValue > 0 ? p.initialValue : p.size * (p.avgPrice || 0));
 
 export default function ProfileScreen() {
   const { status, email, eoaAddress, logout, isDemo } = useWallet();
@@ -217,8 +222,10 @@ export default function ProfileScreen() {
                   <div className="text-xs text-muted">{p.outcome}</div>
                 </div>
                 <div className="tnum text-right">
-                  <div className="text-sm font-semibold">${formatUsd(p.size * p.avgPrice)}</div>
-                  <div className={cn("text-xs", p.cashPnl >= 0 ? "text-win" : "text-loss")}>{signed(p.cashPnl)}</div>
+                  <div className="text-sm font-semibold">${formatUsd(costOf(p))}</div>
+                  <div className={cn("text-xs", (p.cashPnl ?? 0) >= 0 ? "text-win" : "text-loss")}>
+                    {signed(p.cashPnl ?? 0)} · {p.size.toFixed(1)} × {(p.curPrice ?? 0).toFixed(2)}
+                  </div>
                 </div>
               </div>
             </li>

@@ -70,6 +70,30 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
 - Verify UI on a 390px-wide viewport (Playwright / browser pane) before
   calling anything done.
 
+## Polymarket V2 facts (verified with a real $5 fill on 2026-10-14)
+
+- **Accounts are "deposit wallets"** (since May 2026). Safe/Proxy makers are
+  rejected for new accounts ("maker address not allowed, please use the deposit
+  wallet flow"). Derive via `RelayClient.deriveDepositWalletAddress()`, deploy via
+  `deployDepositWallet()`, run approvals/wraps/transfers via
+  `executeDepositWalletBatch(calls, wallet, deadline)` (owner signs EIP-712
+  "DepositWallet" batch; relayer pays gas; our builder key authorizes).
+- **Orders:** `@polymarket/clob-client-v2` (the old `clob-client` is rejected with
+  "invalid order version"), `signatureType: SignatureTypeV2.POLY_1271 (3)`,
+  `funderAddress: <deposit wallet>`, `builderConfig: { builderCode }` (32-byte hex
+  from polymarket.com → Settings → Builders; public; embedded in the order).
+  Verify attribution: `GET clob.polymarket.com/builder/trades?builder_code=…`.
+- **Collateral is pUSD** (`0xC011…2DFB`), not USDC.e. USDC.e → pUSD via
+  CollateralOnramp `wrap(USDC.e, to, amount)` (approve the onramp first); we do it
+  as a gasless batch from the deposit wallet (`buildWrapCalls`). Native USDC is a
+  different token and is NOT handled yet.
+- **CLOB balance cache:** call `updateBalanceAllowance({asset_type: COLLATERAL})`
+  after deposits; it is async on their side (we poll briefly, never block).
+- `RelayClient` builds its own viem public client from `options.chain` — pass
+  `polygonChain` (our RPC) or it uses viem's default Polygon RPC, which is dead.
+- Builder API key/secret/passphrase (server, HMAC via `/api/polymarket/sign`) are
+  for the relayer. The builder CODE is for order attribution. Different things.
+
 ## Gotchas learned the hard way
 
 - **Polygon RPC must be on Magic's CSP allowlist** (Magic's iframe blocks other
