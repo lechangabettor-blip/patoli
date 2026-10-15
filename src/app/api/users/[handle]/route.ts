@@ -23,9 +23,14 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/users/[handl
   }
   let profile = await loadProfile({ handle }, viewerId);
   if (!profile) {
-    // Renamed? Old handles redirect to their owner.
-    const { data: old } = await supabaseAdmin().from("handle_history").select("profile_id").eq("handle", handle.toLowerCase()).maybeSingle();
-    if (old) profile = await loadProfile({ id: old.profile_id as string }, viewerId);
+    // Renamed? Old handles redirect to their owner — but only when NO profile
+    // (banned ones included, which loadProfile hides) currently owns the name.
+    const db = supabaseAdmin();
+    const { data: owner } = await db.from("profiles").select("id").eq("handle", handle.toLowerCase()).maybeSingle();
+    if (!owner) {
+      const { data: old } = await db.from("handle_history").select("profile_id").eq("handle", handle.toLowerCase()).maybeSingle();
+      if (old) profile = await loadProfile({ id: old.profile_id as string }, viewerId);
+    }
   }
   if (!profile) return NextResponse.json({ error: "not found" }, { status: 404 });
   const bets = await loadFeed({ scope: "profile", profileId: profile.id, limit: 50 });

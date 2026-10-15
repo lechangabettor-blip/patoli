@@ -36,6 +36,8 @@ export async function POST(req: NextRequest) {
     if (error || !p) return NextResponse.json({ error: error?.message ?? "no se pudo crear el perfil" }, { status: 500 });
     profileId = p.id as string;
     await db.from("profile_private").insert({ profile_id: profileId, issuer: id.issuer, email: id.email });
+    // a freshly assigned handle must not keep redirecting to a previous owner
+    await db.from("handle_history").delete().eq("handle", handle);
   } else {
     // keep wallet current (e.g. after the Safe→deposit-wallet migration)
     await db.from("profiles").update({ wallet, eoa: id.eoa }).eq("id", profileId);
@@ -67,8 +69,12 @@ async function uniqueHandle(base: string): Promise<string> {
   const db = supabaseAdmin();
   let candidate = base;
   for (let i = 0; i < 50; i++) {
-    const { data } = await db.from("profiles").select("id").eq("handle", candidate).maybeSingle();
-    if (!data) return candidate;
+    const [{ data }, { data: held }] = await Promise.all([
+      db.from("profiles").select("id").eq("handle", candidate).maybeSingle(),
+      db.from("handle_history").select("released_at").eq("handle", candidate).maybeSingle(),
+    ]);
+    const onHold = held && Date.now() - new Date(held.released_at as string).getTime() < 30 * 24 * 3600_000;
+    if (!data && !onHold) return candidate;
     candidate = `${base.slice(0, 16)}_${Math.floor(Math.random() * 9000 + 1000)}`;
   }
   return `${base.slice(0, 12)}_${Date.now().toString(36)}`;
