@@ -9,8 +9,11 @@ export const DATA_API_URL = "https://data-api.polymarket.com";
 export const RELAYER_URL = "https://relayer-v2.polymarket.com/";
 export const GEOBLOCK_API_URL = "https://polymarket.com/api/geoblock";
 
+// Magic's iframe enforces a CSP allowlist of RPC hosts (alchemy, infura,
+// thirdweb, …). polygon-rpc.com is on it but returns 401 since Oct 2026;
+// thirdweb's keyless endpoint is on it and works. Use an Alchemy key in prod.
 export const POLYGON_RPC_URL =
-  process.env.NEXT_PUBLIC_POLYGON_RPC_URL || "https://polygon-rpc.com";
+  process.env.NEXT_PUBLIC_POLYGON_RPC_URL || "https://polygon.rpc.thirdweb.com";
 
 /** Our own route that signs builder-attribution headers server-side. */
 export const REMOTE_SIGNING_URL = () =>
