@@ -100,7 +100,7 @@ export async function loadFeed(opts: { scope: "all" | "following" | "profile"; v
   let q = db
     .from("bets")
     .select(
-      "id, profile_id, outcome, outcome_index, side, size, price, usdc, status, pnl, tx_hash, matched_at, markets(question, event_title, event_slug, league, kind, line, game_start), profiles(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
+      "id, profile_id, outcome, outcome_index, side, size, price, usdc, status, pnl, tx_hash, matched_at, markets!bets_condition_id_fkey(question, event_title, event_slug, league, kind, line, game_start), profiles!bets_profile_id_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
     )
     .eq("side", "BUY")
     .not("profile_id", "is", null)
@@ -114,7 +114,8 @@ export async function loadFeed(opts: { scope: "all" | "following" | "profile"; v
     if (ids.length === 0) return [];
     q = q.in("profile_id", ids);
   }
-  const { data: rows } = await q;
+  const { data: rows, error } = await q;
+  if (error) console.error("[patoli] feed query failed", error.message);
   if (!rows?.length) return [];
   const bets = rows as unknown as BetRow[];
   const pids = [...new Set(bets.map((b) => b.profile_id!).filter(Boolean))];

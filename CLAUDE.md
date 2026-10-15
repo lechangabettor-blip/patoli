@@ -107,6 +107,27 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
 - Dev server is slow on phones (unminified bundles); test on the phone with
   `npm run build && npm run start -- -H 0.0.0.0`.
 
+## Social layer (added 2026-10-15)
+
+- **DB:** Supabase Postgres, schema in `supabase/migrations/0001_init.sql`
+  (profiles, profile_private, follows, markets, bets, reactions, indexer_state,
+  view `profile_stats`). RLS: public read on social tables, writes only via the
+  service role from server code. Browser never talks to Supabase.
+- **Identity:** Magic DID token (`magic.user.getIdToken()`) sent as Bearer;
+  verified server-side with `@magic-sdk/admin` (`MAGIC_SECRET_KEY`). `/api/me`
+  creates the profile on first login (handle from email) and checks the claimed
+  deposit wallet derives from the token's EOA (`wallet-derive.ts`).
+- **Indexer:** `src/lib/indexer` reads `clob/builder/trades?builder_code=…`
+  (every fill with our code, all users), caches market metadata from Gamma,
+  settles bets when Gamma marks a market closed (`outcomePrices` 1/0; 50/50 =
+  void). Trigger: `POST /api/indexer/run` with `x-indexer-secret`, or Vercel
+  Cron with `CRON_SECRET`; open in dev. Idempotent, rebuildable.
+- **APIs:** `/api/feed`, `/api/users?q=`, `/api/users/[handle]`, `/api/follow`.
+  Without Supabase configured they serve the demo data (`lib/demo-feed.ts`) and
+  flag `demo: true`, so the UI works in both modes. Types in `src/types/social.ts`.
+- **Client:** `MeProvider` syncs the profile after login; `useSocial` hooks;
+  `FeedCard`/`HomeFeed`/`PublicProfile`/`SearchScreen` consume the APIs.
+
 ## Status log
 
 - 2026-10-14 — Phase 0 scaffold: brand, nav, 5 tabs, Deportes live from
