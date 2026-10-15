@@ -224,3 +224,8 @@ Route /perfil is rendering with server caches disabled. For this navigation, Com
 ✓ Compiled in 59ms
  GET /api/polymarket/sign 200 in 3ms (next.js: 0.6ms, application-code: 2ms)
 ✓ Compiled in 29ms
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 238ms (next.js: 0.6ms, application-code: 237ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 463ms (next.js: 0.9ms, application-code: 462ms)
+ GET /perfil 200 in 23ms (next.js: 3ms, application-code: 20ms)
+ GET /entrar 200 in 17ms (next.js: 0.8ms, application-code: 16ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 420ms (next.js: 0.7ms, application-code: 419ms)

@@ -5,6 +5,7 @@ import type { PriceMap } from "@/hooks/useGames";
 import { breakdown, formatOdds } from "@/lib/polymarket/odds";
 import { kickoffLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
+import { useBuilderFee } from "@/hooks/useBuilderFee";
 import { cn } from "@/lib/cn";
 
 export interface Selection {
@@ -26,6 +27,7 @@ export default function GameCard({
   index?: number;
 }) {
   const now = useNow();
+  const { takerBps } = useBuilderFee();
   const ml = game.markets.find((m) => m.kind === "moneyline");
   const spread = game.markets.find((m) => m.kind === "spread");
   const total = game.markets.find((m) => m.kind === "total");
@@ -34,7 +36,7 @@ export default function GameCard({
     const live = prices?.[o.tokenId]?.ask ?? null;
     const p = live ?? (o.price > 0 && o.price < 1 ? o.price : null);
     const dead = p == null || !m.acceptingOrders;
-    const odds = p != null ? breakdown(p).netOdds : null;
+    const odds = p != null ? breakdown(p, undefined, takerBps).netOdds : null;
     return (
       <button
         disabled={dead}

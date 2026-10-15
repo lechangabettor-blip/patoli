@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Info } from "lucide-react";
 import Sheet from "./Sheet";
 import type { Selection } from "./GameCard";
-import { breakdown, formatOdds, formatUsd, payoutForStake } from "@/lib/polymarket/odds";
+import { breakdown, formatOdds, formatUsd } from "@/lib/polymarket/odds";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { usePlaceBet } from "@/hooks/usePlaceBet";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
+import { useBuilderFee } from "@/hooks/useBuilderFee";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { cn } from "@/lib/cn";
@@ -33,12 +34,13 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const { isReady, step, setupTrading, error } = useTrading();
   const { placeBet, isPlacing } = usePlaceBet();
   const { balance } = useUsdcBalance();
+  const { takerBps } = useBuilderFee();
   const [stake, setStake] = useState(10);
   const [done, setDone] = useState<string | null>(null);
   const [fail, setFail] = useState<string | null>(null);
 
-  const b = useMemo(() => breakdown(selection.price), [selection.price]);
-  const payout = payoutForStake(stake, selection.price);
+  const b = useMemo(() => breakdown(selection.price, undefined, takerBps), [selection.price, takerBps]);
+  const payout = stake / b.costPerShare;
   const minStake = Math.max(1, selection.market.minOrderSize * selection.price);
 
   async function submit() {
@@ -97,7 +99,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
             <div className="tnum mt-4 space-y-1.5 rounded-xl bg-surface/60 p-3 text-xs text-muted">
               <Row k="Precio de mercado (Polymarket)" v={formatOdds(b.marketOdds)} />
               <Row k="Comisión Polymarket" v={`${((b.polymarketFee / b.price) * 100).toFixed(2)}%`} />
-              <Row k="Comisión Patoli" v={`${((b.patoliFee / b.price) * 100).toFixed(2)}%`} />
+              <Row k="Comisión Patoli" v={takerBps > 0 ? `${((b.patoliFee / b.price) * 100).toFixed(2)}%` : "0% (beta)"} />
               <div className="flex items-center justify-between border-t border-hairline pt-1.5 text-ink">
                 <span>Tu precio</span>
                 <span className="font-semibold">{formatOdds(b.netOdds)}</span>
