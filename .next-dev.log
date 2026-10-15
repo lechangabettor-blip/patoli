@@ -1,0 +1,150 @@
+
+> patoli@0.1.0 dev
+> next dev --port 3000
+
+▲ Next.js 16.4.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.74:3000
+✓ Ready in 260ms
+✓ Running next.config.ts took 24ms
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+- Cache Components enabled
+- Partial Prefetching enabled
+
+  Turbopack has seen frequent file updates and is waiting for the filesystem to settle (0.5s elapsed so far; last modified: "\\\\?\\C:\\Users\\USER\\Desktop\\patoli\\node_modules\\abitype\\dist\\esm\\human-readable\\errors").
+○ Compiling / ...
+ GET / 200 in 475ms (next.js: 107ms, application-code: 368ms)
+Error: Route "/": Next.js encountered the unstable value `new Date()` in a Client Component.
+
+This value would be evaluated during the prerender, instead of recomputed on each visit.
+
+Ways to fix this:
+  - [stream] Wrap the Client Component in `<Suspense fallback={...}>`
+  - [defer] Move the read into a `useEffect` or event handler
+  - [measure] If the value is for telemetry, use a timing API such as `performance.now()`
+
+Learn more: https://nextjs.org/docs/messages/blocking-prerender-current-time-client
+    at timeAgo (src\lib\format.ts:26:44)
+    at FeedCard (src\components\FeedCard.tsx:34:54)
+    at <unknown> (src\components\HomeFeed.tsx:56:22)
+    at Array.map (<anonymous>)
+    at HomeFeed (src\components\HomeFeed.tsx:54:15)
+    at HomePage (src\app\(tabs)\page.tsx:7:10)
+  24 | }
+  25 |
+> 26 | export function timeAgo(iso: string, now = new Date()): string {
+     |                                            ^
+  27 |   const s = Math.max(1, Math.round((now.getTime() - new Date(iso).getTime()) / 1000));
+  28 |   if (s < 60) return `${s}s`;
+  29 |   const m = Math.round(s / 60);
+ GET / 200 in 50ms (next.js: 0.9ms, application-code: 49ms)
+Error: Route "/": Next.js encountered the unstable value `new Date()` in a Client Component.
+
+This value would be evaluated during the prerender, instead of recomputed on each visit.
+
+Ways to fix this:
+  - [stream] Wrap the Client Component in `<Suspense fallback={...}>`
+  - [defer] Move the read into a `useEffect` or event handler
+  - [measure] If the value is for telemetry, use a timing API such as `performance.now()`
+
+Learn more: https://nextjs.org/docs/messages/blocking-prerender-current-time-client
+    at timeAgo (src\lib\format.ts:26:44)
+    at FeedCard (src\components\FeedCard.tsx:34:54)
+    at <unknown> (src\components\HomeFeed.tsx:56:22)
+    at Array.map (<anonymous>)
+    at HomeFeed (src\components\HomeFeed.tsx:54:15)
+    at HomePage (src\app\(tabs)\page.tsx:7:10)
+  24 | }
+  25 |
+> 26 | export function timeAgo(iso: string, now = new Date()): string {
+     |                                            ^
+  27 |   const s = Math.max(1, Math.round((now.getTime() - new Date(iso).getTime()) / 1000));
+  28 |   if (s < 60) return `${s}s`;
+  29 |   const m = Math.round(s / 60);
+ GET / 200 in 45ms (next.js: 0.7ms, application-code: 44ms)
+Error: Route "/": Next.js encountered the unstable value `new Date()` in a Client Component.
+
+This value would be evaluated during the prerender, instead of recomputed on each visit.
+
+Ways to fix this:
+  - [stream] Wrap the Client Component in `<Suspense fallback={...}>`
+  - [defer] Move the read into a `useEffect` or event handler
+  - [measure] If the value is for telemetry, use a timing API such as `performance.now()`
+
+Learn more: https://nextjs.org/docs/messages/blocking-prerender-current-time-client
+    at timeAgo (src\lib\format.ts:26:44)
+    at FeedCard (src\components\FeedCard.tsx:34:54)
+    at <unknown> (src\components\HomeFeed.tsx:56:22)
+    at Array.map (<anonymous>)
+    at HomeFeed (src\components\HomeFeed.tsx:54:15)
+    at HomePage (src\app\(tabs)\page.tsx:7:10)
+  24 | }
+  25 |
+> 26 | export function timeAgo(iso: string, now = new Date()): string {
+     |                                            ^
+  27 |   const s = Math.max(1, Math.round((now.getTime() - new Date(iso).getTime()) / 1000));
+  28 |   if (s < 60) return `${s}s`;
+  29 |   const m = Math.round(s / 60);
+ GET /deportes 200 in 58ms (next.js: 4ms, application-code: 53ms)
+ GET /deportes?liga=nfl 200 in 30ms (next.js: 1.2ms, application-code: 29ms)
+ GET /batalla 200 in 52ms (next.js: 5ms, application-code: 47ms)
+ GET /buscar 200 in 35ms (next.js: 4ms, application-code: 31ms)
+ GET /perfil 200 in 35ms (next.js: 4ms, application-code: 31ms)
+ GET /entrar 200 in 35ms (next.js: 4ms, application-code: 31ms)
+ GET /u/lechanga 200 in 305ms (next.js: 8ms, generate-params: 245ms, application-code: 52ms)
+Error: Route "/u/[handle]": Next.js encountered the unstable value `new Date()` in a Client Component.
+
+This value would be evaluated during the prerender, instead of recomputed on each visit.
+
+Ways to fix this:
+  - [stream] Wrap the Client Component in `<Suspense fallback={...}>`
+  - [defer] Move the read into a `useEffect` or event handler
+  - [measure] If the value is for telemetry, use a timing API such as `performance.now()`
+
+Learn more: https://nextjs.org/docs/messages/blocking-prerender-current-time-client
+    at timeAgo (src\lib\format.ts:26:44)
+    at FeedCard (src\components\FeedCard.tsx:34:54)
+    at <anonymous> (src\app\u\[handle]\page.tsx:65:13)
+    at Array.map (<anonymous>:1:18)
+    at PublicProfilePage (src\app\u\[handle]\page.tsx:64:17)
+  24 | }
+  25 |
+> 26 | export function timeAgo(iso: string, now = new Date()): string {
+     |                                            ^
+  27 |   const s = Math.max(1, Math.round((now.getTime() - new Date(iso).getTime()) / 1000));
+  28 |   if (s < 60) return `${s}s`;
+  29 |   const m = Math.round(s / 60);
+Failed to set fetch cache https://gamma-api.polymarket.com/events?tag_id=450&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z Error: Failed to set Next.js data cache for https://gamma-api.polymarket.com/events?tag_id=450&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z, items over 2MB can not be cached (12494152 bytes)
+    at ignore-listed frames
+ GET /api/games?league=nfl 200 in 706ms (next.js: 30ms, application-code: 676ms)
+Failed to set fetch cache https://gamma-api.polymarket.com/events?tag_id=102448&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z Error: Failed to set Next.js data cache for https://gamma-api.polymarket.com/events?tag_id=102448&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z, items over 2MB can not be cached (10910675 bytes)
+    at ignore-listed frames
+ GET /api/games?league=ligamx 200 in 753ms (next.js: 1.0ms, application-code: 752ms)
+✓ Compiled in 212ms
+✓ Compiled in 34ms
+✓ Compiled in 34ms
+✓ Compiled in 50ms
+✓ Compiled in 34ms
+ GET /deportes?liga=nfl 200 in 31ms (next.js: 1.4ms, application-code: 30ms)
+Failed to set fetch cache https://gamma-api.polymarket.com/events?tag_id=450&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z Error: Failed to set Next.js data cache for https://gamma-api.polymarket.com/events?tag_id=450&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z, items over 2MB can not be cached (12494162 bytes)
+    at ignore-listed frames
+ GET /api/games?league=nfl 200 in 197ms (next.js: 1.0ms, application-code: 196ms)
+Failed to set fetch cache https://gamma-api.polymarket.com/events?tag_id=450&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z Error: Failed to set Next.js data cache for https://gamma-api.polymarket.com/events?tag_id=450&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z, items over 2MB can not be cached (12494163 bytes)
+    at ignore-listed frames
+ GET /api/games?league=nfl 200 in 175ms (next.js: 0.6ms, application-code: 174ms)
+Failed to set fetch cache https://gamma-api.polymarket.com/events?tag_id=450&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z Error: Failed to set Next.js data cache for https://gamma-api.polymarket.com/events?tag_id=450&closed=false&active=true&limit=200&order=startDate&ascending=true&end_date_min=2026-10-15T00%3A00%3A00.000Z, items over 2MB can not be cached (12494163 bytes)
+    at ignore-listed frames
+ GET /api/games?league=nfl 200 in 285ms (next.js: 0.7ms, application-code: 284ms)
+✓ Compiled in 32ms
+✓ Compiled in 33ms
+✓ Compiled in 21ms
+ GET /api/games?league=nfl 200 in 1048ms (next.js: 1.1ms, application-code: 1047ms)
+ GET /api/games?league=ligamx 200 in 513ms (next.js: 0.5ms, application-code: 513ms)
+ GET /api/games?league=nba 200 in 792ms (next.js: 0.7ms, application-code: 791ms)
+ GET /api/games?league=ucl 200 in 282ms (next.js: 0.8ms, application-code: 281ms)
+ GET /api/games?league=epl 200 in 399ms (next.js: 0.7ms, application-code: 398ms)
+ GET /api/games?league=laliga 200 in 416ms (next.js: 0.5ms, application-code: 416ms)

@@ -1,0 +1,38 @@
+"use client";
+
+import Link from "next/link";
+import { Wallet } from "lucide-react";
+import { useWallet } from "@/providers/WalletContext";
+import { useUsdcBalance } from "@/hooks/useUsdcBalance";
+import { formatUsd } from "@/lib/polymarket/odds";
+
+export default function TopBar({ title, right }: { title?: string; right?: React.ReactNode }) {
+  const { status } = useWallet();
+  const { balance, isLoading } = useUsdcBalance();
+  return (
+    <header
+      className="sticky top-0 z-30 border-b border-hairline bg-[rgba(31,31,41,0.72)] backdrop-blur-xl"
+      style={{ height: "var(--top-h)" }}
+    >
+      <div className="mx-auto flex h-full max-w-md items-center justify-between px-4">
+        <Link href="/" className="flex items-baseline gap-2">
+          <span className="font-display text-xl font-extrabold uppercase tracking-tight text-accent">Patoli</span>
+          {title ? <span className="font-display text-xs font-bold uppercase tracking-widest text-muted">{title}</span> : null}
+        </Link>
+        <div className="flex items-center gap-2">
+          {right}
+          {status === "connected" ? (
+            <Link href="/perfil" className="btn-ghost tnum flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold">
+              <Wallet className="h-4 w-4 text-accent-soft" />
+              {isLoading ? <span className="skeleton inline-block h-3 w-10" /> : `$${formatUsd(balance)}`}
+            </Link>
+          ) : (
+            <Link href="/entrar" className="btn-accent px-4 py-1.5 text-xs">
+              Entrar
+            </Link>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}

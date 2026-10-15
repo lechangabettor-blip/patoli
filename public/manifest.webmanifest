@@ -1,0 +1,13 @@
+{
+  "name": "Patoli",
+  "short_name": "Patoli",
+  "description": "Apuestas sociales. Picks, récords y retas entre la banda.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1f1f29",
+  "theme_color": "#1f1f29",
+  "lang": "es-MX",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

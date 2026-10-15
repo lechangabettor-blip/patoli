@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────
+   Patoli · brand tokens (same palette as lechanga.com)
+   Source of truth: LeChangaHQ/1-contenido/identidad-visual.md
+   ────────────────────────────────────────────────────────────── */
+:root {
+  --bg: #1f1f29;
+  --bg-2: #2a2a37;
+  --surface: #343443;
+  --surface-2: #3e3e4f;
+  --ink: #ffffff;
+  --muted: #b9b9c7;
+  --muted-2: #8a8a9c;
+  --accent: #ff3d17;
+  --accent-soft: #ff7a5c;
+  --accent-ink: #1f1f29;
+  --line: rgba(255, 61, 23, 0.2);
+  --hairline: rgba(255, 255, 255, 0.08);
+  --card: rgba(52, 52, 67, 0.55);
+  --card-hover: rgba(255, 61, 23, 0.09);
+  --win: #4ade80;
+  --loss: #e24b4a;
+  --push: #b9b9c7;
+  --nav-h: 64px;
+  --top-h: 56px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-line: var(--line);
+  --color-hairline: var(--hairline);
+  --color-win: var(--win);
+  --color-loss: var(--loss);
+  --color-push: var(--push);
+  --font-display: var(--font-archivo), "Archivo", sans-serif;
+  --font-sans: var(--font-outfit), "Outfit", sans-serif;
+  --radius-card: 18px;
+  --radius-pill: 999px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  background: var(--bg);
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+
+/* Atmosphere: the same radial accent glow lechanga.com uses, plus grain */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(65% 45% at 50% -10%, rgba(255, 61, 23, 0.2), transparent 72%),
+    radial-gradient(45% 35% at 92% 100%, rgba(255, 122, 92, 0.08), transparent 70%),
+    radial-gradient(45% 35% at 5% 78%, rgba(52, 52, 67, 0.85), transparent 72%);
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+#app {
+  position: relative;
+  z-index: 2;
+}
+
+h1, h2, h3, .display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  line-height: 0.95;
+}
+
+/* Numbers: tabular so odds and balances don't jitter */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scrollbars off on horizontal chip rails */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Card primitive */
+.card {
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  backdrop-filter: blur(6px);
+}
+.card-hot {
+  border-color: var(--line);
+  background: linear-gradient(180deg, rgba(255, 61, 23, 0.1), rgba(52, 52, 67, 0.55));
+}
+
+/* Accent pill button */
+.btn-accent {
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 8px 24px rgba(255, 61, 23, 0.35);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+.btn-accent:active { transform: scale(0.98); filter: brightness(0.95); }
+.btn-accent:disabled { opacity: 0.5; box-shadow: none; }
+
+.btn-ghost {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  transition: background 120ms ease;
+}
+.btn-ghost:active { background: var(--surface-2); }
+
+/* Staggered reveal for lists */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.pulse-soft { animation: pulse-soft 1.6s ease-in-out infinite; }
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .pulse-soft, .skeleton { animation: none; }
+}
