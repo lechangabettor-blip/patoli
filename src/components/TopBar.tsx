@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Wallet } from "lucide-react";
+import Logo from "./Logo";
 import { useWallet } from "@/providers/WalletContext";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { formatUsd } from "@/lib/polymarket/odds";
@@ -15,8 +16,8 @@ export default function TopBar({ title, right }: { title?: string; right?: React
       style={{ height: "var(--top-h)" }}
     >
       <div className="mx-auto flex h-full max-w-md items-center justify-between px-4">
-        <Link href="/" className="flex items-baseline gap-2">
-          <span className="font-display text-xl font-extrabold uppercase tracking-tight text-accent">Patoli</span>
+        <Link href="/" className="flex items-center gap-2">
+          <Logo size={30} wordClassName="text-xl leading-none" />
           {title ? <span className="font-display text-xs font-bold uppercase tracking-widest text-muted">{title}</span> : null}
         </Link>
         <div className="flex items-center gap-2">

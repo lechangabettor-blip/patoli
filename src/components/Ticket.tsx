@@ -86,7 +86,11 @@ const Ticket = forwardRef<HTMLDivElement, { data: TicketData; className?: string
 
         {/* header */}
         <div className="flex items-center justify-between px-6 pt-6">
-          <div className="font-display text-2xl font-extrabold uppercase tracking-tight text-[#ff3d17]">Patoli</div>
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element -- plain img so html-to-image can inline it */}
+            <img src="/brand/mark.png" alt="" width={30} height={30} style={{ width: 30, height: 30, objectFit: "contain" }} />
+            <div className="font-display text-2xl font-extrabold uppercase tracking-tight text-[#ff3d17]">Patoli</div>
+          </div>
           <div
             className={cn(
               "rounded-full border px-3 py-1 font-display text-[10px] font-extrabold uppercase tracking-[0.18em]",

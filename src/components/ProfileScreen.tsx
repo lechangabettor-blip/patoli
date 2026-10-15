@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownToLine, ArrowUpFromLine, Copy, ExternalLink, LogOut, ShieldCheck, Ticket as TicketIcon } from "lucide-react";
 import TopBar from "./TopBar";
 import Avatar from "./Avatar";
+import Logo from "./Logo";
 import Sheet from "./Sheet";
 import TicketShare from "./TicketShare";
 import WithdrawSheet from "./WithdrawSheet";
@@ -101,7 +102,9 @@ export default function ProfileScreen() {
       <>
         <TopBar title="Perfil" />
         <section className="px-4 pt-8 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-surface text-4xl">🦧</div>
+          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-surface">
+            <Logo size={56} word={false} />
+          </div>
           <h1 className="mt-4 text-3xl">
             Tu récord,
             <br />

@@ -258,3 +258,61 @@ Route /perfil is rendering with server caches disabled. For this navigation, Com
 ✓ Compiled in 25ms
 ✓ Compiled in 39ms
 ✓ Compiled in 51ms
+✓ Compiled in 111ms
+ GET /perfil 200 in 69ms (next.js: 1.0ms, application-code: 68ms)
+ GET /api/polymarket/sign 200 in 4ms (next.js: 0.9ms, application-code: 3ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 273ms (next.js: 1.0ms, application-code: 272ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 288ms (next.js: 0.7ms, application-code: 287ms)
+ GET /perfil 200 in 20ms (next.js: 1.1ms, application-code: 19ms)
+ GET /api/polymarket/sign 200 in 5ms (next.js: 0.9ms, application-code: 4ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 284ms (next.js: 0.9ms, application-code: 284ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 396ms (next.js: 0.5ms, application-code: 395ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 241ms (next.js: 0.5ms, application-code: 240ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 489ms (next.js: 0.6ms, application-code: 488ms)
+ GET /entrar 200 in 18ms (next.js: 1.9ms, application-code: 16ms)
+ GET /perfil 200 in 15ms (next.js: 0.9ms, application-code: 14ms)
+ GET /api/polymarket/sign 200 in 3ms (next.js: 0.5ms, application-code: 2ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 547ms (next.js: 0.6ms, application-code: 546ms)
+ GET /perfil 200 in 16ms (next.js: 1.1ms, application-code: 15ms)
+ GET /perfil 200 in 17ms (next.js: 0.9ms, application-code: 16ms)
+ GET /perfil 200 in 17ms (next.js: 0.8ms, application-code: 17ms)
+ GET /perfil 200 in 17ms (next.js: 0.9ms, application-code: 16ms)
+ GET /perfil 200 in 14ms (next.js: 0.9ms, application-code: 13ms)
+ GET /perfil 200 in 14ms (next.js: 0.9ms, application-code: 13ms)
+ GET /perfil 200 in 16ms (next.js: 0.9ms, application-code: 15ms)
+ GET /api/polymarket/sign 200 in 5ms (next.js: 1.0ms, application-code: 4ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 246ms (next.js: 0.8ms, application-code: 245ms)
+✓ Compiled in 173ms
+✓ Compiled in 30ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 120ms
+ GET /api/polymarket/sign 200 in 3ms (next.js: 0.7ms, application-code: 3ms)
+ GET /perfil 200 in 76ms (next.js: 1.8ms, application-code: 74ms)
+ GET /brand/mark.png 404 in 633ms (next.js: 603ms, application-code: 30ms)
+⨯ internal image response failed for /brand/mark.png 404
+ GET /api/polymarket/sign 200 in 3ms (next.js: 0.7ms, application-code: 2ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 295ms (next.js: 0.5ms, application-code: 295ms)
+✓ Compiled in 54ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 39ms
+ GET /entrar 200 in 41ms (next.js: 0.9ms, application-code: 40ms)
+ GET /brand/mark.png 404 in 80ms (next.js: 62ms, application-code: 18ms)
+⨯ internal image response failed for /brand/mark.png 404
+ GET /brand/mark.png 404 in 20ms (next.js: 4ms, application-code: 16ms)
+⨯ internal image response failed for /brand/mark.png 404
+✓ Compiled in 41ms
+✓ Compiled in 231ms
+✓ Compiled in 37ms
+ GET /entrar 200 in 61ms (next.js: 4ms, application-code: 57ms)
+ GET /perfil 200 in 42ms (next.js: 4ms, application-code: 38ms)
+ GET /entrar 200 in 26ms (next.js: 0.9ms, application-code: 25ms)
+ GET /perfil 200 in 14ms (next.js: 0.8ms, application-code: 13ms)
+✓ Compiled in 285ms
+ GET /perfil 200 in 30ms (next.js: 1.4ms, application-code: 29ms)
+ GET /entrar 200 in 30ms (next.js: 17ms, application-code: 13ms)
+ GET /entrar 200 in 31ms (next.js: 1.3ms, application-code: 30ms)
+ GET /perfil 200 in 16ms (next.js: 0.9ms, application-code: 15ms)
+ GET /api/polymarket/sign 200 in 5ms (next.js: 1.1ms, application-code: 4ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 325ms (next.js: 0.6ms, application-code: 324ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 328ms (next.js: 0.7ms, application-code: 327ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 252ms (next.js: 0.6ms, application-code: 251ms)

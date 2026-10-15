@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { useWallet } from "@/providers/WalletContext";
+import Logo from "./Logo";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -54,6 +55,7 @@ export default function LoginScreen() {
       </Link>
 
       <div className="mt-10">
+        <Logo size={88} word={false} className="mb-4" />
         <div className="font-display text-5xl font-extrabold uppercase tracking-tight text-accent">Patoli</div>
         <h1 className="mt-3 text-3xl">
           Cualquiera opina.
