@@ -229,3 +229,32 @@ Route /perfil is rendering with server caches disabled. For this navigation, Com
  GET /perfil 200 in 23ms (next.js: 3ms, application-code: 20ms)
  GET /entrar 200 in 17ms (next.js: 0.8ms, application-code: 16ms)
  GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 420ms (next.js: 0.7ms, application-code: 419ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 343ms (next.js: 0.7ms, application-code: 342ms)
+ GET /api/polymarket/fees 200 in 201ms (next.js: 16ms, application-code: 185ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 310ms (next.js: 0.7ms, application-code: 310ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 324ms (next.js: 0.6ms, application-code: 324ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 434ms (next.js: 0.5ms, application-code: 433ms)
+ GET /api/polymarket/sign 200 in 3ms (next.js: 0.8ms, application-code: 3ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 281ms (next.js: 0.8ms, application-code: 280ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 559ms (next.js: 0.6ms, application-code: 558ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 275ms (next.js: 0.5ms, application-code: 274ms)
+ GET /api/polymarket/sign 200 in 4ms (next.js: 1.3ms, application-code: 2ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 252ms (next.js: 0.8ms, application-code: 252ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 231ms (next.js: 0.6ms, application-code: 231ms)
+ GET /api/polymarket/sign 200 in 4ms (next.js: 1.0ms, application-code: 3ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 243ms (next.js: 0.8ms, application-code: 242ms)
+ GET /batalla 200 in 21ms (next.js: 5ms, application-code: 16ms)
+✓ Compiled in 37ms
+✓ Compiled in 19ms
+✓ Compiled in 151ms
+✓ Compiled in 22ms
+✓ Compiled in 24ms
+✓ Compiled in 63ms
+✓ Compiled in 20ms
+✓ Compiled in 54ms
+✓ Compiled in 53ms
+✓ Compiled in 19ms
+✓ Compiled in 21ms
+✓ Compiled in 25ms
+✓ Compiled in 39ms
+✓ Compiled in 51ms

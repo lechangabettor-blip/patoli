@@ -19,6 +19,7 @@ import {
 } from "@/lib/polymarket/constants";
 import {
   batchDeadline,
+  buildUnwrapCalls,
   buildV2ApprovalCalls,
   buildWrapCalls,
   checkV2Approvals,
@@ -66,6 +67,8 @@ interface TradingContextType {
   wrapUsdc: (amount: bigint) => Promise<void>;
   /** Move USDC.e parked in the v1 Safe into the deposit wallet (gasless). */
   migrateFromSafe: (amount: bigint) => Promise<void>;
+  /** Withdraw: pUSD → USDC.e sent to `to` on Polygon (gasless). Returns tx hash if known. */
+  withdraw: (to: `0x${string}`, amount: bigint) => Promise<string | undefined>;
   resetTrading: () => void;
 }
 
@@ -238,6 +241,17 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     [relayClient, walletAddress, legacySafeAddress],
   );
 
+  const withdraw = useCallback(
+    async (to: `0x${string}`, amount: bigint) => {
+      if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
+      if (amount <= 0n) throw new Error("Monto inválido");
+      const resp = await relayClient.executeDepositWalletBatch(buildUnwrapCalls(to, amount), walletAddress, batchDeadline());
+      const result = await resp.wait();
+      return (result as { transactionHash?: string } | undefined)?.transactionHash;
+    },
+    [relayClient, walletAddress],
+  );
+
   const resetTrading = useCallback(() => {
     if (eoaAddress) {
       clearSession(eoaAddress);
@@ -278,9 +292,10 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       setupTrading,
       wrapUsdc,
       migrateFromSafe,
+      withdraw,
       resetTrading,
     }),
-    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, migrateFromSafe, resetTrading],
+    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, migrateFromSafe, withdraw, resetTrading],
   );
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>;

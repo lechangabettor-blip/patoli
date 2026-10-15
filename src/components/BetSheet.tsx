@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Info } from "lucide-react";
 import Sheet from "./Sheet";
+import TicketShare from "./TicketShare";
+import type { TicketData } from "./Ticket";
 import type { Selection } from "./GameCard";
+import { LEAGUE_BY_ID } from "@/lib/polymarket/leagues";
 import { breakdown, formatOdds, formatUsd } from "@/lib/polymarket/odds";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
@@ -30,14 +33,15 @@ export default function BetSheet({ selection, onClose }: { selection: Selection 
 /** Keyed by selection so stake/result state resets per pick without effects. */
 function BetBody({ selection, onClose }: { selection: Selection; onClose: () => void }) {
   const router = useRouter();
-  const { status, isDemo } = useWallet();
+  const { status, isDemo, email } = useWallet();
   const { isReady, step, setupTrading, error } = useTrading();
   const { placeBet, isPlacing } = usePlaceBet();
   const { balance } = useUsdcBalance();
   const { takerBps } = useBuilderFee();
   const [stake, setStake] = useState(10);
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState<TicketData | null>(null);
   const [fail, setFail] = useState<string | null>(null);
+  const handle = (email ?? "tú").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "tú";
 
   const b = useMemo(() => breakdown(selection.price, undefined, takerBps), [selection.price, takerBps]);
   const payout = stake / b.costPerShare;
@@ -63,8 +67,25 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
       negRisk: selection.market.negRisk,
       tickSize: selection.market.tickSize,
     });
-    if (res.ok) setDone(res.orderId);
-    else setFail(res.reason);
+    if (res.ok) {
+      const league = LEAGUE_BY_ID[selection.game.league];
+      setDone({
+        handle,
+        avatar: handle,
+        league: league.label,
+        leagueEmoji: league.emoji,
+        matchup: `${selection.game.home} vs ${selection.game.away}`,
+        selection: selection.outcome.label,
+        market: selection.market.kind === "moneyline" ? "Ganador" : selection.market.kind === "spread" ? "Hándicap" : "Total",
+        odds: b.netOdds,
+        stake,
+        payout,
+        placedAt: new Date().toISOString(),
+        status: "open",
+        proof: res.txHashes[0] ?? res.orderId,
+        kickoff: selection.game.startTime,
+      });
+    } else setFail(res.reason);
   }
 
   const busy = isPlacing || (step !== "idle" && step !== "complete");
@@ -74,18 +95,13 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   return (
     <>
       {done ? (
-          <div className="py-6 text-center">
-            <CheckCircle2 className="mx-auto h-12 w-12 text-win" />
-            <h3 className="mt-3 text-2xl">Apuesta colocada</h3>
-            <p className="mt-1 text-sm text-muted">
-              {selection.outcome.label} · {selection.game.title}
-            </p>
-            <p className="tnum mt-3 text-sm text-muted">
-              Orden <span className="text-ink">{done.slice(0, 10)}…</span>. Se ve en tu perfil y en el feed.
-            </p>
-            <button onClick={onClose} className="btn-accent mt-5 w-full py-3 text-sm">
-              Listo
-            </button>
+          <div className="pb-2 text-center">
+            <div className="flex items-center justify-center gap-2 text-win">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="font-display text-sm font-extrabold uppercase tracking-wide">Apuesta colocada</span>
+            </div>
+            <p className="mb-2 mt-1 text-xs text-muted">Tu boleto. Compártelo y que la banda lo vea.</p>
+            <TicketShare data={done} onDone={onClose} />
           </div>
         ) : (
           <div>

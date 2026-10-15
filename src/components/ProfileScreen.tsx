@@ -3,9 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, Copy, ExternalLink, LogOut, ShieldCheck } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Copy, ExternalLink, LogOut, ShieldCheck, Ticket as TicketIcon } from "lucide-react";
 import TopBar from "./TopBar";
 import Avatar from "./Avatar";
+import Sheet from "./Sheet";
+import TicketShare from "./TicketShare";
+import WithdrawSheet from "./WithdrawSheet";
+import type { TicketData } from "./Ticket";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
@@ -42,6 +46,8 @@ export default function ProfileScreen() {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState<"wrap" | "migrate" | null>(null);
   const [opError, setOpError] = useState<string | null>(null);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [ticket, setTicket] = useState<TicketData | null>(null);
 
   const builder = useQuery({
     queryKey: ["builder-configured"],
@@ -115,6 +121,25 @@ export default function ProfileScreen() {
   const open = (positions.data ?? []).filter((p) => !p.redeemable && p.size > 0);
   const totalPnl = (positions.data ?? []).reduce((s, p) => s + (p.cashPnl ?? 0) + (p.realizedPnl ?? 0), 0);
   const activating = step !== "idle" && step !== "complete";
+
+  function ticketFor(p: Position): TicketData {
+    const cost = costOf(p);
+    const odds = cost > 0 ? p.size / cost : p.avgPrice > 0 ? 1 / p.avgPrice : 0;
+    return {
+      handle,
+      avatar: handle,
+      league: "Polymarket",
+      matchup: p.title,
+      selection: p.outcome,
+      market: p.title.startsWith("Spread") ? "Hándicap" : /O\/U/.test(p.title) ? "Total" : "Ganador",
+      odds,
+      stake: cost,
+      payout: p.size,
+      placedAt: new Date().toISOString(),
+      status: p.redeemable ? (p.curPrice >= 0.99 ? "won" : "lost") : "open",
+      proof: p.conditionId,
+    };
+  }
 
   return (
     <>
@@ -190,9 +215,16 @@ export default function ProfileScreen() {
         ) : null}
         {opError ? <p className="mt-2 text-xs text-loss">{opError}</p> : null}
 
-        {/* Deposit */}
+        {/* Deposit / withdraw */}
         <div className="card mt-3 p-4">
-          <div className="font-display text-sm font-extrabold uppercase">Depositar</div>
+          <div className="flex items-center justify-between">
+            <div className="font-display text-sm font-extrabold uppercase">Depositar</div>
+            {isReady ? (
+              <button onClick={() => setWithdrawOpen(true)} disabled={balance <= 0} className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 font-display text-[11px] font-bold uppercase">
+                <ArrowUpFromLine className="h-3.5 w-3.5" /> Retirar
+              </button>
+            ) : null}
+          </div>
           <p className="mt-1 text-xs text-muted">Manda USDC (red Polygon) a tu dirección. Desde Bitso, otra wallet o tu cuenta de Polymarket.</p>
           <div className="tnum mt-3 flex items-center justify-between rounded-xl bg-surface px-3 py-2 text-sm">
             <span>{walletAddress ? shortAddress(walletAddress, 6) : "…"}</span>
@@ -215,11 +247,13 @@ export default function ProfileScreen() {
         <ul className="mt-2 space-y-2">
           {positions.isLoading ? <li className="skeleton h-16" /> : null}
           {open.map((p) => (
-            <li key={`${p.conditionId}-${p.outcome}`} className="card px-3 py-2.5">
-              <div className="flex items-start justify-between gap-2">
+            <li key={`${p.conditionId}-${p.outcome}`}>
+              <button onClick={() => setTicket(ticketFor(p))} className="card flex w-full items-start justify-between gap-2 px-3 py-2.5 text-left active:border-accent">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{p.title}</div>
-                  <div className="text-xs text-muted">{p.outcome}</div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted">
+                    {p.outcome} <TicketIcon className="h-3 w-3 text-accent-soft" />
+                  </div>
                 </div>
                 <div className="tnum text-right">
                   <div className="text-sm font-semibold">${formatUsd(costOf(p))}</div>
@@ -227,7 +261,7 @@ export default function ProfileScreen() {
                     {signed(p.cashPnl ?? 0)} · {p.size.toFixed(1)} × {(p.curPrice ?? 0).toFixed(2)}
                   </div>
                 </div>
-              </div>
+              </button>
             </li>
           ))}
           {!positions.isLoading && open.length === 0 ? <li className="card p-4 text-center text-sm text-muted">Aún no tienes apuestas abiertas. Ve a Deportes.</li> : null}
@@ -243,6 +277,11 @@ export default function ProfileScreen() {
         </a>
         <p className="tnum mt-2 pb-2 text-center text-[11px] text-muted-2">Wallet {shortAddress(eoaAddress)}</p>
       </section>
+
+      <WithdrawSheet open={withdrawOpen} onClose={() => setWithdrawOpen(false)} available={balance} onDone={() => refetch()} />
+      <Sheet open={!!ticket} onClose={() => setTicket(null)} title="Tu boleto">
+        {ticket ? <TicketShare data={ticket} onDone={() => setTicket(null)} /> : null}
+      </Sheet>
     </>
   );
 }

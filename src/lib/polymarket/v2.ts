@@ -2,6 +2,7 @@ import { createPublicClient, encodeFunctionData, erc20Abi, http, parseAbi, type 
 import { polygon } from "viem/chains";
 import type { DepositWalletCall } from "@polymarket/builder-relayer-client";
 import {
+  COLLATERAL_OFFRAMP_ADDRESS,
   COLLATERAL_ONRAMP_ADDRESS,
   CTF_ADDRESS,
   POLYGON_RPC_URL,
@@ -40,6 +41,7 @@ const erc1155Abi = parseAbi([
 ]);
 
 const onrampAbi = parseAbi(["function wrap(address _asset, address _to, uint256 _amount)"]);
+const offrampAbi = parseAbi(["function unwrap(address _asset, address _to, uint256 _amount)"]);
 
 // pUSD spenders (ERC-20 approve)
 const PUSD_SPENDERS = [V2_PROTOCOL_EXCHANGE_ADDRESS, V2_STANDARD_EXCHANGE_ADDRESS, V2_NEG_RISK_EXCHANGE_ADDRESS] as const;
@@ -97,6 +99,17 @@ export function buildWrapCalls(wallet: `0x${string}`, amount: bigint): DepositWa
   return [
     { target: USDC_E_ADDRESS, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [COLLATERAL_ONRAMP_ADDRESS, amount] }) },
     { target: COLLATERAL_ONRAMP_ADDRESS, value: "0", data: encodeFunctionData({ abi: onrampAbi, functionName: "wrap", args: [USDC_E_ADDRESS, wallet, amount] }) },
+  ];
+}
+
+/**
+ * Withdraw: pUSD in the deposit wallet → USDC.e delivered to `to` (any Polygon
+ * address). The offramp's `_to` parameter means no second transfer is needed.
+ */
+export function buildUnwrapCalls(to: `0x${string}`, amount: bigint): DepositWalletCall[] {
+  return [
+    { target: PUSD_ADDRESS, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [COLLATERAL_OFFRAMP_ADDRESS, amount] }) },
+    { target: COLLATERAL_OFFRAMP_ADDRESS, value: "0", data: encodeFunctionData({ abi: offrampAbi, functionName: "unwrap", args: [USDC_E_ADDRESS, to, amount] }) },
   ];
 }
 
