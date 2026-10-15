@@ -4,6 +4,7 @@ import { ReactNode, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WalletProvider } from "./WalletProvider";
 import { TradingProvider } from "./TradingProvider";
+import { MeProvider } from "./MeProvider";
 
 export default function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -17,7 +18,9 @@ export default function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <WalletProvider>
-        <TradingProvider>{children}</TradingProvider>
+        <TradingProvider>
+          <MeProvider>{children}</MeProvider>
+        </TradingProvider>
       </WalletProvider>
     </QueryClientProvider>
   );

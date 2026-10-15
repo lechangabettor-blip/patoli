@@ -1,0 +1,245 @@
+import "server-only";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { CLOB_API_URL, GAMMA_API_URL, PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
+import { LEAGUES } from "@/lib/polymarket/leagues";
+
+/**
+ * The indexer: turns Polymarket's public builder-trades feed (every fill that
+ * carries Patoli's code) into `bets`, caches market metadata from Gamma into
+ * `markets`, and settles bets once markets resolve. Idempotent; safe to run
+ * every few minutes. Everything here is rebuildable from public data.
+ */
+
+interface BuilderTrade {
+  id: string;
+  tradeType: string;
+  market: string; // condition id
+  assetId: string; // token id
+  side: "BUY" | "SELL";
+  size: string;
+  sizeUsdc: string;
+  price: string;
+  status: string;
+  outcome: string;
+  outcomeIndex: number;
+  maker: string;
+  transactionHash?: string;
+  matchTime: string; // unix seconds
+  feeUsdc?: string;
+  builderFee?: string;
+  builderCode?: string;
+}
+
+interface GammaMarket {
+  conditionId: string;
+  question: string;
+  slug?: string;
+  outcomes?: string;
+  outcomePrices?: string;
+  clobTokenIds?: string;
+  sportsMarketType?: string;
+  line?: number | string | null;
+  gameStartTime?: string;
+  closed?: boolean;
+  umaResolutionStatus?: string;
+  events?: { slug?: string; title?: string }[];
+}
+
+export interface IndexRunResult {
+  tradesSeen: number;
+  betsUpserted: number;
+  marketsUpserted: number;
+  settled: number;
+  unknownWallets: string[];
+  errors: string[];
+}
+
+const KIND: Record<string, string> = { moneyline: "moneyline", spreads: "spread", totals: "total" };
+
+export async function runIndexer(opts: { maxPages?: number } = {}): Promise<IndexRunResult> {
+  const res: IndexRunResult = { tradesSeen: 0, betsUpserted: 0, marketsUpserted: 0, settled: 0, unknownWallets: [], errors: [] };
+  if (!isBuilderCodeValid(PATOLI_BUILDER_CODE)) {
+    res.errors.push("builder code not configured");
+    return res;
+  }
+  const db = supabaseAdmin();
+
+  // 1. Pull trades (newest first, paginated)
+  const trades: BuilderTrade[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < (opts.maxPages ?? 20); page++) {
+    const u = new URL(`${CLOB_API_URL}/builder/trades`);
+    u.searchParams.set("builder_code", PATOLI_BUILDER_CODE);
+    u.searchParams.set("limit", "100");
+    if (cursor) u.searchParams.set("next_cursor", cursor);
+    const r = await fetch(u, { cache: "no-store" });
+    if (!r.ok) {
+      res.errors.push(`builder/trades ${r.status}`);
+      break;
+    }
+    const j = (await r.json()) as { data?: BuilderTrade[]; next_cursor?: string };
+    const batch = j.data ?? [];
+    trades.push(...batch);
+    if (!j.next_cursor || j.next_cursor === "LTE=" || batch.length === 0) break;
+    cursor = j.next_cursor;
+  }
+  res.tradesSeen = trades.length;
+  const confirmed = trades.filter((t) => /CONFIRMED|MINED/i.test(t.status) || !t.status);
+
+  // 2. Markets we don't know yet
+  const conditionIds = [...new Set(confirmed.map((t) => t.market.toLowerCase()))];
+  const { data: known } = await db.from("markets").select("condition_id").in("condition_id", conditionIds);
+  const knownSet = new Set((known ?? []).map((m) => m.condition_id as string));
+  const missing = conditionIds.filter((c) => !knownSet.has(c));
+  if (missing.length) {
+    const rows = await fetchMarkets(missing);
+    if (rows.length) {
+      const { error } = await db.from("markets").upsert(rows, { onConflict: "condition_id" });
+      if (error) res.errors.push(`markets upsert: ${error.message}`);
+      else res.marketsUpserted += rows.length;
+    }
+    // markets Gamma couldn't resolve still need a row so bets can reference them
+    const got = new Set(rows.map((r) => r.condition_id));
+    const stubs = missing.filter((c) => !got.has(c)).map((c) => ({ condition_id: c, question: "Mercado", outcomes: [] }));
+    if (stubs.length) await db.from("markets").upsert(stubs, { onConflict: "condition_id", ignoreDuplicates: true });
+  }
+
+  // 3. Wallet → profile
+  const wallets = [...new Set(confirmed.map((t) => t.maker.toLowerCase()))];
+  const { data: profs } = await db.from("profiles").select("id, wallet").in("wallet", wallets);
+  const byWallet = new Map((profs ?? []).map((p) => [p.wallet as string, p.id as string]));
+  res.unknownWallets = wallets.filter((w) => !byWallet.has(w));
+
+  // 4. Upsert bets (keep status/pnl of already-settled rows)
+  const { data: existing } = await db.from("bets").select("id, status").in("id", confirmed.map((t) => t.id));
+  const settledIds = new Set((existing ?? []).filter((b) => b.status !== "open").map((b) => b.id as string));
+  const betRows = confirmed
+    .filter((t) => !settledIds.has(t.id))
+    .map((t) => ({
+      id: t.id,
+      profile_id: byWallet.get(t.maker.toLowerCase()) ?? null,
+      wallet: t.maker.toLowerCase(),
+      condition_id: t.market.toLowerCase(),
+      token_id: t.assetId,
+      outcome_index: t.outcomeIndex,
+      outcome: t.outcome,
+      side: t.side,
+      size: Number(t.size),
+      price: Number(t.price),
+      usdc: Number(t.sizeUsdc ?? Number(t.size) * Number(t.price)),
+      fee_usdc: Number(t.feeUsdc ?? 0),
+      builder_fee: Number(t.builderFee ?? 0),
+      tx_hash: t.transactionHash ?? null,
+      matched_at: new Date(Number(t.matchTime) * 1000).toISOString(),
+    }));
+  if (betRows.length) {
+    const { error } = await db.from("bets").upsert(betRows, { onConflict: "id" });
+    if (error) res.errors.push(`bets upsert: ${error.message}`);
+    else res.betsUpserted = betRows.length;
+  }
+
+  // 5. Resolve markets whose game should be over
+  res.settled = await settleResolvedMarkets(res.errors);
+
+  await db.from("indexer_state").upsert({ key: "last_run", value: { at: new Date().toISOString(), ...res } }, { onConflict: "key" });
+  return res;
+}
+
+type MarketRow = ReturnType<typeof toMarketRow>;
+
+async function fetchMarkets(conditionIds: string[]): Promise<MarketRow[]> {
+  const out: MarketRow[] = [];
+  for (let i = 0; i < conditionIds.length; i += 20) {
+    const chunk = conditionIds.slice(i, i + 20);
+    const u = new URL(`${GAMMA_API_URL}/markets`);
+    for (const c of chunk) u.searchParams.append("condition_ids", c);
+    const r = await fetch(u, { cache: "no-store" });
+    if (!r.ok) continue;
+    const ms = (await r.json()) as GammaMarket[];
+    for (const m of ms) out.push(toMarketRow(m));
+  }
+  return out;
+}
+
+function toMarketRow(m: GammaMarket) {
+  let outcomes: string[] = [];
+  let tokens: string[] = [];
+  let prices: number[] = [];
+  try {
+    outcomes = JSON.parse(m.outcomes ?? "[]");
+    tokens = JSON.parse(m.clobTokenIds ?? "[]");
+    prices = (JSON.parse(m.outcomePrices ?? "[]") as string[]).map(Number);
+  } catch {
+    /* ignore */
+  }
+  const ev = m.events?.[0];
+  const league = LEAGUES.find((l) => ev?.slug?.startsWith(`${l.slugPrefix}-`))?.id ?? null;
+  const resolution = resolveFromPrices(m, prices);
+  return {
+    condition_id: m.conditionId.toLowerCase(),
+    question: m.question,
+    slug: m.slug ?? null,
+    event_slug: ev?.slug?.replace(/-more-markets$/, "") ?? null,
+    event_title: ev?.title ?? null,
+    league,
+    kind: KIND[m.sportsMarketType ?? ""] ?? "other",
+    line: m.line == null ? null : Number(m.line),
+    outcomes: outcomes.map((label, i) => ({ index: i, label, tokenId: tokens[i] ?? null })),
+    game_start: m.gameStartTime ? new Date(m.gameStartTime.replace(" ", "T").replace(/\+00$/, "Z")).toISOString() : null,
+    closed: !!m.closed,
+    winning_index: resolution,
+    resolved_at: resolution != null ? new Date().toISOString() : null,
+  };
+}
+
+/** Gamma marks a resolved market closed with outcomePrices like ["1","0"]; 50/50 = void. */
+function resolveFromPrices(m: GammaMarket, prices: number[]): number | null {
+  if (!m.closed || prices.length === 0) return null;
+  const win = prices.findIndex((p) => p >= 0.999);
+  if (win >= 0) return win;
+  if (prices.every((p) => Math.abs(p - 1 / prices.length) < 0.01)) return -1; // void
+  return null;
+}
+
+async function settleResolvedMarkets(errors: string[]): Promise<number> {
+  const db = supabaseAdmin();
+  const cutoff = new Date(Date.now() - 2 * 3600_000).toISOString();
+  const { data: due } = await db
+    .from("markets")
+    .select("condition_id")
+    .is("winning_index", null)
+    .lt("game_start", cutoff)
+    .limit(50);
+  if (!due?.length) return 0;
+  const rows = await fetchMarkets(due.map((d) => d.condition_id as string));
+  const resolved = rows.filter((r) => r.winning_index != null);
+  if (!resolved.length) return 0;
+  const { error } = await db.from("markets").upsert(resolved, { onConflict: "condition_id" });
+  if (error) {
+    errors.push(`markets resolve: ${error.message}`);
+    return 0;
+  }
+  let n = 0;
+  for (const r of resolved) {
+    const { data: bets } = await db.from("bets").select("id, outcome_index, size, usdc, side").eq("condition_id", r.condition_id).eq("status", "open");
+    for (const b of bets ?? []) {
+      let status: "won" | "lost" | "void";
+      let pnl: number;
+      if (r.winning_index === -1) {
+        status = "void";
+        pnl = 0;
+      } else if (b.side === "BUY") {
+        const won = b.outcome_index === r.winning_index;
+        status = won ? "won" : "lost";
+        pnl = won ? Number(b.size) - Number(b.usdc) : -Number(b.usdc);
+      } else {
+        // SELL = closed a position early; realized P&L lives on the BUY row. Mark void for the record.
+        status = "void";
+        pnl = 0;
+      }
+      const { error: e2 } = await db.from("bets").update({ status, pnl }).eq("id", b.id);
+      if (!e2) n++;
+    }
+  }
+  return n;
+}

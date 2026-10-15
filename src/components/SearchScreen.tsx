@@ -6,7 +6,7 @@ import { useQueries } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import TopBar from "./TopBar";
 import Avatar from "./Avatar";
-import { DEMO_USERS } from "@/data/demo";
+import { useUsers } from "@/hooks/useSocial";
 import { LEAGUES, LEAGUE_BY_ID } from "@/lib/polymarket/leagues";
 import type { Game } from "@/lib/polymarket/gamma";
 import { kickoffLabel } from "@/lib/format";
@@ -35,7 +35,8 @@ export default function SearchScreen() {
     })),
   });
 
-  const users = useMemo(() => (nq.length === 0 ? DEMO_USERS : DEMO_USERS.filter((u) => norm(u.handle).includes(nq) || norm(u.name).includes(nq))), [nq]);
+  const usersQ = useUsers(nq);
+  const users = usersQ.data?.items ?? [];
   const games = useMemo(() => {
     if (nq.length < 2) return [] as Game[];
     const all = gameQueries.flatMap((g) => g.data ?? []);
@@ -70,7 +71,8 @@ export default function SearchScreen() {
                   @{u.handle} {u.verified ? <span className="text-accent">✦</span> : null}
                 </div>
                 <div className="tnum text-xs text-muted">
-                  {u.record.w}-{u.record.l} · ROI {u.roi >= 0 ? "+" : ""}
+                  {u.record.w}-{u.record.l}
+                  {u.record.open ? ` · ${u.record.open} abiertas` : ""} · ROI {u.roi >= 0 ? "+" : ""}
                   {u.roi.toFixed(1)}%
                 </div>
               </div>
@@ -79,7 +81,8 @@ export default function SearchScreen() {
               </Link>
             </li>
           ))}
-          {users.length === 0 ? <li className="text-sm text-muted">Nadie con ese nombre.</li> : null}
+          {usersQ.isLoading ? <li className="skeleton h-14" /> : null}
+          {!usersQ.isLoading && users.length === 0 ? <li className="text-sm text-muted">Nadie con ese nombre.</li> : null}
         </ul>
       </section>
 

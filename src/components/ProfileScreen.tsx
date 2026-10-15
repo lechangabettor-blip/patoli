@@ -13,6 +13,7 @@ import WithdrawSheet from "./WithdrawSheet";
 import type { TicketData } from "./Ticket";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
+import { useMe } from "@/providers/MeProvider";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { formatUsd } from "@/lib/polymarket/odds";
 import { shortAddress, signed } from "@/lib/format";
@@ -41,6 +42,7 @@ const costOf = (p: Position) => (p.initialValue && p.initialValue > 0 ? p.initia
 
 export default function ProfileScreen() {
   const { status, email, eoaAddress, logout, isDemo } = useWallet();
+  const { me } = useMe();
   const { walletAddress, legacySafeAddress, isReady, step, setupTrading, error, wrapUsdc, migrateFromSafe } = useTrading();
   const { balance, pendingUsdc, pendingUsdcRaw, legacyUsdc, legacyUsdcRaw, refetch } = useUsdcBalance();
   const qc = useQueryClient();
@@ -120,7 +122,7 @@ export default function ProfileScreen() {
     );
   }
 
-  const handle = (email ?? "usuario").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "usuario";
+  const handle = me?.handle ?? ((email ?? "usuario").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "usuario");
   const open = (positions.data ?? []).filter((p) => !p.redeemable && p.size > 0);
   const totalPnl = (positions.data ?? []).reduce((s, p) => s + (p.cashPnl ?? 0) + (p.realizedPnl ?? 0), 0);
   const activating = step !== "idle" && step !== "complete";
@@ -155,7 +157,19 @@ export default function ProfileScreen() {
               <div className="truncate font-display text-xl font-extrabold uppercase">@{handle}</div>
               <div className="truncate text-xs text-muted">{email}</div>
             </div>
+            {me ? (
+              <Link href={`/u/${me.handle}`} className="btn-ghost shrink-0 px-3 py-1.5 font-display text-[11px] font-bold uppercase">
+                Mi perfil
+              </Link>
+            ) : null}
           </div>
+          {me ? (
+            <div className="tnum mt-3 text-xs text-muted">
+              Récord {me.record.w}-{me.record.l}
+              {me.record.v ? `-${me.record.v}` : ""} · {me.followers} seguidores · ROI {me.roi >= 0 ? "+" : ""}
+              {me.roi.toFixed(1)}%
+            </div>
+          ) : null}
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             <Stat k="Saldo" v={`$${formatUsd(balance)}`} />
             <Stat k="Abiertas" v={String(open.length)} />

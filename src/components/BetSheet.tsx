@@ -11,6 +11,7 @@ import { LEAGUE_BY_ID } from "@/lib/polymarket/leagues";
 import { breakdown, formatOdds, formatUsd } from "@/lib/polymarket/odds";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
+import { useMe } from "@/providers/MeProvider";
 import { usePlaceBet } from "@/hooks/usePlaceBet";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { useBuilderFee } from "@/hooks/useBuilderFee";
@@ -34,6 +35,7 @@ export default function BetSheet({ selection, onClose }: { selection: Selection 
 function BetBody({ selection, onClose }: { selection: Selection; onClose: () => void }) {
   const router = useRouter();
   const { status, isDemo, email } = useWallet();
+  const { me } = useMe();
   const { isReady, step, setupTrading, error } = useTrading();
   const { placeBet, isPlacing } = usePlaceBet();
   const { balance } = useUsdcBalance();
@@ -41,7 +43,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const [stake, setStake] = useState(10);
   const [done, setDone] = useState<TicketData | null>(null);
   const [fail, setFail] = useState<string | null>(null);
-  const handle = (email ?? "tú").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "tú";
+  const handle = me?.handle ?? ((email ?? "tú").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "tú");
 
   const b = useMemo(() => breakdown(selection.price, undefined, takerBps), [selection.price, takerBps]);
   const payout = stake / b.costPerShare;

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@magic-ext/oauth2": "^15.14.0",
+    "@magic-sdk/admin": "^2.8.2",
     "@polymarket/builder-relayer-client": "^0.0.10",
     "@polymarket/builder-signing-sdk": "^1.0.0",
     "@polymarket/clob-client": "^5.8.1",

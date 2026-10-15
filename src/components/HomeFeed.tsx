@@ -1,23 +1,31 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import TopBar from "./TopBar";
 import FeedCard from "./FeedCard";
-import { DEMO_BETS, DEMO_USERS, findUser } from "@/data/demo";
+import Sheet from "./Sheet";
+import TicketShare from "./TicketShare";
+import type { TicketData } from "./Ticket";
+import { useFeed, useUsers, ticketFromItem } from "@/hooks/useSocial";
+import { useWallet } from "@/providers/WalletContext";
 import { cn } from "@/lib/cn";
 
-type Tab = "todos" | "siguiendo";
+type Tab = "all" | "following";
 
 export default function HomeFeed() {
-  const [tab, setTab] = useState<Tab>("todos");
-  const bets = tab === "todos" ? DEMO_BETS : DEMO_BETS.filter((b) => ["lechanga", "paulovski"].includes(b.user));
+  const [tab, setTab] = useState<Tab>("all");
+  const [ticket, setTicket] = useState<TicketData | null>(null);
+  const { status } = useWallet();
+  const feed = useFeed(tab);
+  const people = useUsers("");
 
   return (
     <>
       <TopBar
         right={
           <div className="flex rounded-full bg-surface p-0.5">
-            {(["todos", "siguiendo"] as Tab[]).map((t) => (
+            {(["all", "following"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -26,37 +34,65 @@ export default function HomeFeed() {
                   tab === t ? "bg-accent text-white" : "text-muted",
                 )}
               >
-                {t === "todos" ? "Todos" : "Siguiendo"}
+                {t === "all" ? "Todos" : "Siguiendo"}
               </button>
             ))}
           </div>
         }
       />
 
-      {/* Leaders rail */}
+      {/* People rail */}
       <section className="no-scrollbar flex gap-3 overflow-x-auto px-4 pt-4">
-        {DEMO_USERS.slice(0, 6).map((u, i) => (
-          <a key={u.handle} href={`/u/${u.handle}`} className="rise flex w-16 shrink-0 flex-col items-center gap-1.5" style={{ animationDelay: `${i * 40}ms` }}>
-            <span className={cn("rounded-full p-[2px]", u.streak >= 3 ? "bg-[conic-gradient(var(--accent),var(--accent-soft),var(--accent))]" : "bg-hairline")}>
-              <span className="flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-bg bg-surface-2 text-2xl">{u.avatar}</span>
+        {(people.data?.items ?? []).slice(0, 8).map((u, i) => (
+          <Link key={u.handle} href={`/u/${u.handle}`} className="rise flex w-16 shrink-0 flex-col items-center gap-1.5" style={{ animationDelay: `${i * 40}ms` }}>
+            <span className={cn("rounded-full p-[2px]", u.roi > 10 ? "bg-[conic-gradient(var(--accent),var(--accent-soft),var(--accent))]" : "bg-hairline")}>
+              <span className="flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-bg bg-surface-2 text-2xl">
+                {/\p{Extended_Pictographic}/u.test(u.avatar) ? u.avatar : <span className="font-display text-lg font-extrabold uppercase">{u.handle[0]}</span>}
+              </span>
             </span>
             <span className="w-full truncate text-center text-[11px] text-muted">@{u.handle.replace("_demo", "")}</span>
-          </a>
+          </Link>
         ))}
+        {people.isLoading ? Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton h-14 w-14 shrink-0 rounded-full" />) : null}
       </section>
 
       <section className="space-y-3 px-4 pt-4">
-        <div className="flex items-baseline justify-between">
-          <h1 className="text-2xl">
-            Lo que apuesta <span className="text-accent">la banda</span>
-          </h1>
-        </div>
-        {bets.map((b, i) => {
-          const u = findUser(b.user);
-          return u ? <FeedCard key={b.id} bet={b} user={u} index={i} /> : null;
-        })}
-        <p className="pb-2 pt-4 text-center text-[11px] text-muted-2">Vista previa con datos de ejemplo. Los picks reales se leen de la blockchain.</p>
+        <h1 className="text-2xl">
+          Lo que apuesta <span className="text-accent">la banda</span>
+        </h1>
+
+        {feed.isLoading ? (
+          Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-40 w-full" />)
+        ) : feed.isError ? (
+          <div className="card p-6 text-center text-sm text-muted">No pudimos cargar el feed.</div>
+        ) : (feed.data?.items ?? []).length === 0 ? (
+          <div className="card p-6 text-center">
+            <h2 className="text-xl">{tab === "following" ? "Aún no sigues a nadie" : "Nada todavía"}</h2>
+            <p className="mt-2 text-sm text-muted">
+              {tab === "following"
+                ? status === "connected"
+                  ? "Busca a la banda y síguelos para ver sus picks aquí."
+                  : "Entra para seguir a la banda."
+                : "La primera apuesta de la banda aparecerá aquí."}
+            </p>
+            <Link href={tab === "following" && status !== "connected" ? "/entrar" : "/buscar"} className="btn-accent mt-4 inline-block px-5 py-2.5 text-xs">
+              {tab === "following" && status !== "connected" ? "Entrar" : "Buscar gente"}
+            </Link>
+          </div>
+        ) : (
+          feed.data!.items.map((item, i) => <FeedCard key={item.id} item={item} index={i} onTicket={(it) => setTicket(ticketFromItem(it))} />)
+        )}
+
+        {feed.data?.demo ? (
+          <p className="pb-2 pt-4 text-center text-[11px] text-muted-2">Vista previa con datos de ejemplo. Los picks reales se leen de la blockchain.</p>
+        ) : (
+          <p className="pb-2 pt-4 text-center text-[11px] text-muted-2">Cada pick es una apuesta real, verificable en Polygon.</p>
+        )}
       </section>
+
+      <Sheet open={!!ticket} onClose={() => setTicket(null)} title="Boleto">
+        {ticket ? <TicketShare data={ticket} onDone={() => setTicket(null)} /> : null}
+      </Sheet>
     </>
   );
 }
