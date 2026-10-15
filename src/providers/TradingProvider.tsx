@@ -19,9 +19,11 @@ import {
 } from "@/lib/polymarket/constants";
 import {
   batchDeadline,
+  buildRedeemCalls,
   buildUnwrapCalls,
   buildV2ApprovalCalls,
   buildWrapCalls,
+  type RedeemTarget,
   checkV2Approvals,
   erc20Balance,
   isDeployed,
@@ -69,6 +71,8 @@ interface TradingContextType {
   migrateFromSafe: (amount: bigint) => Promise<void>;
   /** Withdraw: pUSD → USDC.e sent to `to` on Polygon (gasless). Returns tx hash if known. */
   withdraw: (to: `0x${string}`, amount: bigint) => Promise<string | undefined>;
+  /** Cobrar: redeem resolved positions into pUSD (gasless, one signature for all). */
+  redeem: (targets: RedeemTarget[]) => Promise<string | undefined>;
   resetTrading: () => void;
 }
 
@@ -252,6 +256,18 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     [relayClient, walletAddress],
   );
 
+  const redeem = useCallback(
+    async (targets: RedeemTarget[]) => {
+      if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
+      if (targets.length === 0) return undefined;
+      const calls = await buildRedeemCalls(walletAddress, targets);
+      const resp = await relayClient.executeDepositWalletBatch(calls, walletAddress, batchDeadline());
+      const result = await resp.wait();
+      return (result as { transactionHash?: string } | undefined)?.transactionHash;
+    },
+    [relayClient, walletAddress],
+  );
+
   const resetTrading = useCallback(() => {
     if (eoaAddress) {
       clearSession(eoaAddress);
@@ -293,9 +309,10 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       wrapUsdc,
       migrateFromSafe,
       withdraw,
+      redeem,
       resetTrading,
     }),
-    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, migrateFromSafe, withdraw, resetTrading],
+    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, migrateFromSafe, withdraw, redeem, resetTrading],
   );
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>;

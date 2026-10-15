@@ -10,6 +10,7 @@ import Logo from "./Logo";
 import Sheet from "./Sheet";
 import TicketShare from "./TicketShare";
 import WithdrawSheet from "./WithdrawSheet";
+import EditProfileSheet from "./EditProfileSheet";
 import type { TicketData } from "./Ticket";
 import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
@@ -33,6 +34,7 @@ interface Position {
   cashPnl: number;
   realizedPnl: number;
   redeemable: boolean;
+  negativeRisk?: boolean;
   endDate?: string;
   slug?: string;
 }
@@ -43,13 +45,14 @@ const costOf = (p: Position) => (p.initialValue && p.initialValue > 0 ? p.initia
 export default function ProfileScreen() {
   const { status, email, eoaAddress, logout, isDemo } = useWallet();
   const { me } = useMe();
-  const { walletAddress, legacySafeAddress, isReady, step, setupTrading, error, wrapUsdc, migrateFromSafe } = useTrading();
+  const { walletAddress, legacySafeAddress, isReady, step, setupTrading, error, wrapUsdc, migrateFromSafe, redeem } = useTrading();
   const { balance, pendingUsdc, pendingUsdcRaw, legacyUsdc, legacyUsdcRaw, refetch } = useUsdcBalance();
   const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState<"wrap" | "migrate" | null>(null);
+  const [busy, setBusy] = useState<"wrap" | "migrate" | "redeem" | null>(null);
   const [opError, setOpError] = useState<string | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [ticket, setTicket] = useState<TicketData | null>(null);
 
   const builder = useQuery({
@@ -72,12 +75,19 @@ export default function ProfileScreen() {
     },
   });
 
-  async function run(kind: "wrap" | "migrate") {
+  async function run(kind: "wrap" | "migrate" | "redeem") {
     setOpError(null);
     setBusy(kind);
     try {
       if (kind === "wrap") await wrapUsdc(pendingUsdcRaw);
-      else await migrateFromSafe(legacyUsdcRaw);
+      else if (kind === "migrate") await migrateFromSafe(legacyUsdcRaw);
+      else {
+        const targets = redeemables.map((p) => ({ conditionId: p.conditionId as `0x${string}`, negRisk: !!p.negativeRisk }));
+        // one call per market even if several outcomes are held
+        const seen = new Set<string>();
+        await redeem(targets.filter((t) => (seen.has(t.conditionId) ? false : (seen.add(t.conditionId), true))));
+        qc.invalidateQueries({ queryKey: ["positions"] });
+      }
       await refetch();
       qc.invalidateQueries({ queryKey: ["balances"] });
     } catch (e) {
@@ -124,6 +134,8 @@ export default function ProfileScreen() {
 
   const handle = me?.handle ?? ((email ?? "usuario").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "usuario");
   const open = (positions.data ?? []).filter((p) => !p.redeemable && p.size > 0);
+  const redeemables = (positions.data ?? []).filter((p) => p.redeemable && p.size > 0);
+  const redeemableUsd = redeemables.reduce((s, p) => s + (p.curPrice >= 0.99 ? p.size : 0), 0);
   const totalPnl = (positions.data ?? []).reduce((s, p) => s + (p.cashPnl ?? 0) + (p.realizedPnl ?? 0), 0);
   const activating = step !== "idle" && step !== "complete";
 
@@ -158,9 +170,14 @@ export default function ProfileScreen() {
               <div className="truncate text-xs text-muted">{email}</div>
             </div>
             {me ? (
-              <Link href={`/u/${me.handle}`} className="btn-ghost shrink-0 px-3 py-1.5 font-display text-[11px] font-bold uppercase">
-                Mi perfil
-              </Link>
+              <div className="flex shrink-0 flex-col gap-1.5">
+                <Link href={`/u/${me.handle}`} className="btn-ghost px-3 py-1.5 text-center font-display text-[11px] font-bold uppercase">
+                  Mi perfil
+                </Link>
+                <button onClick={() => setEditOpen(true)} className="btn-ghost px-3 py-1.5 font-display text-[11px] font-bold uppercase">
+                  Editar
+                </button>
+              </div>
             ) : null}
           </div>
           {me ? (
@@ -176,6 +193,21 @@ export default function ProfileScreen() {
             <Stat k="P&L" v={signed(totalPnl)} cls={totalPnl > 0 ? "text-win" : totalPnl < 0 ? "text-loss" : ""} />
           </div>
         </div>
+
+        {/* Winnings ready to collect — shown first, one tap */}
+        {isReady && redeemables.length > 0 ? (
+          <div className="card-hot card mt-3 p-4">
+            <div className="font-display text-sm font-extrabold uppercase">
+              {redeemableUsd > 0 ? `Tienes $${formatUsd(redeemableUsd)} listos` : "Apuestas por cerrar"}
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              {redeemables.length} {redeemables.length === 1 ? "apuesta resuelta" : "apuestas resueltas"}. Cóbralas a tu saldo con una firma, sin gas.
+            </p>
+            <button onClick={() => run("redeem")} disabled={busy !== null} className="btn-accent mt-3 w-full py-2.5 text-xs">
+              {busy === "redeem" ? "Cobrando…" : "Cobrar"}
+            </button>
+          </div>
+        ) : null}
 
         {/* Account activation */}
         {!isReady ? (
@@ -296,6 +328,7 @@ export default function ProfileScreen() {
       </section>
 
       <WithdrawSheet open={withdrawOpen} onClose={() => setWithdrawOpen(false)} available={balance} onDone={() => refetch()} />
+      {editOpen ? <EditProfileSheet open={editOpen} onClose={() => setEditOpen(false)} /> : null}
       <Sheet open={!!ticket} onClose={() => setTicket(null)} title="Tu boleto">
         {ticket ? <TicketShare data={ticket} onDone={() => setTicket(null)} /> : null}
       </Sheet>

@@ -5,6 +5,9 @@ import {
   COLLATERAL_OFFRAMP_ADDRESS,
   COLLATERAL_ONRAMP_ADDRESS,
   CTF_ADDRESS,
+  CTF_COLLATERAL_ADAPTER_ADDRESS,
+  NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS,
+  V2_ROUTER_ADDRESS,
   POLYGON_RPC_URL,
   PUSD_ADDRESS,
   USDC_E_ADDRESS,
@@ -45,10 +48,48 @@ const offrampAbi = parseAbi(["function unwrap(address _asset, address _to, uint2
 
 // pUSD spenders (ERC-20 approve)
 const PUSD_SPENDERS = [V2_PROTOCOL_EXCHANGE_ADDRESS, V2_STANDARD_EXCHANGE_ADDRESS, V2_NEG_RISK_EXCHANGE_ADDRESS] as const;
-// Conditional tokens operators (ERC-1155 setApprovalForAll)
-const CTF_OPERATORS = [V2_STANDARD_EXCHANGE_ADDRESS, V2_NEG_RISK_EXCHANGE_ADDRESS] as const;
-// PositionManager operator for the Protocol V2 exchange
-const PM_OPERATORS = [V2_PROTOCOL_EXCHANGE_ADDRESS] as const;
+// Conditional tokens operators (ERC-1155 setApprovalForAll): the exchanges
+// (trading) and the collateral adapters (redeeming winnings).
+const CTF_OPERATORS = [V2_STANDARD_EXCHANGE_ADDRESS, V2_NEG_RISK_EXCHANGE_ADDRESS, CTF_COLLATERAL_ADAPTER_ADDRESS, NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS] as const;
+// PositionManager operators: the Protocol V2 exchange (trading) and the Router (redeeming)
+const PM_OPERATORS = [V2_PROTOCOL_EXCHANGE_ADDRESS, V2_ROUTER_ADDRESS] as const;
+
+const ctfAdapterAbi = parseAbi([
+  "function redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets)",
+]);
+
+export interface RedeemTarget {
+  conditionId: `0x${string}`;
+  negRisk: boolean;
+}
+
+/**
+ * Redeem resolved CTF positions → pUSD. One call per market; the adapter
+ * redeems whatever the wallet holds of both outcomes. Includes the operator
+ * approval for the adapter when the wallet hasn't granted it yet.
+ */
+export async function buildRedeemCalls(wallet: `0x${string}`, targets: RedeemTarget[]): Promise<DepositWalletCall[]> {
+  const calls: DepositWalletCall[] = [];
+  const adapters = new Set(targets.map((t) => (t.negRisk ? NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS : CTF_COLLATERAL_ADAPTER_ADDRESS)));
+  for (const adapter of adapters) {
+    const ok = await publicClient
+      .readContract({ address: CTF_ADDRESS, abi: erc1155Abi, functionName: "isApprovedForAll", args: [wallet, adapter] })
+      .catch(() => false);
+    if (!ok) {
+      calls.push({ target: CTF_ADDRESS, value: "0", data: encodeFunctionData({ abi: erc1155Abi, functionName: "setApprovalForAll", args: [adapter, true] }) });
+    }
+  }
+  const zero = `0x${"0".repeat(64)}` as `0x${string}`;
+  for (const t of targets) {
+    const adapter = t.negRisk ? NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS : CTF_COLLATERAL_ADAPTER_ADDRESS;
+    calls.push({
+      target: adapter,
+      value: "0",
+      data: encodeFunctionData({ abi: ctfAdapterAbi, functionName: "redeemPositions", args: [PUSD_ADDRESS, zero, t.conditionId, [1n, 2n]] }),
+    });
+  }
+  return calls;
+}
 
 export async function checkV2Approvals(wallet: `0x${string}`): Promise<boolean> {
   const threshold = 1_000_000_000_000n; // 1M pUSD

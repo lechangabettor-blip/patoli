@@ -41,6 +41,11 @@ export const V2_PROTOCOL_EXCHANGE_ADDRESS = "0xe3333700cA9d93003F00f0F71f8515005
 export const V2_STANDARD_EXCHANGE_ADDRESS = "0xE111180000d2663C0091e4f400237545B87B996B" as const;
 export const V2_NEG_RISK_EXCHANGE_ADDRESS = "0xe2222d279d744050d28e00520010520000310F59" as const;
 export const V2_POSITION_MANAGER_ADDRESS = "0x006F54F7f9A22e0000CC2AB60031000000ae9fEF" as const;
+// Redemption (docs: trading/positions/manage). CTF markets redeem through a
+// collateral adapter that burns the outcome tokens and returns pUSD.
+export const CTF_COLLATERAL_ADAPTER_ADDRESS = "0xAdA100Db00Ca00073811820692005400218FcE1f" as const;
+export const NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS = "0xadA2005600Dec949baf300f4C6120000bDB6eAab" as const;
+export const V2_ROUTER_ADDRESS = "0x12121212006e4CD160D18e3f00711DA5c3372600" as const;
 
 // Fees (see docs: sports taker fee rate 0.05 since Jul-2026; builder fee is ours)
 export const POLYMARKET_SPORTS_FEE_RATE = 0.05;
