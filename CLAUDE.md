@@ -94,6 +94,18 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
 - Builder API key/secret/passphrase (server, HMAC via `/api/polymarket/sign`) are
   for the relayer. The builder CODE is for order attribution. Different things.
 
+## Redeeming (Cobrar) — 2026-10-15
+
+- CTF markets (all our sports markets today) redeem through Polymarket's
+  **collateral adapters**: standard `0xAdA1…FcE1f`, neg-risk `0xadA2…eAab`, calling
+  `redeemPositions(pUSD, 0x0, conditionId, [1,2])`; the adapter burns the outcome
+  tokens and returns pUSD to the deposit wallet. Needs `setApprovalForAll` on CTF
+  for the adapter (now part of the activation batch; `buildRedeemCalls` adds it on
+  the fly for wallets activated before). "v2" position-based markets use the Router
+  `0x1212…2600` `redeem(bytes31,uint256,uint256)` — not wired yet.
+- Fully automatic redemption would need Polymarket **session keys** (owner grants a
+  scoped signer); for now Perfil shows "Tienes $X listos → Cobrar", one signature.
+
 ## Gotchas learned the hard way
 
 - **Polygon RPC must be on Magic's CSP allowlist** (Magic's iframe blocks other
