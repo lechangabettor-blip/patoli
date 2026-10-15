@@ -316,3 +316,31 @@ Route /perfil is rendering with server caches disabled. For this navigation, Com
  GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 325ms (next.js: 0.6ms, application-code: 324ms)
  GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 328ms (next.js: 0.7ms, application-code: 327ms)
  GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 252ms (next.js: 0.6ms, application-code: 251ms)
+✓ Compiled in 22ms
+ GET /perfil 200 in 40ms (next.js: 1.6ms, application-code: 38ms)
+ GET /perfil 200 in 39ms (next.js: 19ms, application-code: 21ms)
+ GET /entrar 200 in 18ms (next.js: 1.3ms, application-code: 17ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 257ms (next.js: 0.6ms, application-code: 257ms)
+ GET / 200 in 61ms (next.js: 5ms, application-code: 56ms)
+ GET /api/polymarket/sign 200 in 4ms (next.js: 0.7ms, application-code: 3ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 250ms (next.js: 0.6ms, application-code: 250ms)
+ GET / 200 in 24ms (next.js: 1.9ms, application-code: 22ms)
+Route / is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+ GET / 200 in 42ms (next.js: 0.7ms, application-code: 41ms)
+ GET /perfil 200 in 19ms (next.js: 1.0ms, application-code: 18ms)
+ GET /api/polymarket/sign 200 in 4ms (next.js: 0.9ms, application-code: 3ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 249ms (next.js: 0.5ms, application-code: 248ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 267ms (next.js: 0.8ms, application-code: 267ms)
+ GET /api/positions?user=0xfd3632B2be0B3971D2f59FF047a9C58C915A9656 200 in 255ms (next.js: 0.5ms, application-code: 255ms)
+ GET / 200 in 20ms (next.js: 1.3ms, application-code: 19ms)
+ GET /u/paulovski 200 in 334ms (next.js: 8ms, generate-params: 262ms, application-code: 64ms)
+ GET / 200 in 32ms (next.js: 0.7ms, application-code: 32ms)
+[browser] [patoli] deposit wallet derivation failed HttpRequestError: HTTP request failed.
+
+URL: https://polygon.rpc.thirdweb.com/
+Request body: {"method":"eth_getCode","params":["0x5Cf737aecaAF14cD413a7072B3f0B6a63a5eb405","latest"]}
+
+Details: Failed to fetch
+Version: viem@2.57.7
+    at <unknown> (HttpRequestError: HTTP request failed.) (src/providers/TradingProvider.tsx:129:29)
+[?25h

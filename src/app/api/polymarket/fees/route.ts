@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, connection } from "next/server";
 import { CLOB_API_URL, PATOLI_BUILDER_CODE, PATOLI_BUILDER_FEE_BPS, isBuilderCodeValid } from "@/lib/polymarket/constants";
 
 /**
@@ -19,6 +19,7 @@ interface FeeInfo {
 }
 
 export async function GET() {
+  await connection(); // request-time: reads env + live Polymarket data, never prerendered
   if (cache && Date.now() - cache.at < TTL) return NextResponse.json(cache.body);
   let body: FeeInfo = { takerBps: 0, makerBps: 0, targetBps: PATOLI_BUILDER_FEE_BPS, source: "fallback" };
   if (isBuilderCodeValid(PATOLI_BUILDER_CODE)) {

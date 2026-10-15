@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, connection } from "next/server";
 import { buildHmacSignature } from "@polymarket/builder-signing-sdk";
 
 /**
@@ -12,6 +12,7 @@ const isConfigured = () =>
 
 /** GET → { configured } so the UI can explain when trading isn't available yet. */
 export async function GET() {
+  await connection(); // request-time: reflects current env, never prerendered
   return NextResponse.json({ configured: isConfigured() }, { headers: { "Cache-Control": "no-store" } });
 }
 
