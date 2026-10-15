@@ -90,7 +90,7 @@ export default function SearchScreen() {
             {gameQueries.some((g) => g.isLoading) && games.length === 0 ? <li className="skeleton h-14" /> : null}
             {games.map((g) => (
               <li key={g.id}>
-                <Link href={`/deportes?liga=${g.league}`} className="card flex items-center gap-3 px-3 py-2.5">
+                <Link href={`/deportes?liga=${g.league}&partido=${encodeURIComponent(g.slug)}`} className="card flex items-center gap-3 px-3 py-2.5">
                   <span className="text-xl">{LEAGUE_BY_ID[g.league].emoji}</span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-semibold">{g.title}</div>
