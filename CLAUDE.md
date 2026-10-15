@@ -70,6 +70,19 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
 - Verify UI on a 390px-wide viewport (Playwright / browser pane) before
   calling anything done.
 
+## Gotchas learned the hard way
+
+- **Polygon RPC must be on Magic's CSP allowlist** (Magic's iframe blocks other
+  hosts): `*.alchemy.com`, `*.infura.io`, `*.rpc.thirdweb.com`, `polygon-rpc.com`
+  (dead since Oct 2026, returns 401). Default is thirdweb keyless; use an Alchemy
+  key in prod. publicnode/drpc work for us but NOT inside Magic.
+- Without `POLYMARKET_BUILDER_*` env vars, `/api/polymarket/sign` returns 503 and
+  the relayer answers 401 → Safe deploy fails. The UI reads `GET /api/polymarket/sign`
+  and disables "Activar" with a plain message. Login itself works without them.
+- Magic free tier allows 1 allowed domain; set it to patoli.bet when deploying.
+- Dev server is slow on phones (unminified bundles); test on the phone with
+  `npm run build && npm run start -- -H 0.0.0.0`.
+
 ## Status log
 
 - 2026-10-14 — Phase 0 scaffold: brand, nav, 5 tabs, Deportes live from

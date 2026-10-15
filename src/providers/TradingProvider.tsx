@@ -50,6 +50,17 @@ export function useTrading() {
 
 const builderConfig = () => new BuilderConfig({ remoteBuilderConfig: { url: REMOTE_SIGNING_URL() } });
 
+/** Turn SDK/axios failures into something a player can act on. */
+function friendlyError(e: unknown): Error {
+  const raw = e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e ?? {});
+  if (/503|remote signer|invalid authorization|401/i.test(raw)) {
+    return new Error("Patoli aún no está conectado a Polymarket (faltan las credenciales de builder). Pronto.");
+  }
+  if (/user denied|rejected|closed-by-user/i.test(raw)) return new Error("Cancelaste la firma.");
+  if (/network|timeout|fetch/i.test(raw)) return new Error("Sin conexión con Polygon. Intenta de nuevo.");
+  return e instanceof Error ? e : new Error("Algo falló. Intenta de nuevo.");
+}
+
 export function TradingProvider({ children }: { children: ReactNode }) {
   const { eoaAddress, ethersSigner, publicClient } = useWallet();
   // `override` holds a session written during this page life (setup/reset);
@@ -145,7 +156,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       setOverride({ eoa: eoaAddress, session: next });
       setStep("complete");
     } catch (e) {
-      const err = e instanceof Error ? e : new Error("Error desconocido");
+      const err = friendlyError(e);
       setError(err);
       setStep("idle");
       throw err;

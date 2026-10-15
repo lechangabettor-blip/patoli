@@ -35,6 +35,16 @@ export default function ProfileScreen() {
   const { balance } = useUsdcBalance();
   const [copied, setCopied] = useState(false);
 
+  const builder = useQuery({
+    queryKey: ["builder-configured"],
+    staleTime: 60_000,
+    queryFn: async (): Promise<{ configured: boolean }> => {
+      const r = await fetch("/api/polymarket/sign");
+      return r.ok ? r.json() : { configured: false };
+    },
+  });
+  const builderReady = builder.data?.configured ?? true;
+
   const positions = useQuery({
     queryKey: ["positions", safeAddress],
     enabled: status === "connected" && !!safeAddress,
@@ -109,10 +119,17 @@ export default function ProfileScreen() {
               <div className="flex-1">
                 <div className="font-display text-sm font-extrabold uppercase">Activa tu cuenta de trading</div>
                 <p className="mt-1 text-xs text-muted">Creamos tu bóveda en Polygon y firmas los permisos. Una sola vez, sin gas, sin costo.</p>
+                {!builderReady ? (
+                  <p className="mt-2 text-xs text-accent-soft">Patoli aún no está conectado a Polymarket. En cuanto esté, aquí activas tu cuenta.</p>
+                ) : null}
                 {step !== "idle" && step !== "complete" ? <p className="pulse-soft mt-2 text-xs text-accent-soft">{SESSION_STEP_LABEL[step]}</p> : null}
-                {error ? <p className="mt-2 text-xs text-loss">{error.message}</p> : null}
-                <button onClick={() => setupTrading().catch(() => undefined)} disabled={step !== "idle"} className="btn-accent mt-3 w-full py-2.5 text-xs">
-                  {step === "idle" ? "Activar" : "Un momento…"}
+                {error && builderReady ? <p className="mt-2 text-xs text-loss">{error.message}</p> : null}
+                <button
+                  onClick={() => setupTrading().catch(() => undefined)}
+                  disabled={step !== "idle" || !builderReady}
+                  className="btn-accent mt-3 w-full py-2.5 text-xs"
+                >
+                  {!builderReady ? "Muy pronto" : step === "idle" ? "Activar" : "Un momento…"}
                 </button>
               </div>
             </div>

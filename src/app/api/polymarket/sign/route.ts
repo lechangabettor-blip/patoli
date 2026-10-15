@@ -6,6 +6,15 @@ import { buildHmacSignature } from "@polymarket/builder-signing-sdk";
  * the browser: the CLOB and relayer clients call this route to get the
  * HMAC headers Polymarket expects, then attach them to the user's request.
  */
+
+const isConfigured = () =>
+  !!(process.env.POLYMARKET_BUILDER_API_KEY && process.env.POLYMARKET_BUILDER_SECRET && process.env.POLYMARKET_BUILDER_PASSPHRASE);
+
+/** GET → { configured } so the UI can explain when trading isn't available yet. */
+export async function GET() {
+  return NextResponse.json({ configured: isConfigured() }, { headers: { "Cache-Control": "no-store" } });
+}
+
 export async function POST(request: NextRequest) {
   const key = process.env.POLYMARKET_BUILDER_API_KEY;
   const secret = process.env.POLYMARKET_BUILDER_SECRET;
