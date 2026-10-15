@@ -91,12 +91,12 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
     if (b.ml.length === 0) continue;
     const ev = b.ml[0].events?.[0];
     const title = ev?.title ?? b.ml[0].question;
-    const { away, home } = parseTeams(title);
+    const { away, home, awayRaw, homeRaw } = parseTeams(title);
     const startTime = toIso(b.ml[0].gameStartTime ?? ev?.startDate);
     if (new Date(startTime).getTime() < cutoff) continue;
 
     const markets: GameMarket[] = [];
-    const moneyline = cfg.threeWay ? mergeThreeWay(b.ml, home, away) : twoWay(b.ml[0]);
+    const moneyline = cfg.threeWay ? mergeThreeWay(b.ml, { home, away, homeRaw, awayRaw }) : twoWay(b.ml[0]);
     if (moneyline) markets.push(moneyline);
     if (b.spread) {
       const m = spreadMarket(b.spread);
@@ -226,21 +226,25 @@ function twoWay(m: GammaMarket): GameMarket | null {
   if (!p) return null;
   return {
     ...base(m, "moneyline", null),
-    outcomes: p.outcomes.map((label, i) => ({ label, tokenId: p.tokens[i], price: p.prices[i] ?? 0 })),
+    outcomes: p.outcomes.map((label, i) => ({ label: shortTeam(label), tokenId: p.tokens[i], price: p.prices[i] ?? 0 })),
   };
 }
 
 /** Soccer: three yes/no markets (home win, draw, away win) → one 3-way line. */
-function mergeThreeWay(markets: GammaMarket[], home: string, away: string): GameMarket | null {
+function mergeThreeWay(
+  markets: GammaMarket[],
+  t: { home: string; away: string; homeRaw: string; awayRaw: string },
+): GameMarket | null {
+  const { home, away, homeRaw, awayRaw } = t;
   const picks: { key: "home" | "draw" | "away"; m: GammaMarket }[] = [];
   for (const m of markets) {
     const g = (m.groupItemTitle ?? "").toLowerCase();
     const q = m.question.toLowerCase();
     const key: "home" | "draw" | "away" | null = /draw|empate|tie/.test(g) || /end in a draw/.test(q)
       ? "draw"
-      : sameTeam(g || q, home)
+      : sameTeam(g || q, homeRaw)
         ? "home"
-        : sameTeam(g || q, away)
+        : sameTeam(g || q, awayRaw)
           ? "away"
           : null;
     if (key && !picks.some((x) => x.key === key)) picks.push({ key, m });
@@ -266,11 +270,13 @@ function spreadMarket(m: GammaMarket): GameMarket | null {
   if (!p || p.outcomes.length !== 2) return null;
   const line = m.line == null ? null : Number(m.line);
   const fmt = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+  const a = shortTeam(p.outcomes[0]);
+  const b = shortTeam(p.outcomes[1]);
   return {
     ...base(m, "spread", line),
     outcomes: [
-      { label: line == null ? p.outcomes[0] : `${p.outcomes[0]} ${fmt(line)}`, tokenId: p.tokens[0], price: p.prices[0] ?? 0 },
-      { label: line == null ? p.outcomes[1] : `${p.outcomes[1]} ${fmt(-line)}`, tokenId: p.tokens[1], price: p.prices[1] ?? 0 },
+      { label: line == null ? a : `${a} ${fmt(line)}`, tokenId: p.tokens[0], price: p.prices[0] ?? 0 },
+      { label: line == null ? b : `${b} ${fmt(-line)}`, tokenId: p.tokens[1], price: p.prices[1] ?? 0 },
     ],
   };
 }
@@ -319,12 +325,37 @@ function sameTeam(text: string, team: string): boolean {
   return words.some((w) => x.includes(w));
 }
 
-function parseTeams(title: string): { away: string; home: string } {
+function parseTeams(title: string): { away: string; home: string; awayRaw: string; homeRaw: string } {
   // Polymarket titles: US sports "Away vs. Home"; soccer "Home vs. Away".
   // We only need the two names; order is handled by the league's `threeWay`.
   const parts = title.split(/\s+vs\.?\s+/i);
-  if (parts.length === 2) return { away: parts[1].trim(), home: parts[0].trim() };
-  return { away: "", home: title };
+  if (parts.length === 2) {
+    const homeRaw = parts[0].trim();
+    const awayRaw = parts[1].trim();
+    return { away: shortTeam(awayRaw), home: shortTeam(homeRaw), awayRaw, homeRaw };
+  }
+  return { away: "", home: shortTeam(title), awayRaw: "", homeRaw: title };
+}
+
+const TEAM_NOISE = new Set(["club", "fc", "cf", "cd", "sc", "rc", "rcd", "ud", "sd", "ac", "afc", "ss", "us", "as", "de", "la", "del", "unam", "uanl", "futbol", "fútbol"]);
+const TEAM_OVERRIDES: Record<string, string> = {
+  "Pumas de la UNAM": "Pumas",
+  "Tigres de la UANL": "Tigres",
+  "CD Guadalajara": "Chivas",
+  "Club Atlético de Madrid": "Atlético",
+  "RCD Espanyol de Barcelona": "Espanyol",
+  "RC Deportivo A Coruña": "Deportivo",
+  "Atlético de San Luis": "San Luis",
+  "FC Juárez": "Juárez",
+};
+
+/** "Club Necaxa" → "Necaxa", "Atlas FC" → "Atlas". Full names stay in the game title. */
+export function shortTeam(raw: string): string {
+  const name = raw.trim();
+  if (TEAM_OVERRIDES[name]) return TEAM_OVERRIDES[name];
+  const words = name.split(/\s+/);
+  const kept = words.filter((w) => !TEAM_NOISE.has(w.toLowerCase().replace(/\./g, "")));
+  return (kept.length ? kept : words).join(" ");
 }
 
 function toIso(s: string | undefined): string {

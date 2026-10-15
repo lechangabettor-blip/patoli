@@ -148,3 +148,145 @@ Failed to set fetch cache https://gamma-api.polymarket.com/events?tag_id=450&clo
  GET /api/games?league=ucl 200 in 282ms (next.js: 0.8ms, application-code: 281ms)
  GET /api/games?league=epl 200 in 399ms (next.js: 0.7ms, application-code: 398ms)
  GET /api/games?league=laliga 200 in 416ms (next.js: 0.5ms, application-code: 416ms)
+ GET /deportes?liga=nfl 200 in 29ms (next.js: 1.9ms, application-code: 27ms)
+ GET /api/games?league=nfl 200 in 3ms (next.js: 0.5ms, application-code: 2ms)
+ GET /deportes?liga=nfl 200 in 31ms (next.js: 0.6ms, application-code: 30ms)
+ GET /api/games?league=nfl 200 in 3ms (next.js: 0.6ms, application-code: 3ms)
+ POST /api/prices 200 in 273ms (next.js: 13ms, application-code: 259ms)
+ POST /api/prices 200 in 238ms (next.js: 0.5ms, application-code: 237ms)
+ POST /api/prices 200 in 220ms (next.js: 0.9ms, application-code: 219ms)
+ POST /api/prices 200 in 245ms (next.js: 0.5ms, application-code: 244ms)
+ POST /api/prices 200 in 209ms (next.js: 0.6ms, application-code: 209ms)
+ POST /api/prices 200 in 230ms (next.js: 0.5ms, application-code: 230ms)
+ POST /api/prices 200 in 196ms (next.js: 0.5ms, application-code: 195ms)
+✓ Compiled in 180ms
+ GET /api/games?league=nfl 200 in 71ms (next.js: 0.7ms, application-code: 71ms)
+ POST /api/prices 200 in 186ms (next.js: 0.6ms, application-code: 185ms)
+ POST /api/prices 200 in 188ms (next.js: 0.6ms, application-code: 187ms)
+✓ Compiled in 59ms
+ POST /api/prices 200 in 186ms (next.js: 0.6ms, application-code: 185ms)
+ POST /api/prices 200 in 196ms (next.js: 0.5ms, application-code: 196ms)
+ POST /api/prices 200 in 207ms (next.js: 0.6ms, application-code: 207ms)
+ POST /api/prices 200 in 253ms (next.js: 0.6ms, application-code: 253ms)
+ POST /api/prices 200 in 204ms (next.js: 0.6ms, application-code: 203ms)
+ POST /api/prices 200 in 184ms (next.js: 0.5ms, application-code: 184ms)
+ POST /api/prices 200 in 210ms (next.js: 0.5ms, application-code: 209ms)
+ POST /api/prices 200 in 267ms (next.js: 0.6ms, application-code: 266ms)
+ GET /api/games?league=nfl 200 in 3ms (next.js: 0.6ms, application-code: 2ms)
+ POST /api/prices 200 in 242ms (next.js: 0.5ms, application-code: 242ms)
+ POST /api/prices 200 in 285ms (next.js: 0.5ms, application-code: 285ms)
+ POST /api/prices 200 in 206ms (next.js: 0.6ms, application-code: 205ms)
+ POST /api/prices 200 in 219ms (next.js: 0.5ms, application-code: 219ms)
+ GET /batalla 200 in 40ms (next.js: 0.9ms, application-code: 39ms)
+ POST /api/prices 200 in 262ms (next.js: 0.5ms, application-code: 261ms)
+ POST /api/prices 200 in 262ms (next.js: 0.8ms, application-code: 261ms)
+ POST /api/prices 200 in 275ms (next.js: 0.7ms, application-code: 274ms)
+ POST /api/prices 200 in 209ms (next.js: 0.6ms, application-code: 208ms)
+ POST /api/prices 200 in 213ms (next.js: 0.6ms, application-code: 212ms)
+ GET /api/games?league=nfl 200 in 173ms (next.js: 0.6ms, application-code: 172ms)
+ GET /perfil 200 in 37ms (next.js: 1.5ms, application-code: 36ms)
+ POST /api/prices 200 in 225ms (next.js: 0.7ms, application-code: 224ms)
+ POST /api/prices 200 in 222ms (next.js: 0.6ms, application-code: 221ms)
+ GET /buscar 200 in 34ms (next.js: 2ms, application-code: 32ms)
+ POST /api/prices 200 in 202ms (next.js: 0.5ms, application-code: 202ms)
+ POST /api/prices 200 in 213ms (next.js: 0.5ms, application-code: 213ms)
+ GET /api/games?league=nfl 200 in 3ms (next.js: 0.4ms, application-code: 2ms)
+ GET /api/games?league=ucl 200 in 76ms (next.js: 0.6ms, application-code: 75ms)
+ GET /api/games?league=nba 200 in 115ms (next.js: 0.7ms, application-code: 114ms)
+ GET /api/games?league=ligamx 200 in 139ms (next.js: 0.8ms, application-code: 139ms)
+ GET /api/games?league=epl 200 in 129ms (next.js: 0.5ms, application-code: 128ms)
+ GET /api/games?league=laliga 200 in 131ms (next.js: 0.4ms, application-code: 130ms)
+ POST /api/prices 200 in 495ms (next.js: 0.6ms, application-code: 494ms)
+ POST /api/prices 200 in 203ms (next.js: 0.5ms, application-code: 203ms)
+ POST /api/prices 200 in 205ms (next.js: 0.5ms, application-code: 205ms)
+ POST /api/prices 200 in 214ms (next.js: 0.5ms, application-code: 214ms)
+ POST /api/prices 200 in 210ms (next.js: 0.5ms, application-code: 210ms)
+ POST /api/prices 200 in 258ms (next.js: 0.5ms, application-code: 257ms)
+ POST /api/prices 200 in 205ms (next.js: 0.6ms, application-code: 204ms)
+ GET /entrar 200 in 35ms (next.js: 0.8ms, application-code: 35ms)
+ GET /api/games?league=nfl 200 in 95ms (next.js: 0.6ms, application-code: 94ms)
+ POST /api/prices 200 in 248ms (next.js: 0.5ms, application-code: 247ms)
+ POST /api/prices 200 in 249ms (next.js: 0.5ms, application-code: 249ms)
+ POST /api/prices 200 in 240ms (next.js: 0.5ms, application-code: 240ms)
+ GET /u/lechanga 200 in 50ms (next.js: 1.7ms, generate-params: 8ms, application-code: 41ms)
+Error: Route "/u/[handle]": Next.js encountered URL data `usePathname()` in a Client Component outside of `<Suspense>`.
+
+This blocks prerendering because the value is only available at runtime.
+
+Ways to fix this:
+  - [stream] Wrap the component in `<Suspense fallback={...}>` so the hook value streams in after prerendering
+  - [block] Set `export const instant = false` to allow a blocking route
+
+Learn more: https://nextjs.org/docs/messages/blocking-prerender-client-hook
+    at BottomNav (src\components\BottomNav.tsx:17:31)
+    at PublicProfilePage (src\app\u\[handle]\page.tsx:71:7)
+  15 |
+  16 | export default function BottomNav() {
+> 17 |   const pathname = usePathname();
+     |                               ^
+  18 |   return (
+  19 |     <nav
+  20 |       aria-label="Navegación principal" {
+  digest: 'CLIENT_HOOK_DYNAMIC'
+}
+ POST /api/prices 200 in 398ms (next.js: 0.5ms, application-code: 398ms)
+ POST /api/prices 200 in 237ms (next.js: 0.7ms, application-code: 236ms)
+ GET /deportes?liga=ligamx 200 in 34ms (next.js: 1.8ms, application-code: 33ms)
+ GET /api/games?league=ligamx 200 in 86ms (next.js: 0.7ms, application-code: 85ms)
+ POST /api/prices 200 in 213ms (next.js: 0.5ms, application-code: 213ms)
+ POST /api/prices 200 in 189ms (next.js: 0.5ms, application-code: 188ms)
+ POST /api/prices 200 in 210ms (next.js: 0.7ms, application-code: 210ms)
+ POST /api/prices 200 in 207ms (next.js: 0.5ms, application-code: 206ms)
+✓ Compiled in 29ms
+✓ Compiled in 69ms
+ POST /api/prices 200 in 208ms (next.js: 0.6ms, application-code: 208ms)
+✓ Compiled in 35ms
+ POST /api/prices 200 in 195ms (next.js: 0.6ms, application-code: 194ms)
+ POST /api/prices 200 in 227ms (next.js: 0.5ms, application-code: 226ms)
+ POST /api/prices 200 in 185ms (next.js: 0.5ms, application-code: 184ms)
+ POST /api/prices 200 in 243ms (next.js: 0.5ms, application-code: 242ms)
+ GET /u/lechanga 200 in 47ms (next.js: 1.2ms, generate-params: 7ms, application-code: 39ms)
+Error: Route "/u/[handle]": Next.js encountered runtime data during prerendering.
+
+`cookies()`, `headers()`, `params`, or `searchParams` accessed outside of `<Suspense>` prevents the route from being prerendered, blocking the page load and leading to a slower user experience.
+
+Ways to fix this:
+  - [stream] Provide a placeholder with `<Suspense fallback={...}>` around the data access
+  - [block] Set `export const instant = false` to allow a blocking route
+
+Learn more: https://nextjs.org/docs/messages/blocking-prerender-runtime
+    at PublicProfilePage (src\app\u\[handle]\page.tsx:17:22)
+  15 | /** Public profile. Demo data until the indexer ships (Phase 2). */
+  16 | export default async function PublicProfilePage({ params }: PageProps<"/u/[handle]">) {
+> 17 |   const { handle } = await params;
+     |                      ^
+  18 |   const user = findUser(handle);
+  19 |   if (!user) notFound();
+  20 |   const bets = DEMO_BETS.filter((b) => b.user === user.handle);
+ POST /api/prices 200 in 193ms (next.js: 0.5ms, application-code: 193ms)
+ POST /api/prices 200 in 251ms (next.js: 0.5ms, application-code: 250ms)
+ POST /api/prices 200 in 215ms (next.js: 0.5ms, application-code: 214ms)
+ GET /api/games?league=nfl 200 in 82ms (next.js: 0.7ms, application-code: 81ms)
+ POST /api/prices 200 in 299ms (next.js: 0.5ms, application-code: 298ms)
+ POST /api/prices 200 in 214ms (next.js: 0.6ms, application-code: 213ms)
+ POST /api/prices 200 in 212ms (next.js: 0.6ms, application-code: 211ms)
+ POST /api/prices 200 in 211ms (next.js: 0.6ms, application-code: 211ms)
+ POST /api/prices 200 in 262ms (next.js: 0.6ms, application-code: 261ms)
+ POST /api/prices 200 in 205ms (next.js: 0.4ms, application-code: 205ms)
+✓ Compiled in 140ms
+✓ Compiled in 32ms
+ POST /api/prices 200 in 198ms (next.js: 0.7ms, application-code: 198ms)
+ POST /api/prices 200 in 203ms (next.js: 0.5ms, application-code: 202ms)
+ POST /api/prices 200 in 211ms (next.js: 0.6ms, application-code: 211ms)
+ POST /api/prices 200 in 368ms (next.js: 0.6ms, application-code: 367ms)
+ POST /api/prices 200 in 226ms (next.js: 0.6ms, application-code: 226ms)
+ GET /api/games?league=nfl 200 in 843ms (next.js: 0.9ms, application-code: 842ms)
+ POST /api/prices 200 in 233ms (next.js: 0.6ms, application-code: 232ms)
+✓ Compiled in 60ms
+ GET /deportes?liga=nfl 200 in 50ms (next.js: 1.8ms, application-code: 49ms)
+ GET /u/lechanga 200 in 30ms (next.js: 3ms, generate-params: 6ms, application-code: 21ms)
+ POST /api/prices 200 in 200ms (next.js: 0.6ms, application-code: 200ms)
+ POST /api/prices 200 in 211ms (next.js: 0.5ms, application-code: 211ms)
+ POST /api/prices 200 in 214ms (next.js: 0.6ms, application-code: 214ms)
+ POST /api/prices 200 in 200ms (next.js: 0.5ms, application-code: 200ms)
+[?25h

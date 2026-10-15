@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Trophy, Search, User, Swords } from "lucide-react";
@@ -13,8 +14,21 @@ const TABS = [
   { href: "/perfil", label: "Perfil", Icon: User },
 ] as const;
 
+/** usePathname needs a Suspense boundary on dynamic routes (e.g. /u/[handle]). */
 export default function BottomNav() {
+  return (
+    <Suspense fallback={<Nav pathname="" />}>
+      <ActiveNav />
+    </Suspense>
+  );
+}
+
+function ActiveNav() {
   const pathname = usePathname();
+  return <Nav pathname={pathname} />;
+}
+
+function Nav({ pathname }: { pathname: string }) {
   return (
     <nav
       aria-label="Navegación principal"
@@ -27,7 +41,7 @@ export default function BottomNav() {
           style={{ height: "var(--nav-h)" }}
         >
           {TABS.map(({ href, label, Icon, ...rest }) => {
-            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            const active = pathname ? (href === "/" ? pathname === "/" : pathname.startsWith(href)) : false;
             const center = "center" in rest && rest.center;
             if (center) {
               return (
