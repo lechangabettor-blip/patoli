@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { Copy, ExternalLink, LogOut, ShieldCheck } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowDownToLine, Copy, ExternalLink, LogOut, ShieldCheck } from "lucide-react";
 import TopBar from "./TopBar";
 import Avatar from "./Avatar";
 import { useWallet } from "@/providers/WalletContext";
@@ -31,9 +31,12 @@ interface Position {
 
 export default function ProfileScreen() {
   const { status, email, eoaAddress, logout, isDemo } = useWallet();
-  const { safeAddress, isReady, step, setupTrading, error } = useTrading();
-  const { balance } = useUsdcBalance();
+  const { walletAddress, legacySafeAddress, isReady, step, setupTrading, error, wrapUsdc, migrateFromSafe } = useTrading();
+  const { balance, pendingUsdc, pendingUsdcRaw, legacyUsdc, legacyUsdcRaw, refetch } = useUsdcBalance();
+  const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState<"wrap" | "migrate" | null>(null);
+  const [opError, setOpError] = useState<string | null>(null);
 
   const builder = useQuery({
     queryKey: ["builder-configured"],
@@ -46,14 +49,29 @@ export default function ProfileScreen() {
   const builderReady = builder.data?.configured ?? true;
 
   const positions = useQuery({
-    queryKey: ["positions", safeAddress],
-    enabled: status === "connected" && !!safeAddress,
+    queryKey: ["positions", walletAddress],
+    enabled: status === "connected" && !!walletAddress,
     refetchInterval: 20_000,
     queryFn: async (): Promise<Position[]> => {
-      const r = await fetch(`/api/positions?user=${safeAddress}`);
+      const r = await fetch(`/api/positions?user=${walletAddress}`);
       return r.ok ? r.json() : [];
     },
   });
+
+  async function run(kind: "wrap" | "migrate") {
+    setOpError(null);
+    setBusy(kind);
+    try {
+      if (kind === "wrap") await wrapUsdc(pendingUsdcRaw);
+      else await migrateFromSafe(legacyUsdcRaw);
+      await refetch();
+      qc.invalidateQueries({ queryKey: ["balances"] });
+    } catch (e) {
+      setOpError(e instanceof Error ? e.message : "No se pudo completar");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   if (status === "loading") {
     return (
@@ -91,6 +109,7 @@ export default function ProfileScreen() {
   const handle = (email ?? "usuario").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "usuario";
   const open = (positions.data ?? []).filter((p) => !p.redeemable && p.size > 0);
   const totalPnl = (positions.data ?? []).reduce((s, p) => s + (p.cashPnl ?? 0) + (p.realizedPnl ?? 0), 0);
+  const activating = step !== "idle" && step !== "complete";
 
   return (
     <>
@@ -122,37 +141,68 @@ export default function ProfileScreen() {
                 {!builderReady ? (
                   <p className="mt-2 text-xs text-accent-soft">Patoli aún no está conectado a Polymarket. En cuanto esté, aquí activas tu cuenta.</p>
                 ) : null}
-                {step !== "idle" && step !== "complete" ? <p className="pulse-soft mt-2 text-xs text-accent-soft">{SESSION_STEP_LABEL[step]}</p> : null}
+                {activating ? <p className="pulse-soft mt-2 text-xs text-accent-soft">{SESSION_STEP_LABEL[step]}</p> : null}
                 {error && builderReady ? <p className="mt-2 text-xs text-loss">{error.message}</p> : null}
                 <button
                   onClick={() => setupTrading().catch(() => undefined)}
-                  disabled={step !== "idle" || !builderReady}
+                  disabled={activating || !builderReady}
                   className="btn-accent mt-3 w-full py-2.5 text-xs"
                 >
-                  {!builderReady ? "Muy pronto" : step === "idle" ? "Activar" : "Un momento…"}
+                  {!builderReady ? "Muy pronto" : activating ? "Un momento…" : "Activar"}
                 </button>
               </div>
             </div>
           </div>
         ) : null}
 
+        {/* Funds waiting to be converted */}
+        {isReady && pendingUsdc > 0 ? (
+          <div className="card-hot card mt-3 p-4">
+            <div className="flex items-start gap-3">
+              <ArrowDownToLine className="mt-0.5 h-5 w-5 shrink-0 text-accent-soft" />
+              <div className="flex-1">
+                <div className="font-display text-sm font-extrabold uppercase">Llegaron ${formatUsd(pendingUsdc)} USDC</div>
+                <p className="mt-1 text-xs text-muted">Polymarket opera con pUSD (dólar 1 a 1). Conviértelos para poder apostar. Sin gas, sin costo.</p>
+                <button onClick={() => run("wrap")} disabled={busy !== null} className="btn-accent mt-3 w-full py-2.5 text-xs">
+                  {busy === "wrap" ? "Convirtiendo…" : `Convertir a pUSD`}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Funds parked in the v1 Safe (early testers only) */}
+        {isReady && legacyUsdc > 0 && legacySafeAddress ? (
+          <div className="card mt-3 p-4">
+            <div className="font-display text-sm font-extrabold uppercase">Saldo en tu bóveda anterior</div>
+            <p className="mt-1 text-xs text-muted">
+              Tienes ${formatUsd(legacyUsdc)} USDC en {shortAddress(legacySafeAddress)}. Muévelos a tu bóveda nueva en un toque.
+            </p>
+            <button onClick={() => run("migrate")} disabled={busy !== null} className="btn-ghost mt-3 w-full py-2.5 font-display text-xs font-bold uppercase">
+              {busy === "migrate" ? "Moviendo…" : "Mover a la bóveda nueva"}
+            </button>
+          </div>
+        ) : null}
+        {opError ? <p className="mt-2 text-xs text-loss">{opError}</p> : null}
+
         {/* Deposit */}
         <div className="card mt-3 p-4">
           <div className="font-display text-sm font-extrabold uppercase">Depositar</div>
           <p className="mt-1 text-xs text-muted">Manda USDC (red Polygon) a tu dirección. Desde Bitso, otra wallet o tu cuenta de Polymarket.</p>
           <div className="tnum mt-3 flex items-center justify-between rounded-xl bg-surface px-3 py-2 text-sm">
-            <span>{shortAddress(safeAddress, 6)}</span>
+            <span>{walletAddress ? shortAddress(walletAddress, 6) : "…"}</span>
             <button
               onClick={() => {
-                if (safeAddress) navigator.clipboard?.writeText(safeAddress).then(() => setCopied(true));
+                if (walletAddress) navigator.clipboard?.writeText(walletAddress).then(() => setCopied(true));
                 setTimeout(() => setCopied(false), 1500);
               }}
+              disabled={!walletAddress}
               className="flex items-center gap-1 text-xs text-accent-soft"
             >
               <Copy className="h-3.5 w-3.5" /> {copied ? "Copiado" : "Copiar"}
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-muted-2">Solo USDC en Polygon. Otra red u otra moneda se pierde.</p>
+          <p className="mt-2 text-[11px] text-muted-2">USDC.e o pUSD en Polygon. Otra red u otra moneda se pierde. {!isReady ? "Activa tu cuenta antes de depositar." : ""}</p>
         </div>
 
         {/* Open bets */}
@@ -177,7 +227,7 @@ export default function ProfileScreen() {
         </ul>
 
         <a
-          href={POLYMARKET_PROFILE_URL(safeAddress ?? "")}
+          href={POLYMARKET_PROFILE_URL(walletAddress ?? "")}
           target="_blank"
           rel="noreferrer"
           className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted"

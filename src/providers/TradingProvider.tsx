@@ -1,11 +1,12 @@
 "use client";
 
-import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from "react";
-import { Chain, ClobClient, SignatureTypeV2 } from "@polymarket/clob-client-v2";
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Chain as ClobChain, ClobClient, SignatureTypeV2 } from "@polymarket/clob-client-v2";
 import { BuilderConfig } from "@polymarket/builder-signing-sdk";
 import { RelayClient, RelayerTransactionState } from "@polymarket/builder-relayer-client";
 import { deriveSafe } from "@polymarket/builder-relayer-client/dist/builder/derive";
 import { getContractConfig } from "@polymarket/builder-relayer-client/dist/config";
+import { encodeFunctionData, erc20Abi } from "viem";
 import { useWallet } from "./WalletContext";
 import {
   CLOB_API_URL,
@@ -13,10 +14,20 @@ import {
   POLYGON_CHAIN_ID,
   RELAYER_URL,
   REMOTE_SIGNING_URL,
+  USDC_E_ADDRESS,
   isBuilderCodeValid,
 } from "@/lib/polymarket/constants";
-import { buildApprovalTxs, checkAllApprovals } from "@/lib/polymarket/approvals";
 import {
+  batchDeadline,
+  buildV2ApprovalCalls,
+  buildWrapCalls,
+  checkV2Approvals,
+  erc20Balance,
+  isDeployed,
+  polygonChain,
+} from "@/lib/polymarket/v2";
+import {
+  SESSION_VERSION,
   clearSession,
   loadSession,
   saveSession,
@@ -26,19 +37,18 @@ import {
 } from "@/lib/polymarket/session";
 
 /**
- * One-time (per user) setup required to trade on Polymarket through Patoli:
- *   1. derive the user's Safe address from their embedded-wallet EOA
- *   2. deploy the Safe gaslessly through Polymarket's relayer (builder-sponsored)
- *   3. derive/create the user's CLOB API credentials (signature, no server)
- *   4. set token approvals in one batched, gasless Safe transaction
- * After that an authenticated ClobClient (V2 orders) with our builder code is
- * available to place orders.
+ * One-time (per user) setup to trade on Polymarket through Patoli, V2 style:
+ *   1. derive the user's deposit wallet from their embedded-wallet EOA
+ *   2. deploy it gaslessly through Polymarket's relayer (our builder key signs)
+ *   3. derive/create the user's CLOB API credentials (EOA signature, no server)
+ *   4. set the six V2 approvals in one gasless WALLET batch
+ * Afterwards a ClobClient (V2 orders, signature type 3, deposit wallet as
+ * maker, our builder code embedded) places orders.
  *
  * Two different "builder" mechanisms, easy to confuse:
- *  - Relayer (Safe deploy / approvals / redeem) authenticates OUR builder API
- *    key via HMAC headers signed server-side at /api/polymarket/sign.
- *  - Order attribution is the 32-byte builder CODE embedded in each signed
- *    order (clob-client-v2 `builderConfig.builderCode`). No HMAC involved.
+ *  - Relayer calls authenticate OUR builder API key via HMAC headers signed
+ *    server-side at /api/polymarket/sign.
+ *  - Order attribution is the 32-byte builder CODE inside each signed order.
  */
 
 interface TradingContextType {
@@ -46,10 +56,16 @@ interface TradingContextType {
   step: SessionStep;
   error: Error | null;
   isReady: boolean;
-  safeAddress: `0x${string}` | undefined;
+  /** Deposit wallet = where the user's money lives and the maker of orders */
+  walletAddress: `0x${string}` | undefined;
+  legacySafeAddress: `0x${string}` | undefined;
   clobClient: ClobClient | null;
   relayClient: RelayClient | null;
   setupTrading: () => Promise<void>;
+  /** Wrap USDC.e sitting in the deposit wallet into pUSD (gasless). */
+  wrapUsdc: (amount: bigint) => Promise<void>;
+  /** Move USDC.e parked in the v1 Safe into the deposit wallet (gasless). */
+  migrateFromSafe: (amount: bigint) => Promise<void>;
   resetTrading: () => void;
 }
 
@@ -75,25 +91,14 @@ function friendlyError(e: unknown): Error {
 }
 
 export function TradingProvider({ children }: { children: ReactNode }) {
-  const { eoaAddress, ethersSigner, publicClient } = useWallet();
-  // `override` holds a session written during this page life (setup/reset);
-  // otherwise we read the persisted one. No effects needed.
+  const { eoaAddress, ethersSigner } = useWallet();
   const [override, setOverride] = useState<{ eoa: string; session: TradingSession | null } | null>(null);
   const [step, setStep] = useState<SessionStep>("idle");
   const [error, setError] = useState<Error | null>(null);
+  const [derivedWallet, setDerivedWallet] = useState<{ eoa: string; address: `0x${string}` } | null>(null);
 
   const stored = useMemo(() => (eoaAddress ? loadSession(eoaAddress) : null), [eoaAddress]);
   const session = eoaAddress && override?.eoa === eoaAddress ? override.session : stored;
-
-  const safeAddress = useMemo(() => {
-    if (!eoaAddress) return undefined;
-    try {
-      const cfg = getContractConfig(POLYGON_CHAIN_ID);
-      return deriveSafe(eoaAddress, cfg.SafeContracts.SafeFactory) as `0x${string}`;
-    } catch {
-      return undefined;
-    }
-  }, [eoaAddress]);
 
   // Pure constructor: safe to derive. The relayer client bundles its own copy of
   // builder-signing-sdk; runtime shape is identical, only private types differ.
@@ -104,30 +109,55 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       POLYGON_CHAIN_ID,
       ethersSigner,
       builderConfig() as unknown as ConstructorParameters<typeof RelayClient>[3],
+      undefined,
+      { chain: polygonChain },
     );
   }, [ethersSigner]);
+
+  // Deposit wallet address: async (asks the factory which proxy flavour it mints)
+  useEffect(() => {
+    if (!relayClient || !eoaAddress) return;
+    let cancelled = false;
+    relayClient
+      .deriveDepositWalletAddress()
+      .then((addr) => {
+        if (!cancelled) setDerivedWallet({ eoa: eoaAddress, address: addr as `0x${string}` });
+      })
+      .catch((e) => console.warn("[patoli] deposit wallet derivation failed", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [relayClient, eoaAddress]);
+
+  const walletAddress: `0x${string}` | undefined =
+    (session?.walletAddress as `0x${string}` | undefined) ||
+    (derivedWallet && derivedWallet.eoa === eoaAddress ? derivedWallet.address : undefined);
+
+  const legacySafeAddress = useMemo<`0x${string}` | undefined>(() => {
+    if (session?.legacySafeAddress) return session.legacySafeAddress as `0x${string}`;
+    if (!eoaAddress) return undefined;
+    try {
+      const cfg = getContractConfig(POLYGON_CHAIN_ID);
+      return deriveSafe(eoaAddress, cfg.SafeContracts.SafeFactory) as `0x${string}`;
+    } catch {
+      return undefined;
+    }
+  }, [eoaAddress, session?.legacySafeAddress]);
 
   const storedCreds = session?.apiCredentials;
 
   const setupTrading = useCallback(async () => {
-    if (!eoaAddress || !ethersSigner || !safeAddress || !publicClient || !relayClient) {
-      throw new Error("Primero inicia sesión");
-    }
+    if (!eoaAddress || !ethersSigner || !relayClient) throw new Error("Primero inicia sesión");
     setError(null);
     setStep("checking");
     try {
-      // 1–2. Safe
-      let deployed = false;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        deployed = await (relayClient as any).getDeployed(safeAddress);
-      } catch {
-        const code = await publicClient.getCode({ address: safeAddress });
-        deployed = !!code && code !== "0x";
-      }
-      if (!deployed) {
+      // 1. Deposit wallet address
+      const wallet = (await relayClient.deriveDepositWalletAddress()) as `0x${string}`;
+
+      // 2. Deploy if needed (relayer, builder-sponsored)
+      if (!(await isDeployed(wallet))) {
         setStep("deploying");
-        const resp = await relayClient.deploy();
+        const resp = await relayClient.deployDepositWallet();
         const result = await relayClient.pollUntilState(
           resp.transactionID,
           [RelayerTransactionState.STATE_MINED, RelayerTransactionState.STATE_CONFIRMED, RelayerTransactionState.STATE_FAILED],
@@ -143,23 +173,25 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       let creds: ApiCreds | undefined = storedCreds;
       if (!creds?.key || !creds?.secret || !creds?.passphrase) {
         setStep("credentials");
-        const temp = new ClobClient({ host: CLOB_API_URL, chain: Chain.POLYGON, signer: ethersSigner });
+        const temp = new ClobClient({ host: CLOB_API_URL, chain: ClobChain.POLYGON, signer: ethersSigner });
         creds = await temp.createOrDeriveApiKey();
       }
 
-      // 4. Approvals
+      // 4. Approvals (one signed WALLET batch, gasless)
       setStep("approvals");
-      let approved = await checkAllApprovals(safeAddress);
+      let approved = await checkV2Approvals(wallet);
       if (!approved) {
-        const resp = await relayClient.execute(buildApprovalTxs(), "Patoli: permisos de trading");
+        const resp = await relayClient.executeDepositWalletBatch(buildV2ApprovalCalls(), wallet, batchDeadline());
         await resp.wait();
         approved = true;
       }
 
       const next: TradingSession = {
+        version: SESSION_VERSION,
         eoaAddress,
-        safeAddress,
-        isSafeDeployed: true,
+        walletAddress: wallet,
+        legacySafeAddress,
+        isDeployed: true,
         hasApprovals: approved,
         apiCredentials: creds,
         updatedAt: Date.now(),
@@ -173,7 +205,38 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       setStep("idle");
       throw err;
     }
-  }, [eoaAddress, ethersSigner, safeAddress, publicClient, relayClient, storedCreds]);
+  }, [eoaAddress, ethersSigner, relayClient, storedCreds, legacySafeAddress]);
+
+  const wrapUsdc = useCallback(
+    async (amount: bigint) => {
+      if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
+      const resp = await relayClient.executeDepositWalletBatch(buildWrapCalls(walletAddress, amount), walletAddress, batchDeadline());
+      await resp.wait();
+    },
+    [relayClient, walletAddress],
+  );
+
+  const migrateFromSafe = useCallback(
+    async (amount: bigint) => {
+      if (!relayClient || !walletAddress || !legacySafeAddress) throw new Error("Nada que mover");
+      const bal = await erc20Balance(USDC_E_ADDRESS, legacySafeAddress);
+      const amt = amount > bal ? bal : amount;
+      if (amt <= 0n) return;
+      // Safe transaction (v1 relayer path still works for existing Safes)
+      const resp = await relayClient.execute(
+        [
+          {
+            to: USDC_E_ADDRESS,
+            data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [walletAddress, amt] }),
+            value: "0",
+          },
+        ],
+        "Patoli: mover USDC.e a la bóveda nueva",
+      );
+      await resp.wait();
+    },
+    [relayClient, walletAddress, legacySafeAddress],
+  );
 
   const resetTrading = useCallback(() => {
     if (eoaAddress) {
@@ -184,26 +247,40 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, [eoaAddress]);
 
-  const isReady = !!(session?.isSafeDeployed && session?.hasApprovals && storedCreds);
+  const fundingWallet = session?.walletAddress;
+  const isReady = !!(session?.version === SESSION_VERSION && session.isDeployed && session.hasApprovals && storedCreds && fundingWallet);
 
   const clobClient = useMemo(() => {
-    if (!isReady || !ethersSigner || !safeAddress || !storedCreds) return null;
+    if (!isReady || !ethersSigner || !fundingWallet || !storedCreds) return null;
     return new ClobClient({
       host: CLOB_API_URL,
-      chain: Chain.POLYGON,
+      chain: ClobChain.POLYGON,
       signer: ethersSigner,
       creds: storedCreds,
-      // EOA (embedded wallet) signs; the Safe holds the funds and is the maker.
-      signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
-      funderAddress: safeAddress,
+      // Deposit wallet: the wallet is the maker, the EOA signs (EIP-1271 flow)
+      signatureType: SignatureTypeV2.POLY_1271,
+      funderAddress: fundingWallet,
       builderConfig: isBuilderCodeValid(PATOLI_BUILDER_CODE) ? { builderCode: PATOLI_BUILDER_CODE } : undefined,
       useServerTime: true,
     });
-  }, [isReady, ethersSigner, safeAddress, storedCreds]);
+  }, [isReady, ethersSigner, fundingWallet, storedCreds]);
 
   const value = useMemo<TradingContextType>(
-    () => ({ session, step, error, isReady, safeAddress, clobClient, relayClient, setupTrading, resetTrading }),
-    [session, step, error, isReady, safeAddress, clobClient, relayClient, setupTrading, resetTrading],
+    () => ({
+      session,
+      step,
+      error,
+      isReady,
+      walletAddress,
+      legacySafeAddress,
+      clobClient,
+      relayClient,
+      setupTrading,
+      wrapUsdc,
+      migrateFromSafe,
+      resetTrading,
+    }),
+    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, migrateFromSafe, resetTrading],
   );
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>;

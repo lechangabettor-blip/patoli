@@ -65,7 +65,7 @@ export function usePlaceBet() {
           return { ok: false, reason: describeRejection(res) };
         }
         qc.invalidateQueries({ queryKey: ["positions"] });
-        qc.invalidateQueries({ queryKey: ["usdc"] });
+        qc.invalidateQueries({ queryKey: ["balances"] });
         return { ok: true, orderId: res.orderID, txHashes: res.transactionsHashes ?? [] };
       } catch (e) {
         console.error("[patoli] order threw", e);

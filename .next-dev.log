@@ -6,389 +6,180 @@
 - Local:         http://localhost:3000
 - Network:       http://0.0.0.0:3000
 - Environments: .env.local
-✓ Ready in 283ms
-✓ Running next.config.ts took 25ms
+✓ Ready in 261ms
+✓ Running next.config.ts took 21ms
 - Cache Components enabled
 - Partial Prefetching enabled
 
- GET /entrar 200 in 421ms (next.js: 46ms, application-code: 375ms)
- GET /perfil 200 in 455ms (next.js: 13ms, application-code: 442ms)
- POST /api/prices 200 in 743ms (next.js: 97ms, application-code: 645ms)
- GET /entrar 200 in 68ms (next.js: 0.8ms, application-code: 67ms)
- GET /deportes?liga=nfl 200 in 105ms (next.js: 8ms, application-code: 97ms)
- GET /api/games?league=nfl 200 in 110ms (next.js: 24ms, application-code: 86ms)
- POST /api/prices 200 in 184ms (next.js: 1.7ms, application-code: 182ms)
- GET /entrar 200 in 28ms (next.js: 0.9ms, application-code: 27ms)
- GET /perfil 200 in 17ms (next.js: 1.3ms, application-code: 16ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 362ms (next.js: 22ms, application-code: 340ms)
- POST /api/polymarket/sign 503 in 31ms (next.js: 23ms, application-code: 8ms)
-[browser] error calling remote signer AxiosError: Request failed with status code 503
-    at async TradingProvider.useCallback[setupTrading] (src/providers/TradingProvider.tsx:106:22)
-  104 |       if (!deployed) {
-  105 |         setStep("deploying");
-> 106 |         const resp = await relayClient.deploy();
-      |                      ^
-  107 |         const result = await relayClient.pollUntilState(
-  108 |           resp.transactionID,
-  109 |           [RelayerTransactionState.STATE_MINED, RelayerTransactionState.STATE_CONFIRMED, RelayerTransactionState.STATE_FAILED], (src/providers/TradingProvider.tsx:106:22)
-[browser] request error {
-  data: { error: [32m'invalid authorization'[39m },
-  error: [32m'request error'[39m,
-  status: [33m401[39m,
-  statusText: [32m''[39m
-} 
-    at async TradingProvider.useCallback[setupTrading] (src/providers/TradingProvider.tsx:106:22)
-  104 |       if (!deployed) {
-  105 |         setStep("deploying");
-> 106 |         const resp = await relayClient.deploy();
-      |                      ^
-  107 |         const result = await relayClient.pollUntilState(
-  108 |           resp.transactionID,
-  109 |           [RelayerTransactionState.STATE_MINED, RelayerTransactionState.STATE_CONFIRMED, RelayerTransactionState.STATE_FAILED], (src/providers/TradingProvider.tsx:106:22)
- POST /api/polymarket/sign 503 in 4ms (next.js: 0.9ms, application-code: 3ms)
-[browser] error calling remote signer AxiosError: Request failed with status code 503
-    at async TradingProvider.useCallback[setupTrading] (src/providers/TradingProvider.tsx:106:22)
-  104 |       if (!deployed) {
-  105 |         setStep("deploying");
-> 106 |         const resp = await relayClient.deploy();
-      |                      ^
-  107 |         const result = await relayClient.pollUntilState(
-  108 |           resp.transactionID,
-  109 |           [RelayerTransactionState.STATE_MINED, RelayerTransactionState.STATE_CONFIRMED, RelayerTransactionState.STATE_FAILED], (src/providers/TradingProvider.tsx:106:22)
-[browser] request error {
-  data: { error: [32m'invalid authorization'[39m },
-  error: [32m'request error'[39m,
-  status: [33m401[39m,
-  statusText: [32m''[39m
-} 
-    at async TradingProvider.useCallback[setupTrading] (src/providers/TradingProvider.tsx:106:22)
-  104 |       if (!deployed) {
-  105 |         setStep("deploying");
-> 106 |         const resp = await relayClient.deploy();
-      |                      ^
-  107 |         const result = await relayClient.pollUntilState(
-  108 |           resp.transactionID,
-  109 |           [RelayerTransactionState.STATE_MINED, RelayerTransactionState.STATE_CONFIRMED, RelayerTransactionState.STATE_FAILED], (src/providers/TradingProvider.tsx:106:22)
- GET / 200 in 46ms (next.js: 5ms, application-code: 41ms)
-⚠ Blocked cross-origin request to Next.js dev resource /_next/hmr from "192.168.1.74".
-Cross-origin access to Next.js dev resources is blocked by default for safety.
-
-To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
-
-// next.config.js
-module.exports = {
-  allowedDevOrigins: ['192.168.1.74'],
-}
-
-Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
- GET /entrar 200 in 24ms (next.js: 0.8ms, application-code: 23ms)
-✓ Compiled in 40ms
- GET /api/games?league=nfl 200 in 70ms (next.js: 0.7ms, application-code: 70ms)
- POST /api/prices 200 in 210ms (next.js: 0.8ms, application-code: 209ms)
-✓ Compiled in 78ms
- POST /api/prices 200 in 219ms (next.js: 0.8ms, application-code: 218ms)
- GET /entrar 200 in 28ms (next.js: 1.2ms, application-code: 27ms)
- GET /api/polymarket/sign 200 in 4ms (next.js: 1.1ms, application-code: 3ms)
-  Reload env: .env.local
- GET /deportes?liga=nfl 200 in 53ms (next.js: 21ms, application-code: 32ms)
- GET /api/polymarket/sign 200 in 27ms (next.js: 16ms, application-code: 11ms)
- GET / 200 in 267ms (next.js: 3ms, application-code: 265ms)
- GET /entrar 200 in 43ms (next.js: 4ms, application-code: 39ms)
- POST /api/prices 200 in 244ms (next.js: 14ms, application-code: 230ms)
- GET /entrar 200 in 16ms (next.js: 0.9ms, application-code: 15ms)
- GET /api/games?league=nfl 200 in 849ms (next.js: 14ms, application-code: 835ms)
- GET /entrar 200 in 24ms (next.js: 1.0ms, application-code: 23ms)
- GET /entrar 200 in 26ms (next.js: 1.2ms, application-code: 25ms)
- GET /perfil 200 in 20ms (next.js: 5ms, application-code: 14ms)
- GET /api/polymarket/sign 200 in 3ms (next.js: 0.5ms, application-code: 3ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 323ms (next.js: 19ms, application-code: 304ms)
- POST /api/polymarket/sign 200 in 4ms (next.js: 0.7ms, application-code: 3ms)
- POST /api/polymarket/sign 200 in 3ms (next.js: 0.7ms, application-code: 3ms)
- GET /perfil 200 in 14ms (next.js: 0.9ms, application-code: 14ms)
- GET / 200 in 15ms (next.js: 0.9ms, application-code: 14ms)
- GET /perfil 200 in 17ms (next.js: 0.8ms, application-code: 17ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 381ms (next.js: 0.8ms, application-code: 380ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 280ms (next.js: 0.6ms, application-code: 280ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 343ms (next.js: 0.5ms, application-code: 342ms)
- GET /batalla 200 in 27ms (next.js: 7ms, application-code: 20ms)
- GET /perfil 200 in 18ms (next.js: 1.2ms, application-code: 17ms)
- GET /api/polymarket/sign 200 in 5ms (next.js: 1.0ms, application-code: 4ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 262ms (next.js: 0.9ms, application-code: 261ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 304ms (next.js: 0.7ms, application-code: 303ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 457ms (next.js: 0.6ms, application-code: 456ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 313ms (next.js: 0.6ms, application-code: 313ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 329ms (next.js: 0.6ms, application-code: 328ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 307ms (next.js: 0.5ms, application-code: 307ms)
- GET /api/polymarket/sign 200 in 5ms (next.js: 0.8ms, application-code: 4ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 321ms (next.js: 0.8ms, application-code: 320ms)
- GET /deportes 200 in 20ms (next.js: 1.9ms, application-code: 18ms)
- GET /api/games?league=ligamx 200 in 413ms (next.js: 0.9ms, application-code: 412ms)
- POST /api/prices 200 in 203ms (next.js: 0.6ms, application-code: 203ms)
- GET /deportes?liga=nfl 200 in 29ms (next.js: 1.0ms, application-code: 28ms)
- GET /api/games?league=nfl 200 in 1043ms (next.js: 0.8ms, application-code: 1042ms)
- POST /api/prices 200 in 208ms (next.js: 0.9ms, application-code: 208ms)
- POST /api/prices 200 in 230ms (next.js: 0.6ms, application-code: 229ms)
- POST /api/polymarket/sign 200 in 3ms (next.js: 0.6ms, application-code: 3ms)
+ GET /deportes 200 in 436ms (next.js: 99ms, application-code: 337ms)
+ GET /deportes?liga=nfl 200 in 46ms (next.js: 0.9ms, application-code: 46ms)
+ GET /entrar 200 in 64ms (next.js: 5ms, application-code: 59ms)
+ GET /api/games?league=nfl 200 in 174ms (next.js: 43ms, application-code: 131ms)
+ POST /api/prices 200 in 241ms (next.js: 22ms, application-code: 219ms)
+ GET /api/games?league=nfl 200 in 90ms (next.js: 0.9ms, application-code: 89ms)
+ POST /api/prices 200 in 232ms (next.js: 1.7ms, application-code: 230ms)
+ POST /api/prices 200 in 220ms (next.js: 0.8ms, application-code: 219ms)
+Route /deportes is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+ GET /deportes?liga=nfl 200 in 42ms (next.js: 1.1ms, application-code: 41ms)
+ GET /api/games?league=nfl 200 in 4ms (next.js: 0.8ms, application-code: 3ms)
  POST /api/prices 200 in 201ms (next.js: 0.6ms, application-code: 200ms)
- POST /api/prices 200 in 208ms (next.js: 0.6ms, application-code: 207ms)
- POST /api/polymarket/sign 200 in 3ms (next.js: 0.6ms, application-code: 3ms)
- POST /api/prices 200 in 230ms (next.js: 0.6ms, application-code: 230ms)
- POST /api/prices 200 in 222ms (next.js: 0.5ms, application-code: 221ms)
- POST /api/prices 200 in 221ms (next.js: 0.5ms, application-code: 221ms)
- POST /api/prices 200 in 205ms (next.js: 0.6ms, application-code: 204ms)
- POST /api/prices 200 in 275ms (next.js: 0.5ms, application-code: 274ms)
- POST /api/prices 200 in 194ms (next.js: 0.6ms, application-code: 193ms)
- POST /api/prices 200 in 208ms (next.js: 0.6ms, application-code: 207ms)
- POST /api/prices 200 in 305ms (next.js: 0.7ms, application-code: 304ms)
- POST /api/polymarket/sign 200 in 3ms (next.js: 0.6ms, application-code: 2ms)
- GET /api/games?league=nfl 200 in 65ms (next.js: 0.6ms, application-code: 64ms)
- POST /api/prices 200 in 214ms (next.js: 0.5ms, application-code: 213ms)
- POST /api/prices 200 in 217ms (next.js: 0.5ms, application-code: 216ms)
- POST /api/prices 200 in 195ms (next.js: 0.7ms, application-code: 194ms)
- POST /api/prices 200 in 209ms (next.js: 0.5ms, application-code: 208ms)
- POST /api/prices 200 in 198ms (next.js: 0.6ms, application-code: 197ms)
- POST /api/prices 200 in 201ms (next.js: 0.5ms, application-code: 201ms)
- POST /api/prices 200 in 204ms (next.js: 0.5ms, application-code: 203ms)
- POST /api/prices 200 in 214ms (next.js: 0.5ms, application-code: 214ms)
-✓ Compiled in 26ms
- POST /api/prices 200 in 204ms (next.js: 0.5ms, application-code: 203ms)
-✓ Compiled in 23ms
- POST /api/prices 200 in 204ms (next.js: 0.5ms, application-code: 204ms)
- POST /api/prices 200 in 211ms (next.js: 0.5ms, application-code: 211ms)
- GET /api/games?league=nfl 200 in 68ms (next.js: 0.7ms, application-code: 68ms)
- POST /api/prices 200 in 199ms (next.js: 0.7ms, application-code: 198ms)
- GET /api/games?league=nfl 200 in 4ms (next.js: 0.7ms, application-code: 3ms)
- POST /api/prices 200 in 214ms (next.js: 1.0ms, application-code: 213ms)
- POST /api/prices 200 in 203ms (next.js: 0.5ms, application-code: 202ms)
- POST /api/polymarket/sign 200 in 4ms (next.js: 0.9ms, application-code: 3ms)
- POST /api/prices 200 in 236ms (next.js: 0.7ms, application-code: 235ms)
- POST /api/prices 200 in 228ms (next.js: 0.5ms, application-code: 228ms)
- POST /api/prices 200 in 237ms (next.js: 0.6ms, application-code: 236ms)
- POST /api/prices 200 in 212ms (next.js: 0.5ms, application-code: 211ms)
  POST /api/prices 200 in 209ms (next.js: 0.7ms, application-code: 209ms)
- POST /api/prices 200 in 218ms (next.js: 0.8ms, application-code: 217ms)
- GET /deportes?liga=nfl 200 in 59ms (next.js: 1.1ms, application-code: 58ms)
- GET /api/games?league=nfl 200 in 63ms (next.js: 0.7ms, application-code: 63ms)
- POST /api/prices 200 in 184ms (next.js: 0.5ms, application-code: 184ms)
- GET /perfil 200 in 17ms (next.js: 1.0ms, application-code: 16ms)
- GET /api/polymarket/sign 200 in 3ms (next.js: 0.8ms, application-code: 3ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 381ms (next.js: 0.7ms, application-code: 380ms)
- GET /perfil 200 in 32ms (next.js: 0.8ms, application-code: 31ms)
- GET /api/games?league=nfl 200 in 3ms (next.js: 0.6ms, application-code: 2ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 319ms (next.js: 0.7ms, application-code: 319ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 284ms (next.js: 0.6ms, application-code: 284ms)
-✓ Compiled in 49ms
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 287ms (next.js: 0.8ms, application-code: 286ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 270ms (next.js: 0.6ms, application-code: 269ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 335ms (next.js: 0.6ms, application-code: 335ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 302ms (next.js: 0.5ms, application-code: 302ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 286ms (next.js: 0.7ms, application-code: 286ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 400ms (next.js: 0.6ms, application-code: 400ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 275ms (next.js: 0.5ms, application-code: 274ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 292ms (next.js: 0.8ms, application-code: 292ms)
-Route /perfil is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
- GET /perfil 200 in 42ms (next.js: 0.9ms, application-code: 41ms)
- GET /api/polymarket/sign 200 in 3ms (next.js: 0.7ms, application-code: 3ms)
- GET /api/positions?user=0xe7cBF124c40ddEB82e3619d4668ebFaE11c03084 200 in 298ms (next.js: 0.6ms, application-code: 297ms)
- GET /deportes 200 in 15ms (next.js: 1.9ms, application-code: 14ms)
- GET /api/games?league=ligamx 200 in 394ms (next.js: 0.6ms, application-code: 393ms)
- POST /api/prices 200 in 232ms (next.js: 0.6ms, application-code: 231ms)
- GET /deportes?liga=nfl 200 in 16ms (next.js: 0.9ms, application-code: 15ms)
- GET /api/games?league=nfl 200 in 795ms (next.js: 0.6ms, application-code: 795ms)
- POST /api/prices 200 in 267ms (next.js: 0.7ms, application-code: 266ms)
- POST /api/prices 200 in 218ms (next.js: 0.5ms, application-code: 217ms)
- POST /api/prices 200 in 293ms (next.js: 0.5ms, application-code: 293ms)
- POST /api/prices 200 in 288ms (next.js: 0.5ms, application-code: 287ms)
- POST /api/prices 200 in 255ms (next.js: 0.6ms, application-code: 255ms)
- POST /api/prices 200 in 227ms (next.js: 0.6ms, application-code: 226ms)
- POST /api/prices 200 in 216ms (next.js: 0.6ms, application-code: 215ms)
- POST /api/prices 200 in 250ms (next.js: 0.6ms, application-code: 250ms)
- POST /api/prices 200 in 220ms (next.js: 0.6ms, application-code: 219ms)
- POST /api/prices 200 in 198ms (next.js: 0.5ms, application-code: 198ms)
-✓ Compiled in 27ms
- POST /api/prices 200 in 231ms (next.js: 0.7ms, application-code: 231ms)
- POST /api/prices 200 in 212ms (next.js: 0.5ms, application-code: 212ms)
- GET /api/games?league=nfl 200 in 59ms (next.js: 0.6ms, application-code: 58ms)
- POST /api/prices 200 in 197ms (next.js: 0.5ms, application-code: 196ms)
- POST /api/prices 200 in 479ms (next.js: 0.5ms, application-code: 479ms)
- POST /api/prices 200 in 213ms (next.js: 0.5ms, application-code: 213ms)
- POST /api/prices 200 in 257ms (next.js: 0.7ms, application-code: 256ms)
- POST /api/prices 200 in 220ms (next.js: 0.5ms, application-code: 220ms)
- POST /api/prices 200 in 245ms (next.js: 0.5ms, application-code: 244ms)
- POST /api/prices 200 in 218ms (next.js: 0.5ms, application-code: 218ms)
- POST /api/prices 200 in 273ms (next.js: 0.6ms, application-code: 273ms)
- POST /api/prices 200 in 195ms (next.js: 0.5ms, application-code: 194ms)
- POST /api/prices 200 in 221ms (next.js: 0.5ms, application-code: 220ms)
- POST /api/prices 200 in 203ms (next.js: 0.5ms, application-code: 203ms)
- GET /api/games?league=nfl 200 in 76ms (next.js: 0.6ms, application-code: 75ms)
- POST /api/prices 200 in 204ms (next.js: 0.7ms, application-code: 203ms)
- POST /api/prices 200 in 260ms (next.js: 0.5ms, application-code: 259ms)
- POST /api/prices 200 in 245ms (next.js: 0.5ms, application-code: 245ms)
+ POST /api/prices 200 in 338ms (next.js: 0.5ms, application-code: 337ms)
  POST /api/prices 200 in 203ms (next.js: 0.6ms, application-code: 203ms)
- POST /api/prices 200 in 227ms (next.js: 0.5ms, application-code: 227ms)
- POST /api/prices 200 in 207ms (next.js: 0.5ms, application-code: 206ms)
- POST /api/prices 200 in 218ms (next.js: 0.5ms, application-code: 218ms)
- POST /api/prices 200 in 294ms (next.js: 0.6ms, application-code: 293ms)
- POST /api/prices 200 in 222ms (next.js: 0.5ms, application-code: 221ms)
- POST /api/prices 200 in 257ms (next.js: 0.6ms, application-code: 257ms)
- POST /api/prices 200 in 202ms (next.js: 0.5ms, application-code: 201ms)
- POST /api/prices 200 in 198ms (next.js: 0.5ms, application-code: 198ms)
- GET /api/games?league=nfl 200 in 62ms (next.js: 0.5ms, application-code: 61ms)
- POST /api/prices 200 in 220ms (next.js: 0.5ms, application-code: 220ms)
- POST /api/prices 200 in 204ms (next.js: 0.7ms, application-code: 203ms)
- POST /api/prices 200 in 206ms (next.js: 0.7ms, application-code: 205ms)
- POST /api/prices 200 in 195ms (next.js: 0.5ms, application-code: 195ms)
- POST /api/prices 200 in 258ms (next.js: 0.5ms, application-code: 257ms)
- POST /api/prices 200 in 249ms (next.js: 0.7ms, application-code: 248ms)
- POST /api/prices 200 in 194ms (next.js: 0.5ms, application-code: 194ms)
- POST /api/prices 200 in 231ms (next.js: 0.5ms, application-code: 230ms)
- POST /api/prices 200 in 219ms (next.js: 0.5ms, application-code: 219ms)
- POST /api/prices 200 in 202ms (next.js: 0.5ms, application-code: 201ms)
- POST /api/prices 200 in 212ms (next.js: 0.7ms, application-code: 211ms)
- GET /api/games?league=nfl 200 in 107ms (next.js: 0.7ms, application-code: 107ms)
- POST /api/prices 200 in 228ms (next.js: 0.6ms, application-code: 228ms)
- POST /api/prices 200 in 204ms (next.js: 0.5ms, application-code: 203ms)
- POST /api/prices 200 in 251ms (next.js: 0.6ms, application-code: 250ms)
- POST /api/prices 200 in 211ms (next.js: 0.5ms, application-code: 210ms)
- POST /api/prices 200 in 212ms (next.js: 0.5ms, application-code: 212ms)
- POST /api/prices 200 in 197ms (next.js: 0.5ms, application-code: 197ms)
- POST /api/prices 200 in 251ms (next.js: 0.5ms, application-code: 251ms)
- POST /api/prices 200 in 259ms (next.js: 0.5ms, application-code: 259ms)
- POST /api/prices 200 in 262ms (next.js: 0.5ms, application-code: 261ms)
- POST /api/prices 200 in 204ms (next.js: 0.5ms, application-code: 203ms)
- POST /api/prices 200 in 220ms (next.js: 0.5ms, application-code: 219ms)
- GET /deportes?liga=nfl 200 in 48ms (next.js: 1.1ms, application-code: 47ms)
- GET /api/games?league=nfl 200 in 70ms (next.js: 0.8ms, application-code: 69ms)
- POST /api/prices 200 in 190ms (next.js: 0.7ms, application-code: 189ms)
- POST /api/prices 200 in 211ms (next.js: 0.5ms, application-code: 211ms)
- POST /api/polymarket/sign 200 in 3ms (next.js: 0.6ms, application-code: 3ms)
 [browser] [patoli] order rejected {
-  error: [32m'invalid order version, please use the latest clob-client'[39m,
+  error: [32m'maker address not allowed, please use the deposit wallet flow'[39m,
   status: [33m400[39m
 } 
-    at usePlaceBet.useCallback[placeBet] (src/hooks/usePlaceBet.ts:80:19)
-    at async submit (src/components/BetSheet.tsx:55:17)
-  78 |         const orderId = (res as { orderID?: string })?.orderID;
-  79 |         if (!orderId) {
-> 80 |           console.error("[patoli] order rejected", res);
+    at usePlaceBet.useCallback[placeBet] (src/hooks/usePlaceBet.ts:64:19)
+    at async submit (src/components/BetSheet.tsx:58:17)
+  62 |
+  63 |         if (!res?.success || !res.orderID) {
+> 64 |           console.error("[patoli] order rejected", res);
      |                   ^
-  81 |           return { ok: false, reason: describeRejection(res) };
-  82 |         }
-  83 |         qc.invalidateQueries({ queryKey: ["positions"] }); (src/hooks/usePlaceBet.ts:80:19)
- POST /api/prices 200 in 238ms (next.js: 0.6ms, application-code: 237ms)
- POST /api/prices 200 in 215ms (next.js: 0.5ms, application-code: 214ms)
- POST /api/prices 200 in 200ms (next.js: 0.5ms, application-code: 199ms)
- POST /api/prices 200 in 214ms (next.js: 0.5ms, application-code: 214ms)
- POST /api/prices 200 in 245ms (next.js: 0.8ms, application-code: 244ms)
- POST /api/prices 200 in 220ms (next.js: 0.5ms, application-code: 219ms)
- POST /api/prices 200 in 198ms (next.js: 0.5ms, application-code: 197ms)
- POST /api/prices 200 in 194ms (next.js: 0.5ms, application-code: 194ms)
-  Turbopack has seen frequent file updates and is waiting for the filesystem to settle (0.5s elapsed so far; last modified: "\\\\?\\C:\\Users\\USER\\Desktop\\patoli\\node_modules\\@polymarket\\clob-client-v2\\dist\\types\\clob.d.ts").
- POST /api/prices 200 in 195ms (next.js: 0.5ms, application-code: 194ms)
- POST /api/prices 200 in 213ms (next.js: 0.5ms, application-code: 212ms)
- GET /api/games?league=nfl 200 in 879ms (next.js: 0.8ms, application-code: 878ms)
- POST /api/prices 200 in 203ms (next.js: 0.6ms, application-code: 202ms)
- POST /api/prices 200 in 206ms (next.js: 0.5ms, application-code: 205ms)
- POST /api/prices 200 in 313ms (next.js: 0.6ms, application-code: 312ms)
- POST /api/prices 200 in 218ms (next.js: 0.5ms, application-code: 217ms)
- POST /api/prices 200 in 236ms (next.js: 0.5ms, application-code: 235ms)
- POST /api/prices 200 in 297ms (next.js: 0.5ms, application-code: 296ms)
- POST /api/prices 200 in 202ms (next.js: 0.7ms, application-code: 201ms)
- POST /api/prices 200 in 194ms (next.js: 0.6ms, application-code: 193ms)
- POST /api/prices 200 in 199ms (next.js: 0.7ms, application-code: 198ms)
- POST /api/prices 200 in 227ms (next.js: 0.6ms, application-code: 226ms)
- POST /api/prices 200 in 195ms (next.js: 0.5ms, application-code: 195ms)
- POST /api/prices 200 in 217ms (next.js: 0.5ms, application-code: 217ms)
- GET /api/games?league=nfl 200 in 84ms (next.js: 0.5ms, application-code: 83ms)
- POST /api/prices 200 in 205ms (next.js: 0.6ms, application-code: 204ms)
- POST /api/prices 200 in 201ms (next.js: 0.5ms, application-code: 201ms)
- POST /api/prices 200 in 233ms (next.js: 0.5ms, application-code: 233ms)
-✓ Compiled in 114ms
-  Reload env: .env.local
-✓ Compiled in 14ms
- GET /deportes?liga=nfl 200 in 116ms (next.js: 53ms, application-code: 64ms)
- GET /entrar 200 in 29ms (next.js: 5ms, application-code: 24ms)
- POST /api/prices 200 in 241ms (next.js: 25ms, application-code: 216ms)
- POST /api/prices 200 in 290ms (next.js: 0.5ms, application-code: 289ms)
- POST /api/prices 200 in 288ms (next.js: 1.0ms, application-code: 287ms)
- POST /api/prices 200 in 305ms (next.js: 0.8ms, application-code: 304ms)
- POST /api/prices 200 in 203ms (next.js: 0.6ms, application-code: 202ms)
-✓ Compiled in 418ms
-[browser] Uncaught TypeError: Cannot read properties of undefined (reading 'endsWith')
-    at TradingProvider.useMemo[clobClient] (src/providers/TradingProvider.tsx:187:12)
-    at TradingProvider (src/providers/TradingProvider.tsx:184:29)
-    at Set.forEach (<anonymous>)
-    at Providers (src/providers/Providers.tsx:14:9)
-    at RootLayout (src\app\layout.tsx:45:11)
-  185 |     if (!isReady || !ethersSigner || !safeAddress || !storedCreds) return null;
-  186 |     // signatureType 2 = EOA signing on behalf of a Safe proxy wallet
-> 187 |     return new ClobClient(CLOB_API_URL, POLYGON_CHAIN_ID, ethersSigner, storedCreds, 2, safeAddress, undefined, false, builderConfig());
-      |            ^
-  188 |   }, [isReady, ethersSigner, safeAddress, storedCreds]);
-  189 |
-  190 |   const value = useMemo<TradingContextType>(
-⚠ Fast Refresh had to perform a full reload due to a runtime error.
-✓ Compiled in 20ms
-[browser] Uncaught TypeError: Cannot read properties of undefined (reading 'endsWith')
-    at TradingProvider.useMemo[clobClient] (src/providers/TradingProvider.tsx:193:12)
-    at TradingProvider (src/providers/TradingProvider.tsx:190:29)
-    at Providers (src/providers/Providers.tsx:14:9)
-    at RootLayout (src\app\layout.tsx:45:11)
-  191 |     if (!isReady || !ethersSigner || !safeAddress || !storedCreds) return null;
-  192 |     // signatureType 2 = EOA signing on behalf of a Safe proxy wallet
-> 193 |     return new ClobClient(CLOB_API_URL, POLYGON_CHAIN_ID, ethersSigner, storedCreds, 2, safeAddress, undefined, false, builderConfig());
-      |            ^
-  194 |   }, [isReady, ethersSigner, safeAddress, storedCreds]);
-  195 |
-  196 |   const value = useMemo<TradingContextType>(
- POST /api/prices 200 in 8ms (next.js: 0.9ms, application-code: 7ms)
- GET /api/games?league=nfl 200 in 375ms (next.js: 21ms, application-code: 355ms)
- GET /deportes?liga=nfl 200 in 388ms (next.js: 1.1ms, application-code: 387ms)
- GET /api/games?league=nfl 200 in 4ms (next.js: 0.7ms, application-code: 3ms)
- POST /api/prices 200 in 206ms (next.js: 0.5ms, application-code: 206ms)
-[browser] Uncaught TypeError: Cannot read properties of undefined (reading 'endsWith')
-    at TradingProvider.useMemo[clobClient] (src/providers/TradingProvider.tsx:193:12)
-    at TradingProvider (src/providers/TradingProvider.tsx:190:29)
-    at Providers (src/providers/Providers.tsx:20:9)
-    at RootLayout (src\app\layout.tsx:45:11)
-  191 |     if (!isReady || !ethersSigner || !safeAddress || !storedCreds) return null;
-  192 |     // signatureType 2 = EOA signing on behalf of a Safe proxy wallet
-> 193 |     return new ClobClient(CLOB_API_URL, POLYGON_CHAIN_ID, ethersSigner, storedCreds, 2, safeAddress, undefined, false, builderConfig());
-      |            ^
-  194 |   }, [isReady, ethersSigner, safeAddress, storedCreds]);
-  195 |
-  196 |   const value = useMemo<TradingContextType>(
-⚠ Fast Refresh had to perform a full reload due to a runtime error.
-✓ Compiled in 71ms
- GET /deportes?liga=nfl 200 in 43ms (next.js: 1.2ms, application-code: 42ms)
- GET /api/games?league=nfl 200 in 4ms (next.js: 0.6ms, application-code: 3ms)
- POST /api/prices 200 in 186ms (next.js: 0.6ms, application-code: 185ms)
-[browser] Uncaught TypeError: Cannot read properties of undefined (reading 'endsWith')
-    at TradingProvider.useMemo[clobClient] (src/providers/TradingProvider.tsx:192:12)
-    at TradingProvider (src/providers/TradingProvider.tsx:189:29)
-    at Providers (src/providers/Providers.tsx:20:9)
-    at RootLayout (src\app\layout.tsx:45:11)
-  190 |     if (!isReady || !ethersSigner || !safeAddress || !storedCreds) return null;
-  191 |     // signatureType 2 = EOA signing on behalf of a Safe proxy wallet
-> 192 |     return new ClobClient(CLOB_API_URL, POLYGON_CHAIN_ID, ethersSigner, storedCreds, 2, safeAddress, undefined, false, builderConfig());
-      |            ^
-  193 |   }, [isReady, ethersSigner, safeAddress, storedCreds]);
-  194 |
-  195 |   const value = useMemo<TradingContextType>(
-⚠ Fast Refresh had to perform a full reload due to a runtime error.
- GET /deportes?liga=nfl 200 in 31ms (next.js: 1.1ms, application-code: 30ms)
-✓ Compiled in 44ms
- GET /api/games?league=nfl 200 in 4ms (next.js: 0.8ms, application-code: 3ms)
- POST /api/prices 200 in 409ms (next.js: 0.6ms, application-code: 409ms)
- POST /api/prices 200 in 217ms (next.js: 1.0ms, application-code: 216ms)
- POST /api/prices 200 in 207ms (next.js: 0.5ms, application-code: 207ms)
- POST /api/prices 200 in 202ms (next.js: 0.7ms, application-code: 202ms)
-✓ Compiled in 76ms
-✓ Compiled in 35ms
+  65 |           return { ok: false, reason: describeRejection(res) };
+  66 |         }
+  67 |         qc.invalidateQueries({ queryKey: ["positions"] }); (src/hooks/usePlaceBet.ts:64:19)
+ POST /api/prices 200 in 247ms (next.js: 0.5ms, application-code: 247ms)
+ POST /api/prices 200 in 271ms (next.js: 0.6ms, application-code: 271ms)
+ POST /api/prices 200 in 232ms (next.js: 0.7ms, application-code: 231ms)
+ POST /api/prices 200 in 201ms (next.js: 0.8ms, application-code: 200ms)
+ POST /api/prices 200 in 227ms (next.js: 0.5ms, application-code: 226ms)
+ POST /api/prices 200 in 207ms (next.js: 0.6ms, application-code: 207ms)
+ POST /api/prices 200 in 199ms (next.js: 0.6ms, application-code: 198ms)
+ POST /api/prices 200 in 202ms (next.js: 0.6ms, application-code: 201ms)
+ GET /api/games?league=nfl 200 in 67ms (next.js: 0.7ms, application-code: 67ms)
+ POST /api/prices 200 in 200ms (next.js: 0.6ms, application-code: 200ms)
+ POST /api/prices 200 in 201ms (next.js: 0.7ms, application-code: 200ms)
+ POST /api/prices 200 in 212ms (next.js: 0.6ms, application-code: 211ms)
+ POST /api/prices 200 in 211ms (next.js: 0.6ms, application-code: 211ms)
+ POST /api/prices 200 in 237ms (next.js: 0.8ms, application-code: 237ms)
  POST /api/prices 200 in 205ms (next.js: 0.6ms, application-code: 205ms)
-✓ Compiled in 21ms
- POST /api/prices 200 in 215ms (next.js: 0.6ms, application-code: 215ms)
- POST /api/prices 200 in 202ms (next.js: 0.7ms, application-code: 201ms)
- POST /api/prices 200 in 255ms (next.js: 0.5ms, application-code: 254ms)
- POST /api/prices 200 in 231ms (next.js: 0.6ms, application-code: 230ms)
+ POST /api/prices 200 in 200ms (next.js: 0.6ms, application-code: 199ms)
+ POST /api/prices 200 in 199ms (next.js: 0.5ms, application-code: 198ms)
+ POST /api/prices 200 in 226ms (next.js: 0.6ms, application-code: 226ms)
+ POST /api/prices 200 in 283ms (next.js: 0.6ms, application-code: 282ms)
+ POST /api/prices 200 in 213ms (next.js: 0.5ms, application-code: 213ms)
+ POST /api/prices 200 in 209ms (next.js: 0.6ms, application-code: 208ms)
+ GET /api/games?league=nfl 200 in 871ms (next.js: 0.6ms, application-code: 871ms)
+ POST /api/prices 200 in 212ms (next.js: 0.7ms, application-code: 211ms)
+ POST /api/prices 200 in 275ms (next.js: 0.5ms, application-code: 275ms)
+ POST /api/prices 200 in 277ms (next.js: 0.6ms, application-code: 277ms)
+ POST /api/prices 200 in 210ms (next.js: 0.6ms, application-code: 209ms)
+ POST /api/prices 200 in 199ms (next.js: 0.5ms, application-code: 199ms)
+ POST /api/prices 200 in 221ms (next.js: 0.7ms, application-code: 220ms)
+ POST /api/prices 200 in 208ms (next.js: 0.6ms, application-code: 207ms)
+ POST /api/prices 200 in 217ms (next.js: 0.5ms, application-code: 217ms)
+ POST /api/prices 200 in 294ms (next.js: 0.6ms, application-code: 293ms)
+ POST /api/prices 200 in 214ms (next.js: 0.5ms, application-code: 213ms)
+ POST /api/prices 200 in 211ms (next.js: 0.6ms, application-code: 211ms)
+ POST /api/prices 200 in 205ms (next.js: 0.5ms, application-code: 205ms)
+ GET /api/games?league=nfl 200 in 65ms (next.js: 0.6ms, application-code: 65ms)
+ POST /api/prices 200 in 228ms (next.js: 0.6ms, application-code: 227ms)
+ POST /api/prices 200 in 207ms (next.js: 0.7ms, application-code: 206ms)
  POST /api/prices 200 in 216ms (next.js: 0.5ms, application-code: 215ms)
+ POST /api/prices 200 in 216ms (next.js: 0.7ms, application-code: 215ms)
+ POST /api/prices 200 in 229ms (next.js: 0.5ms, application-code: 229ms)
+ POST /api/prices 200 in 202ms (next.js: 0.5ms, application-code: 201ms)
+ POST /api/prices 200 in 235ms (next.js: 0.6ms, application-code: 235ms)
+ POST /api/prices 200 in 198ms (next.js: 0.5ms, application-code: 198ms)
+ POST /api/prices 200 in 214ms (next.js: 0.5ms, application-code: 214ms)
+✓ Compiled in 191ms
+ GET /api/games?league=nfl 200 in 92ms (next.js: 1.2ms, application-code: 90ms)
+ POST /api/prices 200 in 219ms (next.js: 1.2ms, application-code: 218ms)
+ POST /api/prices 200 in 200ms (next.js: 0.5ms, application-code: 200ms)
+ POST /api/prices 200 in 193ms (next.js: 0.5ms, application-code: 192ms)
+ POST /api/prices 200 in 213ms (next.js: 0.5ms, application-code: 213ms)
+ POST /api/prices 200 in 208ms (next.js: 0.5ms, application-code: 208ms)
+ POST /api/prices 200 in 203ms (next.js: 0.5ms, application-code: 202ms)
+ POST /api/prices 200 in 193ms (next.js: 0.6ms, application-code: 192ms)
+ POST /api/prices 200 in 212ms (next.js: 0.5ms, application-code: 212ms)
+ GET /api/games?league=nfl 200 in 11ms (next.js: 1.0ms, application-code: 10ms)
+✓ Compiled in 43ms
+ POST /api/prices 200 in 192ms (next.js: 0.7ms, application-code: 191ms)
+ POST /api/prices 200 in 287ms (next.js: 0.7ms, application-code: 287ms)
+ POST /api/prices 200 in 240ms (next.js: 0.5ms, application-code: 240ms)
+ POST /api/prices 200 in 212ms (next.js: 0.6ms, application-code: 211ms)
+ POST /api/prices 200 in 216ms (next.js: 0.6ms, application-code: 216ms)
+ POST /api/prices 200 in 234ms (next.js: 1.0ms, application-code: 233ms)
+ POST /api/prices 200 in 214ms (next.js: 0.5ms, application-code: 213ms)
+✓ Compiled in 115ms
+ GET /api/games?league=nfl 200 in 66ms (next.js: 0.6ms, application-code: 65ms)
+ POST /api/prices 200 in 221ms (next.js: 0.9ms, application-code: 220ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 62ms
+⨯ TypeError: Cannot read properties of null (reading 'address')
+    at TradingProvider (src\providers\TradingProvider.tsx:133:113)
+  131 |
+  132 |   const walletAddress: `0x${string}` | undefined =
+> 133 |     (session?.walletAddress as `0x${string}` | undefined) || (derivedWallet?.eoa === eoaAddress ? derivedWallet.address : undefined);
+      |                                                                                                                 ^
+  134 |
+  135 |   const legacySafeAddress = useMemo<`0x${string}` | undefined>(() => {
+  136 |     if (session?.legacySafeAddress) return session.legacySafeAddress as `0x${string}`; {
+  digest: '706799580'
+}
+ GET /entrar 500 in 63ms (next.js: 3ms, application-code: 60ms)
+Error: Route "/entrar": Could not validate `instant` because the target segment was prevented from rendering, likely due to the following error.
+    at ignore-listed frames
+Error: An error occurred while attempting to validate instant UI. This error may be preventing the validation from completing.
+    at Providers (src\providers\Providers.tsx:20:9)
+    at RootLayout (src\app\layout.tsx:45:11)
+  18 |     <QueryClientProvider client={client}>
+  19 |       <WalletProvider>
+> 20 |         <TradingProvider>{children}</TradingProvider>
+     |         ^
+  21 |       </WalletProvider>
+  22 |     </QueryClientProvider>
+  23 |   ); {
+  [cause]: TypeError: Cannot read properties of null (reading 'address')
+      at TradingProvider (src\providers\TradingProvider.tsx:133:113)
+    131 |
+    132 |   const walletAddress: `0x${string}` | undefined =
+  > 133 |     (session?.walletAddress as `0x${string}` | undefined) || (derivedWallet?.eoa === eoaAddress ? derivedWallet.address : undefined);
+        |                                                                                                                 ^
+    134 |
+    135 |   const legacySafeAddress = useMemo<`0x${string}` | undefined>(() => {
+    136 |     if (session?.legacySafeAddress) return session.legacySafeAddress as `0x${string}`;
+}
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ TypeError: Cannot read properties of null (reading 'address')
+    at TradingProvider (src\providers\TradingProvider.tsx:133:113)
+  131 |
+  132 |   const walletAddress: `0x${string}` | undefined =
+> 133 |     (session?.walletAddress as `0x${string}` | undefined) || (derivedWallet?.eoa === eoaAddress ? derivedWallet.address : undefined);
+      |                                                                                                                 ^
+  134 |
+  135 |   const legacySafeAddress = useMemo<`0x${string}` | undefined>(() => {
+  136 |     if (session?.legacySafeAddress) return session.legacySafeAddress as `0x${string}`; {
+  digest: '706799580'
+}
+ GET /entrar 500 in 36ms (next.js: 0.7ms, application-code: 36ms)
+✓ Compiled in 37ms
+Error: Route "/entrar": Could not validate `instant` because the target segment was prevented from rendering, likely due to the following error.
+    at ignore-listed frames
+Error: An error occurred while attempting to validate instant UI. This error may be preventing the validation from completing.
+    at Providers (src\providers\Providers.tsx:20:9)
+    at RootLayout (src\app\layout.tsx:45:11)
+  18 |     <QueryClientProvider client={client}>
+  19 |       <WalletProvider>
+> 20 |         <TradingProvider>{children}</TradingProvider>
+     |         ^
+  21 |       </WalletProvider>
+  22 |     </QueryClientProvider>
+  23 |   ); {
+  [cause]: TypeError: Cannot read properties of null (reading 'address')
+      at TradingProvider (src\providers\TradingProvider.tsx:133:113)
+    131 |
+    132 |   const walletAddress: `0x${string}` | undefined =
+  > 133 |     (session?.walletAddress as `0x${string}` | undefined) || (derivedWallet?.eoa === eoaAddress ? derivedWallet.address : undefined);
+        |                                                                                                                 ^
+    134 |
+    135 |   const legacySafeAddress = useMemo<`0x${string}` | undefined>(() => {
+    136 |     if (session?.legacySafeAddress) return session.legacySafeAddress as `0x${string}`;
+}
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 43ms
+ GET /api/games?league=nfl 200 in 95ms (next.js: 0.9ms, application-code: 94ms)
+ POST /api/prices 200 in 214ms (next.js: 0.5ms, application-code: 214ms)
+ GET /entrar 200 in 32ms (next.js: 1.0ms, application-code: 31ms)
+✓ Compiled in 100ms
