@@ -21,6 +21,7 @@ import { shortAddress, signed } from "@/lib/format";
 import { POLYMARKET_PROFILE_URL } from "@/lib/polymarket/constants";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { cn } from "@/lib/cn";
+import { copyText } from "@/lib/clipboard";
 
 interface Position {
   conditionId: string;
@@ -48,7 +49,8 @@ export default function ProfileScreen() {
   const { walletAddress, legacySafeAddress, isReady, step, setupTrading, error, wrapUsdc, migrateFromSafe, redeem } = useTrading();
   const { balance, pendingUsdc, pendingUsdcRaw, legacyUsdc, legacyUsdcRaw, refetch } = useUsdcBalance();
   const qc = useQueryClient();
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"idle" | "ok" | "fail">("idle");
+  const [showFullAddress, setShowFullAddress] = useState(false);
   const [busy, setBusy] = useState<"wrap" | "migrate" | "redeem" | null>(null);
   const [opError, setOpError] = useState<string | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -275,17 +277,27 @@ export default function ProfileScreen() {
             ) : null}
           </div>
           <p className="mt-1 text-xs text-muted">Manda USDC (red Polygon) a tu dirección. Desde Bitso, otra wallet o tu cuenta de Polymarket.</p>
-          <div className="tnum mt-3 flex items-center justify-between rounded-xl bg-surface px-3 py-2 text-sm">
-            <span>{walletAddress ? shortAddress(walletAddress, 6) : "…"}</span>
+          <div className="tnum mt-3 flex items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2 text-sm">
             <button
-              onClick={() => {
-                if (walletAddress) navigator.clipboard?.writeText(walletAddress).then(() => setCopied(true));
-                setTimeout(() => setCopied(false), 1500);
+              type="button"
+              onClick={() => setShowFullAddress((v) => !v)}
+              className={cn("min-w-0 select-all text-left", showFullAddress && "break-all text-xs")}
+              title="Toca para ver la dirección completa"
+            >
+              {walletAddress ? (showFullAddress ? walletAddress : shortAddress(walletAddress, 6)) : "…"}
+            </button>
+            <button
+              onClick={async () => {
+                if (!walletAddress) return;
+                const ok = await copyText(walletAddress);
+                setCopied(ok ? "ok" : "fail");
+                if (!ok) setShowFullAddress(true);
+                setTimeout(() => setCopied("idle"), 1800);
               }}
               disabled={!walletAddress}
-              className="flex items-center gap-1 text-xs text-accent-soft"
+              className="flex shrink-0 items-center gap-1 text-xs text-accent-soft"
             >
-              <Copy className="h-3.5 w-3.5" /> {copied ? "Copiado" : "Copiar"}
+              <Copy className="h-3.5 w-3.5" /> {copied === "ok" ? "Copiado" : copied === "fail" ? "Mantén presionado" : "Copiar"}
             </button>
           </div>
           <p className="mt-2 text-[11px] text-muted-2">USDC.e o pUSD en Polygon. Otra red u otra moneda se pierde. {!isReady ? "Activa tu cuenta antes de depositar." : ""}</p>
