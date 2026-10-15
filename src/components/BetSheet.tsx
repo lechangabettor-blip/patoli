@@ -11,7 +11,10 @@ import { useTrading } from "@/providers/TradingProvider";
 import { usePlaceBet } from "@/hooks/usePlaceBet";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
+import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { cn } from "@/lib/cn";
+
+const ATTRIBUTION_READY = isBuilderCodeValid(PATOLI_BUILDER_CODE);
 
 const QUICK = [5, 10, 25, 50];
 
@@ -143,11 +146,19 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
               <p className="mt-3 flex items-start gap-1.5 text-[11px] text-muted">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Modo demo: falta configurar el login (Magic) y las credenciales de builder para apostar de verdad.
               </p>
+            ) : !ATTRIBUTION_READY && status === "connected" ? (
+              <p className="mt-3 flex items-start gap-1.5 text-[11px] text-accent-soft">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Falta el código de builder de Patoli. Las apuestas se habilitan en cuanto esté.
+              </p>
             ) : null}
 
             <button
               onClick={submit}
-              disabled={busy || stake < minStake || (status === "connected" && isReady && stake > balance)}
+              disabled={
+                busy ||
+                stake < minStake ||
+                (status === "connected" && isReady && (stake > balance || !ATTRIBUTION_READY))
+              }
               className="btn-accent mt-4 w-full py-3.5 text-sm"
             >
               {busy ? "Un momento…" : cta}

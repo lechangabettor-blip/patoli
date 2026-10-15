@@ -1,13 +1,20 @@
 "use client";
 
 import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from "react";
-import { ClobClient } from "@polymarket/clob-client";
+import { Chain, ClobClient, SignatureTypeV2 } from "@polymarket/clob-client-v2";
 import { BuilderConfig } from "@polymarket/builder-signing-sdk";
 import { RelayClient, RelayerTransactionState } from "@polymarket/builder-relayer-client";
 import { deriveSafe } from "@polymarket/builder-relayer-client/dist/builder/derive";
 import { getContractConfig } from "@polymarket/builder-relayer-client/dist/config";
 import { useWallet } from "./WalletContext";
-import { CLOB_API_URL, POLYGON_CHAIN_ID, RELAYER_URL, REMOTE_SIGNING_URL } from "@/lib/polymarket/constants";
+import {
+  CLOB_API_URL,
+  PATOLI_BUILDER_CODE,
+  POLYGON_CHAIN_ID,
+  RELAYER_URL,
+  REMOTE_SIGNING_URL,
+  isBuilderCodeValid,
+} from "@/lib/polymarket/constants";
 import { buildApprovalTxs, checkAllApprovals } from "@/lib/polymarket/approvals";
 import {
   clearSession,
@@ -24,8 +31,14 @@ import {
  *   2. deploy the Safe gaslessly through Polymarket's relayer (builder-sponsored)
  *   3. derive/create the user's CLOB API credentials (signature, no server)
  *   4. set token approvals in one batched, gasless Safe transaction
- * After that an authenticated ClobClient with our builder attribution is
- * available to place orders. Mirrors Polymarket's reference implementation.
+ * After that an authenticated ClobClient (V2 orders) with our builder code is
+ * available to place orders.
+ *
+ * Two different "builder" mechanisms, easy to confuse:
+ *  - Relayer (Safe deploy / approvals / redeem) authenticates OUR builder API
+ *    key via HMAC headers signed server-side at /api/polymarket/sign.
+ *  - Order attribution is the 32-byte builder CODE embedded in each signed
+ *    order (clob-client-v2 `builderConfig.builderCode`). No HMAC involved.
  */
 
 interface TradingContextType {
@@ -126,13 +139,12 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // 3. API credentials
+      // 3. API credentials (L1 signature by the EOA; stored locally only)
       let creds: ApiCreds | undefined = storedCreds;
       if (!creds?.key || !creds?.secret || !creds?.passphrase) {
         setStep("credentials");
-        const temp = new ClobClient(CLOB_API_URL, POLYGON_CHAIN_ID, ethersSigner);
-        const derived = await temp.deriveApiKey().catch(() => null);
-        creds = derived?.key ? derived : await temp.createApiKey();
+        const temp = new ClobClient({ host: CLOB_API_URL, chain: Chain.POLYGON, signer: ethersSigner });
+        creds = await temp.createOrDeriveApiKey();
       }
 
       // 4. Approvals
@@ -176,8 +188,17 @@ export function TradingProvider({ children }: { children: ReactNode }) {
 
   const clobClient = useMemo(() => {
     if (!isReady || !ethersSigner || !safeAddress || !storedCreds) return null;
-    // signatureType 2 = EOA signing on behalf of a Safe proxy wallet
-    return new ClobClient(CLOB_API_URL, POLYGON_CHAIN_ID, ethersSigner, storedCreds, 2, safeAddress, undefined, false, builderConfig());
+    return new ClobClient({
+      host: CLOB_API_URL,
+      chain: Chain.POLYGON,
+      signer: ethersSigner,
+      creds: storedCreds,
+      // EOA (embedded wallet) signs; the Safe holds the funds and is the maker.
+      signatureType: SignatureTypeV2.POLY_GNOSIS_SAFE,
+      funderAddress: safeAddress,
+      builderConfig: isBuilderCodeValid(PATOLI_BUILDER_CODE) ? { builderCode: PATOLI_BUILDER_CODE } : undefined,
+      useServerTime: true,
+    });
   }, [isReady, ethersSigner, safeAddress, storedCreds]);
 
   const value = useMemo<TradingContextType>(

@@ -13,6 +13,7 @@
     "@polymarket/builder-relayer-client": "^0.0.10",
     "@polymarket/builder-signing-sdk": "^1.0.0",
     "@polymarket/clob-client": "^5.8.1",
+    "@polymarket/clob-client-v2": "^1.2.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
     "@tanstack/react-query": "^5.104.2",

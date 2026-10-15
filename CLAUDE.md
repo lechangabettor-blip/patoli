@@ -33,7 +33,7 @@ live betting, picks marketplace.
 Next.js 16 (App Router, `cacheComponents: true`, Turbopack) · React 19 ·
 TypeScript · Tailwind v4 (tokens via `@theme inline`) · TanStack Query ·
 motion · lucide-react · Magic SDK (+ OAuth2 ext) · ethers v5 (what
-Polymarket's SDKs expect) + viem · `@polymarket/clob-client`,
+Polymarket's SDKs expect) + viem · `@polymarket/clob-client-v2` (V2 orders; the old `clob-client` is rejected with "invalid order version"),
 `@polymarket/builder-relayer-client`, `@polymarket/builder-signing-sdk` ·
 Supabase (not wired yet).
 

@@ -34,5 +34,13 @@ export const POLYMARKET_SPORTS_FEE_RATE = 0.05;
 /** Our builder fee in basis points (max allowed by the Builder Program is 100). */
 export const PATOLI_BUILDER_FEE_BPS = Number(process.env.NEXT_PUBLIC_PATOLI_FEE_BPS ?? 100);
 
+/**
+ * Builder code: 32-byte hex from polymarket.com → Settings → Builders. It is
+ * embedded in every signed order (public by nature) and is what credits
+ * volume + fees to Patoli. Empty = orders are not attributed.
+ */
+export const PATOLI_BUILDER_CODE = (process.env.NEXT_PUBLIC_POLYMARKET_BUILDER_CODE ?? "").trim();
+export const isBuilderCodeValid = (code: string) => /^0x[0-9a-fA-F]{64}$/.test(code);
+
 export const POLYMARKET_PROFILE_URL = (address: string) => `https://polymarket.com/${address}`;
 export const POLYGONSCAN_TX_URL = (hash: string) => `https://polygonscan.com/tx/${hash}`;
