@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMe } from "@/providers/MeProvider";
 import type { FeedItem, PublicProfile } from "@/types/social";
 import { LEAGUE_BY_ID, isLeagueId } from "@/lib/polymarket/leagues";
@@ -72,4 +73,32 @@ export function ticketFromItem(item: FeedItem): TicketData {
     proof: item.proof ?? undefined,
     kickoff: item.kickoff ?? undefined,
   };
+}
+
+/**
+ * Pull the indexer now (authenticated) and refresh everything that shows bets.
+ * Polymarket's trade feed can lag a fill by a few seconds, so `sync` can retry
+ * on a schedule: each pass re-runs the indexer and invalidates the queries.
+ */
+export function useSyncBets() {
+  const { getToken, refresh } = useMe();
+  const qc = useQueryClient();
+  return useCallback(
+    async (delaysMs: number[] = [0]) => {
+      for (const delay of delaysMs) {
+        if (delay) await new Promise((r) => setTimeout(r, delay));
+        try {
+          const t = await getToken();
+          if (!t) return;
+          await fetch("/api/me/sync", { method: "POST", headers: { authorization: `Bearer ${t}` } });
+        } catch {
+          /* best effort */
+        }
+        qc.invalidateQueries({ queryKey: ["user"] });
+        qc.invalidateQueries({ queryKey: ["feed"] });
+        void refresh();
+      }
+    },
+    [getToken, refresh, qc],
+  );
 }

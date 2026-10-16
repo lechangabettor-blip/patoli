@@ -6,6 +6,7 @@ import { AssetType, OrderType, Side } from "@polymarket/clob-client-v2";
 import type { TickSize } from "@polymarket/clob-client-v2";
 import { useTrading } from "@/providers/TradingProvider";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
+import { useSyncBets } from "@/hooks/useSocial";
 
 export interface PlaceBetParams {
   tokenId: string;
@@ -27,6 +28,7 @@ export type PlaceBetResult =
 export function usePlaceBet() {
   const { clobClient } = useTrading();
   const qc = useQueryClient();
+  const syncBets = useSyncBets();
   const [isPlacing, setPlacing] = useState(false);
 
   const placeBet = useCallback(
@@ -66,6 +68,9 @@ export function usePlaceBet() {
         }
         qc.invalidateQueries({ queryKey: ["positions"] });
         qc.invalidateQueries({ queryKey: ["balances"] });
+        // Index the fill into our DB (Perfil/feed read from there). Polymarket's
+        // trade feed lags a few seconds, so retry a couple of times in the background.
+        void syncBets([1_500, 6_000, 15_000]);
         return { ok: true, orderId: res.orderID, txHashes: res.transactionsHashes ?? [] };
       } catch (e) {
         console.error("[patoli] order threw", e);
@@ -74,7 +79,7 @@ export function usePlaceBet() {
         setPlacing(false);
       }
     },
-    [clobClient, qc],
+    [clobClient, qc, syncBets],
   );
 
   return { placeBet, isPlacing };

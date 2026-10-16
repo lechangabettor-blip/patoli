@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowUpFromLine, Copy, ExternalLink, LogOut, ShieldCheck, Ticket as TicketIcon } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Copy, ExternalLink, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 import TopBar from "./TopBar";
 import Avatar from "./Avatar";
 import Logo from "./Logo";
@@ -22,7 +22,7 @@ import { POLYMARKET_PROFILE_URL } from "@/lib/polymarket/constants";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { cn } from "@/lib/cn";
 import FeedCard from "./FeedCard";
-import { ticketFromItem, useUser } from "@/hooks/useSocial";
+import { ticketFromItem, useSyncBets, useUser } from "@/hooks/useSocial";
 import { copyText } from "@/lib/clipboard";
 
 interface Position {
@@ -41,9 +41,6 @@ interface Position {
   endDate?: string;
   slug?: string;
 }
-
-/** Cost basis in USDC; the data API can lag avgPrice right after a fill. */
-const costOf = (p: Position) => (p.initialValue && p.initialValue > 0 ? p.initialValue : p.size * (p.avgPrice || 0));
 
 export default function ProfileScreen() {
   const { status, email, eoaAddress, logout, isDemo } = useWallet();
@@ -69,11 +66,18 @@ export default function ProfileScreen() {
   });
   const builderReady = builder.data?.configured ?? true;
 
-  // settled history comes from our indexer (same source as the public profile)
+  // Bets (open and settled) come from our DB — the same source as the public
+  // profile and the feed. Polymarket positions below are only a background check
+  // (Cobrar + "is the indexer behind?"), never what the user sees as their record.
   const mine = useUser(me?.handle ?? null);
-  const history = (mine.data?.bets ?? []).filter((b) => b.status !== "open");
+  const myBets = mine.data?.bets ?? [];
+  const open = myBets.filter((b) => b.status === "open");
+  const history = myBets.filter((b) => b.status !== "open");
+  const syncBets = useSyncBets();
+  const [syncing, setSyncing] = useState(false);
 
   const positions = useQuery({
+    // on-chain truth from Polymarket's Data API: used for Cobrar and as a lag detector
     queryKey: ["positions", walletAddress],
     enabled: status === "connected" && !!walletAddress,
     refetchInterval: 20_000,
@@ -82,6 +86,26 @@ export default function ProfileScreen() {
       return r.ok ? r.json() : [];
     },
   });
+
+  // Indexer behind? (Polymarket shows more live positions than our DB has open bets.)
+  const livePositions = (positions.data ?? []).filter((p) => !p.redeemable && p.size > 0).length;
+  const behind = !!me && !mine.isLoading && !positions.isLoading && livePositions > open.length;
+  const lastAutoSync = useRef(0);
+  useEffect(() => {
+    if (!behind || Date.now() - lastAutoSync.current < 20_000) return;
+    lastAutoSync.current = Date.now();
+    void syncBets([0, 8_000]);
+  }, [behind, syncBets]);
+
+  async function manualSync() {
+    setSyncing(true);
+    try {
+      await syncBets([0]);
+      await positions.refetch();
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function run(kind: "wrap" | "migrate" | "redeem") {
     setOpError(null);
@@ -141,34 +165,13 @@ export default function ProfileScreen() {
   }
 
   const handle = me?.handle ?? ((email ?? "usuario").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "usuario");
-  const open = (positions.data ?? []).filter((p) => !p.redeemable && p.size > 0);
   const redeemables = (positions.data ?? []).filter((p) => p.redeemable && p.size > 0);
   const redeemableUsd = redeemables.reduce((s, p) => s + (p.curPrice >= 0.99 ? p.size : 0), 0);
-  // P&L = settled record from the indexer (what everyone else sees) + unrealized on open positions
-  const openPnl = open.reduce((s, p) => s + (p.cashPnl ?? 0), 0);
-  const totalPnl = (me?.pnl ?? 0) + openPnl;
+  // P&L = settled record from the indexer — exactly what everyone else sees on your profile
+  const totalPnl = me?.pnl ?? 0;
   const avatar = me?.avatar || handle;
   const displayName = me?.displayName || handle;
   const activating = step !== "idle" && step !== "complete";
-
-  function ticketFor(p: Position): TicketData {
-    const cost = costOf(p);
-    const odds = cost > 0 ? p.size / cost : p.avgPrice > 0 ? 1 / p.avgPrice : 0;
-    return {
-      handle,
-      avatar,
-      league: "Polymarket",
-      matchup: p.title,
-      selection: p.outcome,
-      market: p.title.startsWith("Spread") ? "Hándicap" : /O\/U/.test(p.title) ? "Total" : "Ganador",
-      odds,
-      stake: cost,
-      payout: p.size,
-      placedAt: new Date().toISOString(),
-      status: p.redeemable ? (p.curPrice >= 0.99 ? "won" : "lost") : "open",
-      proof: p.conditionId,
-    };
-  }
 
   return (
     <>
@@ -314,30 +317,26 @@ export default function ProfileScreen() {
           <p className="mt-2 text-[11px] text-muted-2">USDC.e o pUSD en Polygon. Otra red u otra moneda se pierde. {!isReady ? "Activa tu cuenta antes de depositar." : ""}</p>
         </div>
 
-        {/* Open bets */}
-        <h2 className="mt-6 text-lg">Apuestas abiertas</h2>
-        <ul className="mt-2 space-y-2">
-          {positions.isLoading ? <li className="skeleton h-16" /> : null}
-          {open.map((p) => (
-            <li key={`${p.conditionId}-${p.outcome}`}>
-              <button onClick={() => setTicket(ticketFor(p))} className="card flex w-full items-start justify-between gap-2 px-3 py-2.5 text-left active:border-accent">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">{p.title}</div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted">
-                    {p.outcome} <TicketIcon className="h-3 w-3 text-accent-soft" />
-                  </div>
-                </div>
-                <div className="tnum text-right">
-                  <div className="text-sm font-semibold">${formatUsd(costOf(p))}</div>
-                  <div className={cn("text-xs", (p.cashPnl ?? 0) >= 0 ? "text-win" : "text-loss")}>
-                    {signed(p.cashPnl ?? 0)} · {p.size.toFixed(1)} × {(p.curPrice ?? 0).toFixed(2)}
-                  </div>
-                </div>
-              </button>
-            </li>
+        {/* Open bets — from our DB, same cards as the feed */}
+        <div className="mt-6 flex items-center justify-between">
+          <h2 className="text-lg">Apuestas abiertas</h2>
+          {me ? (
+            <button onClick={manualSync} disabled={syncing} aria-label="Actualizar" className="btn-ghost flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-muted">
+              <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} /> {behind ? "Sincronizando…" : "Actualizar"}
+            </button>
+          ) : null}
+        </div>
+        <div className="mt-2 space-y-3">
+          {mine.isLoading ? <div className="skeleton h-24" /> : null}
+          {open.map((b, i) => (
+            <FeedCard key={b.id} item={b} index={i} onTicket={(it) => setTicket(ticketFromItem(it))} />
           ))}
-          {!positions.isLoading && open.length === 0 ? <li className="card p-4 text-center text-sm text-muted">Aún no tienes apuestas abiertas. Ve a Deportes.</li> : null}
-        </ul>
+          {!mine.isLoading && open.length === 0 ? (
+            <p className="card p-4 text-center text-sm text-muted">
+              {behind ? "Tu última apuesta se está registrando…" : "Aún no tienes apuestas abiertas. Ve a Deportes."}
+            </p>
+          ) : null}
+        </div>
 
         {/* Settled bets — the public, verifiable record */}
         {me ? (
