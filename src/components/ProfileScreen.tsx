@@ -21,6 +21,8 @@ import { shortAddress, signed } from "@/lib/format";
 import { POLYMARKET_PROFILE_URL } from "@/lib/polymarket/constants";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { cn } from "@/lib/cn";
+import FeedCard from "./FeedCard";
+import { ticketFromItem, useUser } from "@/hooks/useSocial";
 import { copyText } from "@/lib/clipboard";
 
 interface Position {
@@ -66,6 +68,10 @@ export default function ProfileScreen() {
     },
   });
   const builderReady = builder.data?.configured ?? true;
+
+  // settled history comes from our indexer (same source as the public profile)
+  const mine = useUser(me?.handle ?? null);
+  const history = (mine.data?.bets ?? []).filter((b) => b.status !== "open");
 
   const positions = useQuery({
     queryKey: ["positions", walletAddress],
@@ -138,7 +144,11 @@ export default function ProfileScreen() {
   const open = (positions.data ?? []).filter((p) => !p.redeemable && p.size > 0);
   const redeemables = (positions.data ?? []).filter((p) => p.redeemable && p.size > 0);
   const redeemableUsd = redeemables.reduce((s, p) => s + (p.curPrice >= 0.99 ? p.size : 0), 0);
-  const totalPnl = (positions.data ?? []).reduce((s, p) => s + (p.cashPnl ?? 0) + (p.realizedPnl ?? 0), 0);
+  // P&L = settled record from the indexer (what everyone else sees) + unrealized on open positions
+  const openPnl = open.reduce((s, p) => s + (p.cashPnl ?? 0), 0);
+  const totalPnl = (me?.pnl ?? 0) + openPnl;
+  const avatar = me?.avatar || handle;
+  const displayName = me?.displayName || handle;
   const activating = step !== "idle" && step !== "complete";
 
   function ticketFor(p: Position): TicketData {
@@ -146,7 +156,7 @@ export default function ProfileScreen() {
     const odds = cost > 0 ? p.size / cost : p.avgPrice > 0 ? 1 / p.avgPrice : 0;
     return {
       handle,
-      avatar: handle,
+      avatar,
       league: "Polymarket",
       matchup: p.title,
       selection: p.outcome,
@@ -166,10 +176,11 @@ export default function ProfileScreen() {
       <section className="px-4 pt-4">
         <div className="card p-4">
           <div className="flex items-center gap-3">
-            <Avatar seed={handle} size={56} />
+            <Avatar seed={avatar} size={56} />
             <div className="min-w-0 flex-1">
-              <div className="truncate font-display text-xl font-extrabold uppercase">@{handle}</div>
-              <div className="truncate text-xs text-muted">{email}</div>
+              <div className="truncate font-display text-lg font-extrabold uppercase leading-tight">{displayName}</div>
+              <div className="truncate text-sm text-muted">@{handle}</div>
+              <div className="truncate text-[11px] text-muted-2">{email}</div>
             </div>
             {me ? (
               <div className="flex shrink-0 flex-col gap-1.5">
@@ -327,6 +338,20 @@ export default function ProfileScreen() {
           ))}
           {!positions.isLoading && open.length === 0 ? <li className="card p-4 text-center text-sm text-muted">Aún no tienes apuestas abiertas. Ve a Deportes.</li> : null}
         </ul>
+
+        {/* Settled bets — the public, verifiable record */}
+        {me ? (
+          <>
+            <h2 className="mt-6 text-lg">Historial</h2>
+            <div className="mt-2 space-y-3">
+              {mine.isLoading ? <div className="skeleton h-24" /> : null}
+              {history.map((b, i) => (
+                <FeedCard key={b.id} item={b} index={i} onTicket={(it) => setTicket(ticketFromItem(it))} />
+              ))}
+              {!mine.isLoading && history.length === 0 ? <p className="card p-4 text-center text-sm text-muted">Tus apuestas resueltas aparecen aquí.</p> : null}
+            </div>
+          </>
+        ) : null}
 
         <a
           href={POLYMARKET_PROFILE_URL(walletAddress ?? "")}
