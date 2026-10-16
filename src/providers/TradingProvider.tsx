@@ -28,6 +28,9 @@ import {
   erc20Balance,
   isDeployed,
   polygonChain,
+  isWrapPaused,
+  buildErc20TransferCall,
+  USDC_NATIVE_ADDRESS,
 } from "@/lib/polymarket/v2";
 import {
   SESSION_VERSION,
@@ -67,6 +70,8 @@ interface TradingContextType {
   setupTrading: () => Promise<void>;
   /** Wrap USDC.e sitting in the deposit wallet into pUSD (gasless). */
   wrapUsdc: (amount: bigint) => Promise<void>;
+  /** Native USDC sent by mistake → pUSD (direct wrap if allowed, else via Polymarket's bridge). Returns the path used. */
+  rescueNativeUsdc: (amount: bigint) => Promise<"wrap" | "bridge">;
   /** Move USDC.e parked in the v1 Safe into the deposit wallet (gasless). */
   migrateFromSafe: (amount: bigint) => Promise<void>;
   /** Withdraw: pUSD → USDC.e sent to `to` on Polygon (gasless). Returns tx hash if known. */
@@ -223,6 +228,35 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     [relayClient, walletAddress],
   );
 
+  const rescueNativeUsdc = useCallback(
+    async (amount: bigint): Promise<"wrap" | "bridge"> => {
+      if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
+      if (amount <= 0n) throw new Error("Nada que convertir");
+      if (!(await isWrapPaused(USDC_NATIVE_ADDRESS))) {
+        const resp = await relayClient.executeDepositWalletBatch(buildWrapCalls(walletAddress, amount, USDC_NATIVE_ADDRESS), walletAddress, batchDeadline());
+        await resp.wait();
+        return "wrap";
+      }
+      // Onramp paused for native USDC → forward to the user's own Polymarket bridge
+      // address; the bridge converts to pUSD and credits this same deposit wallet.
+      const r = await fetch("/api/polymarket/bridge-address", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ wallet: walletAddress }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { evm?: string; error?: string };
+      if (!r.ok || !j.evm || !/^0x[0-9a-fA-F]{40}$/.test(j.evm)) throw new Error(j.error ?? "No se pudo obtener la dirección del puente");
+      const resp = await relayClient.executeDepositWalletBatch(
+        [buildErc20TransferCall(USDC_NATIVE_ADDRESS, j.evm as `0x${string}`, amount)],
+        walletAddress,
+        batchDeadline(),
+      );
+      await resp.wait();
+      return "bridge";
+    },
+    [relayClient, walletAddress],
+  );
+
   const migrateFromSafe = useCallback(
     async (amount: bigint) => {
       if (!relayClient || !walletAddress || !legacySafeAddress) throw new Error("Nada que mover");
@@ -307,12 +341,13 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       relayClient,
       setupTrading,
       wrapUsdc,
+      rescueNativeUsdc,
       migrateFromSafe,
       withdraw,
       redeem,
       resetTrading,
     }),
-    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, migrateFromSafe, withdraw, redeem, resetTrading],
+    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, rescueNativeUsdc, migrateFromSafe, withdraw, redeem, resetTrading],
   );
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>;

@@ -11,6 +11,7 @@ import {
   POLYGON_RPC_URL,
   PUSD_ADDRESS,
   USDC_E_ADDRESS,
+  USDC_NATIVE_ADDRESS,
   V2_NEG_RISK_EXCHANGE_ADDRESS,
   V2_POSITION_MANAGER_ADDRESS,
   V2_PROTOCOL_EXCHANGE_ADDRESS,
@@ -43,7 +44,7 @@ const erc1155Abi = parseAbi([
   "function isApprovedForAll(address account, address operator) view returns (bool)",
 ]);
 
-const onrampAbi = parseAbi(["function wrap(address _asset, address _to, uint256 _amount)"]);
+const onrampAbi = parseAbi(["function wrap(address _asset, address _to, uint256 _amount)", "function paused(address) view returns (bool)"]);
 const offrampAbi = parseAbi(["function unwrap(address _asset, address _to, uint256 _amount)"]);
 
 // pUSD spenders (ERC-20 approve)
@@ -136,12 +137,23 @@ export function buildV2ApprovalCalls(): DepositWalletCall[] {
 }
 
 /** USDC.e sitting in the deposit wallet → pUSD in the same wallet (approve onramp + wrap). */
-export function buildWrapCalls(wallet: `0x${string}`, amount: bigint): DepositWalletCall[] {
+export function buildWrapCalls(wallet: `0x${string}`, amount: bigint, asset: `0x${string}` = USDC_E_ADDRESS): DepositWalletCall[] {
   return [
-    { target: USDC_E_ADDRESS, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [COLLATERAL_ONRAMP_ADDRESS, amount] }) },
-    { target: COLLATERAL_ONRAMP_ADDRESS, value: "0", data: encodeFunctionData({ abi: onrampAbi, functionName: "wrap", args: [USDC_E_ADDRESS, wallet, amount] }) },
+    { target: asset, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [COLLATERAL_ONRAMP_ADDRESS, amount] }) },
+    { target: COLLATERAL_ONRAMP_ADDRESS, value: "0", data: encodeFunctionData({ abi: onrampAbi, functionName: "wrap", args: [asset, wallet, amount] }) },
   ];
 }
+
+/** The Onramp can pause an asset (native USDC is paused as of 2026-10-16). */
+export async function isWrapPaused(asset: `0x${string}`): Promise<boolean> {
+  try {
+    return await publicClient.readContract({ address: COLLATERAL_ONRAMP_ADDRESS, abi: onrampAbi, functionName: "paused", args: [asset] });
+  } catch {
+    return true; // if we can't tell, take the safe route (bridge)
+  }
+}
+
+export { USDC_NATIVE_ADDRESS };
 
 /**
  * Withdraw: pUSD in the deposit wallet → USDC.e delivered to `to` (any Polygon

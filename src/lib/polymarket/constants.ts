@@ -6,6 +6,7 @@ export const POLYGON_CHAIN_ID = 137;
 export const CLOB_API_URL = "https://clob.polymarket.com";
 export const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 export const DATA_API_URL = "https://data-api.polymarket.com";
+export const BRIDGE_API_URL = "https://bridge.polymarket.com";
 export const RELAYER_URL = "https://relayer-v2.polymarket.com/";
 export const GEOBLOCK_API_URL = "https://polymarket.com/api/geoblock";
 
@@ -25,6 +26,10 @@ export const REMOTE_SIGNING_URL = () =>
 // V1 (legacy Safe/Proxy era): collateral USDC.e, exchanges below.
 export const USDC_E_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174" as const;
 export const USDC_E_DECIMALS = 6;
+// Native (Circle) USDC on Polygon. pUSD's CollateralToken accepts it as a valid
+// asset, but the Onramp has it PAUSED (checked on-chain 2026-10-16), so stray
+// native deposits are rescued via Polymarket's bridge instead (see v2.ts).
+export const USDC_NATIVE_ADDRESS = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359" as const;
 export const CTF_ADDRESS = "0x4d97dcd97ec945f40cf65f87097ace5ea0476045" as const;
 export const CTF_EXCHANGE_ADDRESS = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E" as const;
 export const NEG_RISK_CTF_EXCHANGE_ADDRESS = "0xC5d563A36AE78145C45a50134d48A1215220f80a" as const;

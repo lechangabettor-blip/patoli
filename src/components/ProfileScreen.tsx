@@ -45,12 +45,13 @@ interface Position {
 export default function ProfileScreen() {
   const { status, email, eoaAddress, logout, isDemo } = useWallet();
   const { me } = useMe();
-  const { walletAddress, legacySafeAddress, isReady, step, setupTrading, error, wrapUsdc, migrateFromSafe, redeem } = useTrading();
-  const { balance, pendingUsdc, pendingUsdcRaw, legacyUsdc, legacyUsdcRaw, refetch } = useUsdcBalance();
+  const { walletAddress, legacySafeAddress, isReady, step, setupTrading, error, wrapUsdc, rescueNativeUsdc, migrateFromSafe, redeem } = useTrading();
+  const { balance, pendingUsdc, pendingUsdcRaw, legacyUsdc, legacyUsdcRaw, nativeUsdc, nativeUsdcRaw, refetch } = useUsdcBalance();
+  const [rescueNote, setRescueNote] = useState<string | null>(null);
   const qc = useQueryClient();
   const [copied, setCopied] = useState<"idle" | "ok" | "fail">("idle");
   const [showFullAddress, setShowFullAddress] = useState(false);
-  const [busy, setBusy] = useState<"wrap" | "migrate" | "redeem" | null>(null);
+  const [busy, setBusy] = useState<"wrap" | "migrate" | "redeem" | "rescue" | null>(null);
   const [opError, setOpError] = useState<string | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -107,12 +108,19 @@ export default function ProfileScreen() {
     }
   }
 
-  async function run(kind: "wrap" | "migrate" | "redeem") {
+  async function run(kind: "wrap" | "migrate" | "redeem" | "rescue") {
     setOpError(null);
     setBusy(kind);
     try {
       if (kind === "wrap") await wrapUsdc(pendingUsdcRaw);
-      else if (kind === "migrate") await migrateFromSafe(legacyUsdcRaw);
+      else if (kind === "rescue") {
+        const path = await rescueNativeUsdc(nativeUsdcRaw);
+        setRescueNote(
+          path === "wrap"
+            ? "Listo. Tus USDC ya son pUSD."
+            : "Enviado al puente de Polymarket. En unos minutos aparece en tu saldo como pUSD.",
+        );
+      } else if (kind === "migrate") await migrateFromSafe(legacyUsdcRaw);
       else {
         const targets = redeemables.map((p) => ({ conditionId: p.conditionId as `0x${string}`, negRisk: !!p.negativeRisk }));
         // one call per market even if several outcomes are held
@@ -266,6 +274,25 @@ export default function ProfileScreen() {
           </div>
         ) : null}
 
+        {/* Native USDC sent by mistake — rescue it instead of letting it sit there */}
+        {isReady && nativeUsdc > 0 ? (
+          <div className="card-hot card mt-3 p-4">
+            <div className="flex items-start gap-3">
+              <ArrowDownToLine className="mt-0.5 h-5 w-5 shrink-0 text-accent-soft" />
+              <div className="flex-1">
+                <div className="font-display text-sm font-extrabold uppercase">Llegaron ${formatUsd(nativeUsdc)} USDC nativos</div>
+                <p className="mt-1 text-xs text-muted">
+                  Son USDC de Circle, no USDC.e. No se pierden: los convertimos a pUSD por el puente de Polymarket. Sin gas, sin costo.
+                </p>
+                <button onClick={() => run("rescue")} disabled={busy !== null} className="btn-accent mt-3 w-full py-2.5 text-xs">
+                  {busy === "rescue" ? "Convirtiendo…" : "Convertir a pUSD"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {rescueNote ? <p className="mt-2 text-xs text-win">{rescueNote}</p> : null}
+
         {/* Funds parked in the v1 Safe (early testers only) */}
         {isReady && legacyUsdc > 0 && legacySafeAddress ? (
           <div className="card mt-3 p-4">
@@ -314,7 +341,9 @@ export default function ProfileScreen() {
               <Copy className="h-3.5 w-3.5" /> {copied === "ok" ? "Copiado" : copied === "fail" ? "Mantén presionado" : "Copiar"}
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-muted-2">USDC.e o pUSD en Polygon. Otra red u otra moneda se pierde. {!isReady ? "Activa tu cuenta antes de depositar." : ""}</p>
+          <p className="mt-2 text-[11px] text-muted-2">
+            USDC, USDC.e o pUSD, siempre en red Polygon. Otra red se pierde. {!isReady ? "Activa tu cuenta antes de depositar." : ""}
+          </p>
         </div>
 
         {/* Open bets — from our DB, same cards as the feed */}

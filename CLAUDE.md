@@ -121,6 +121,11 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   the relayer answers 401 → Safe deploy fails. The UI reads `GET /api/polymarket/sign`
   and disables "Activar" with a plain message. Login itself works without them.
 - Magic free tier allows 1 allowed domain; set it to patoli.bet when deploying.
+- **Native USDC** (`0x3c49…3359`) is a valid pUSD asset but the Onramp has it PAUSED
+  (on-chain 2026-10-16). Perfil detects stray native USDC and rescues it:
+  direct wrap if unpaused, else a gasless transfer to the user's own Polymarket
+  bridge address (`POST bridge.polymarket.com/deposit`, via `/api/polymarket/bridge-address`),
+  which converts to pUSD. Bridge also takes USDT/DAI/POL on Polygon (min $2).
 - Dev server is slow on phones (unminified bundles); test on the phone with
   `npm run build && npm run start -- -H 0.0.0.0`.
 
