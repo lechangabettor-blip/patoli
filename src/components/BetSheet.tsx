@@ -1,5 +1,6 @@
 "use client";
 
+import type { MarketKind } from "@/lib/polymarket/gamma";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Info } from "lucide-react";
@@ -18,6 +19,8 @@ import { useBuilderFee } from "@/hooks/useBuilderFee";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { cn } from "@/lib/cn";
+
+const MARKET_NAME: Record<MarketKind, string> = { moneyline: "Ganador", spread: "Hándicap", total: "Total", btts: "Ambos anotan" };
 
 const ATTRIBUTION_READY = isBuilderCodeValid(PATOLI_BUILDER_CODE);
 
@@ -78,7 +81,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
         leagueEmoji: league.emoji,
         matchup: `${selection.game.home} vs ${selection.game.away}`,
         selection: selection.outcome.label,
-        market: selection.market.kind === "moneyline" ? "Ganador" : selection.market.kind === "spread" ? "Hándicap" : "Total",
+        market: MARKET_NAME[selection.market.kind],
         odds: b.netOdds,
         stake,
         payout,

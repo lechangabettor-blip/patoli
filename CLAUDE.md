@@ -14,6 +14,7 @@ style bottom nav:
 1. **Inicio** — feed of other people's bets and results.
 2. **Deportes** — Polymarket game markets by league (Liga MX, NFL, NBA,
    Champions, Premier, La Liga): moneyline / spread / total, live CLOB prices.
+   Soccer swaps the spread for "Ambos anotan" (both teams to score) — LeChanga, 2026-10-16.
 3. **Batalla** (center) — piedra-papel-tijera P2P, one $1 lobby, best of 3,
    winner takes $2, no house, no rake.
 4. **Buscar** — users or games.

@@ -64,7 +64,7 @@ export function ticketFromItem(item: FeedItem): TicketData {
     leagueEmoji: league?.emoji,
     matchup: item.event,
     selection: item.selection,
-    market: item.market === "ML" ? "Ganador" : item.market === "Spread" ? "Hándicap" : item.market === "Total" ? "Total" : "Pick",
+    market: item.market === "ML" ? "Ganador" : item.market === "Spread" ? "Hándicap" : item.market === "Total" ? "Total" : item.market === "BTTS" ? "Ambos anotan" : "Pick",
     odds: item.odds,
     stake: item.stake,
     payout: item.payout,

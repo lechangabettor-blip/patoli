@@ -18,7 +18,7 @@ const STATUS: Record<FeedItem["status"], { label: string; cls: string }> = {
   void: { label: "Anulada", cls: "text-push border-hairline bg-surface" },
 };
 
-const MARKET_LABEL: Record<FeedItem["market"], string> = { ML: "Ganador", Spread: "Hándicap", Total: "Total", Otro: "Mercado" };
+const MARKET_LABEL: Record<FeedItem["market"], string> = { ML: "Ganador", Spread: "Hándicap", Total: "Total", BTTS: "Ambos anotan", Otro: "Mercado" };
 
 export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem; index?: number; onTicket?: (item: FeedItem) => void }) {
   const now = useNow();

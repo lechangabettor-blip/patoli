@@ -76,7 +76,7 @@ export async function searchProfiles(q: string, limit = 20): Promise<PublicProfi
   return (rows as ProfileRow[]).map((r) => toProfile(r, sm.get(r.id)));
 }
 
-const MARKET_LABEL: Record<string, FeedItem["market"]> = { moneyline: "ML", spread: "Spread", total: "Total" };
+const MARKET_LABEL: Record<string, FeedItem["market"]> = { moneyline: "ML", spread: "Spread", total: "Total", btts: "BTTS" };
 
 interface BetRow {
   id: string;
@@ -132,6 +132,7 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
   if (kind === "spread" && m?.line != null) selection = `${b.outcome} ${fmtLine(b.outcome_index === 0 ? m.line : -m.line)}`;
   if (kind === "total" && m?.line != null) selection = `${/over/i.test(b.outcome) ? "Más" : /under/i.test(b.outcome) ? "Menos" : b.outcome} ${m.line}`;
   if (kind === "moneyline" && /^draw$/i.test(b.outcome)) selection = "Empate";
+  if (kind === "btts") selection = /^yes$/i.test(b.outcome) ? "Ambos anotan · Sí" : "Ambos anotan · No";
   const p = b.profiles!;
   const prof = toProfile(p, s);
   return {

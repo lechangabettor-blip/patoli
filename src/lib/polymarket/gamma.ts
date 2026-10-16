@@ -12,7 +12,8 @@ import { LEAGUES, LEAGUE_BY_ID, type LeagueId } from "./leagues";
  * into one three-way line), the most liquid spread and the most liquid total.
  */
 
-export type MarketKind = "moneyline" | "spread" | "total";
+/** btts = "both teams to score" (soccer only; replaces the spread row there) */
+export type MarketKind = "moneyline" | "spread" | "total" | "btts";
 
 export interface GameOutcome {
   /** Display label, already localized: "Seahawks -2.5", "Más 46.5", "Empate" */
@@ -57,14 +58,15 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
   if (hit && Date.now() - hit.at < TTL_MS) return hit.games.slice(0, limit);
 
   const cfg = LEAGUE_BY_ID[league];
-  const [ml, spreads, totals] = await Promise.all([
+  // Soccer shows "Ambos anotan" where US sports show the spread (LeChanga, 2026-10-16).
+  const [ml, alts, totals] = await Promise.all([
     fetchMarkets(cfg.tagId, "moneyline", "gameStartTime", true, 200),
-    fetchMarkets(cfg.tagId, "spreads", "liquidityNum", false, 100),
+    fetchMarkets(cfg.tagId, cfg.threeWay ? "both_teams_to_score" : "spreads", "liquidityNum", false, 100),
     fetchMarkets(cfg.tagId, "totals", "liquidityNum", false, 100),
   ]);
 
   const slugRe = new RegExp(`^${cfg.slugPrefix}-[a-z0-9]+-[a-z0-9]+-\\d{4}-\\d{2}-\\d{2}(-\\d)?$`);
-  const byGame = new Map<string, { ml: GammaMarket[]; spread?: GammaMarket; total?: GammaMarket }>();
+  const byGame = new Map<string, { ml: GammaMarket[]; alt?: GammaMarket; total?: GammaMarket }>();
   const bucket = (m: GammaMarket) => {
     const slug = baseSlug(m);
     if (!slug || !slugRe.test(slug)) return null;
@@ -76,9 +78,9 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
     return b;
   };
   for (const m of ml) bucket(m)?.ml.push(m);
-  for (const m of spreads) {
+  for (const m of alts) {
     const b = bucket(m);
-    if (b && (!b.spread || liq(m) > liq(b.spread))) b.spread = m;
+    if (b && (!b.alt || liq(m) > liq(b.alt))) b.alt = m;
   }
   for (const m of totals) {
     const b = bucket(m);
@@ -98,8 +100,8 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
     const markets: GameMarket[] = [];
     const moneyline = cfg.threeWay ? mergeThreeWay(b.ml, { home, away, homeRaw, awayRaw }) : twoWay(b.ml[0]);
     if (moneyline) markets.push(moneyline);
-    if (b.spread) {
-      const m = spreadMarket(b.spread);
+    if (b.alt) {
+      const m = cfg.threeWay ? bttsMarket(b.alt) : spreadMarket(b.alt);
       if (m) markets.push(m);
     }
     if (b.total) {
@@ -168,7 +170,7 @@ interface GammaMarket {
 
 async function fetchMarkets(
   tagId: string,
-  type: "moneyline" | "spreads" | "totals",
+  type: "moneyline" | "spreads" | "totals" | "both_teams_to_score",
   order: string,
   ascending: boolean,
   limit: number,
@@ -277,6 +279,22 @@ function spreadMarket(m: GammaMarket): GameMarket | null {
     outcomes: [
       { label: line == null ? a : `${a} ${fmt(line)}`, tokenId: p.tokens[0], price: p.prices[0] ?? 0 },
       { label: line == null ? b : `${b} ${fmt(-line)}`, tokenId: p.tokens[1], price: p.prices[1] ?? 0 },
+    ],
+  };
+}
+
+/** Soccer "Both Teams to Score": Yes/No → "Ambos anotan · Sí / No". */
+function bttsMarket(m: GammaMarket): GameMarket | null {
+  const p = parsed(m);
+  if (!p || p.outcomes.length !== 2) return null;
+  const yes = p.outcomes.findIndex((o) => /^yes$/i.test(o));
+  const no = p.outcomes.findIndex((o) => /^no$/i.test(o));
+  if (yes < 0 || no < 0) return null;
+  return {
+    ...base(m, "btts", null),
+    outcomes: [
+      { label: "Ambos anotan · Sí", tokenId: p.tokens[yes], price: p.prices[yes] ?? 0 },
+      { label: "Ambos anotan · No", tokenId: p.tokens[no], price: p.prices[no] ?? 0 },
     ],
   };
 }

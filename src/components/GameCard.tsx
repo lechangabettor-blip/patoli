@@ -30,6 +30,7 @@ export default function GameCard({
   const { takerBps } = useBuilderFee();
   const ml = game.markets.find((m) => m.kind === "moneyline");
   const spread = game.markets.find((m) => m.kind === "spread");
+  const btts = game.markets.find((m) => m.kind === "btts");
   const total = game.markets.find((m) => m.kind === "total");
 
   const Btn = ({ m, o, stacked = false }: { m: GameMarket; o: GameOutcome; stacked?: boolean }) => {
@@ -47,7 +48,9 @@ export default function GameCard({
           dead ? "border-hairline bg-surface/40 text-muted-2" : "border-hairline bg-surface active:border-accent active:bg-[rgba(255,61,23,.12)]",
         )}
       >
-        <span className={cn("min-w-0 truncate text-[12px] text-muted", stacked && "w-full")}>{o.label}</span>
+        <span className={cn("min-w-0 truncate text-[12px] text-muted", stacked && "w-full")}>
+          {m.kind === "btts" ? o.label.replace(/^Ambos anotan · /, "") : o.label}
+        </span>
         <span className={cn("tnum shrink-0 font-display font-extrabold", stacked ? "text-lg" : "text-base", dead ? "" : "text-accent-soft")}>
           {odds ? formatOdds(odds) : "—"}
         </span>
@@ -81,6 +84,16 @@ export default function GameCard({
             {spread.outcomes.map((o) => (
               <Btn key={o.tokenId} m={spread} o={o} />
             ))}
+          </div>
+        ) : null}
+        {btts ? (
+          <div>
+            <div className="mb-1 px-1 text-[11px] uppercase tracking-wider text-muted-2">Ambos anotan</div>
+            <div className="flex gap-2">
+              {btts.outcomes.map((o) => (
+                <Btn key={o.tokenId} m={btts} o={o} />
+              ))}
+            </div>
           </div>
         ) : null}
         {total ? (

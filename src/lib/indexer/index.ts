@@ -54,7 +54,7 @@ export interface IndexRunResult {
   errors: string[];
 }
 
-const KIND: Record<string, string> = { moneyline: "moneyline", spreads: "spread", totals: "total" };
+const KIND: Record<string, string> = { moneyline: "moneyline", spreads: "spread", totals: "total", both_teams_to_score: "btts" };
 
 export async function runIndexer(opts: { maxPages?: number } = {}): Promise<IndexRunResult> {
   const res: IndexRunResult = { tradesSeen: 0, betsUpserted: 0, marketsUpserted: 0, settled: 0, unknownWallets: [], errors: [] };
