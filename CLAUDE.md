@@ -108,6 +108,10 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
 
 ## Gotchas learned the hard way
 
+- Gamma `/markets?condition_ids=` drops CLOSED markets unless `closed=true` is
+  passed (and open ones disappear when it is). The indexer queries both states;
+  otherwise nothing ever settles.
+
 - **Polygon RPC must be on Magic's CSP allowlist** (Magic's iframe blocks other
   hosts): `*.alchemy.com`, `*.infura.io`, `*.rpc.thirdweb.com`, `polygon-rpc.com`
   (dead since Oct 2026, returns 401). Default is thirdweb keyless; use an Alchemy

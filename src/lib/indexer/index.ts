@@ -147,18 +147,29 @@ export async function runIndexer(opts: { maxPages?: number } = {}): Promise<Inde
 
 type MarketRow = ReturnType<typeof toMarketRow>;
 
+/**
+ * Gamma `/markets?condition_ids=` silently drops CLOSED markets unless you ask
+ * for them with `closed=true` — and the two states can't be combined in one
+ * call. Settlement depends on seeing closed markets, so query both.
+ */
 async function fetchMarkets(conditionIds: string[]): Promise<MarketRow[]> {
-  const out: MarketRow[] = [];
+  const out = new Map<string, MarketRow>();
   for (let i = 0; i < conditionIds.length; i += 20) {
     const chunk = conditionIds.slice(i, i + 20);
-    const u = new URL(`${GAMMA_API_URL}/markets`);
-    for (const c of chunk) u.searchParams.append("condition_ids", c);
-    const r = await fetch(u, { cache: "no-store" });
-    if (!r.ok) continue;
-    const ms = (await r.json()) as GammaMarket[];
-    for (const m of ms) out.push(toMarketRow(m));
+    for (const closed of ["true", "false"]) {
+      const u = new URL(`${GAMMA_API_URL}/markets`);
+      for (const c of chunk) u.searchParams.append("condition_ids", c);
+      u.searchParams.set("closed", closed);
+      const r = await fetch(u, { cache: "no-store" });
+      if (!r.ok) continue;
+      const ms = (await r.json()) as GammaMarket[];
+      for (const m of ms) {
+        const row = toMarketRow(m);
+        if (!out.has(row.condition_id)) out.set(row.condition_id, row);
+      }
+    }
   }
-  return out;
+  return [...out.values()];
 }
 
 function toMarketRow(m: GammaMarket) {
