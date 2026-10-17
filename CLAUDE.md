@@ -170,10 +170,18 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   arena_settlements, `arena_pair()` RPC, `arena_stats` view). Protocol: lobby → pair → both
   sign Match (silent Magic sig) → per round: commit (hash+sig, 15s) → reveal after both
   commits (15s; secrets kept server-side until both in) → score → finished → both sign
-  Result → `ready` → cron `/api/arena/settle` (every minute) batches on-chain → `settled`.
-  Off-chain leniency: a missed commit/reveal loses the ROUND (on-chain dispute rule forfeits
-  the MATCH; only matters if someone refuses to sign). Timeouts applied by `tick` (clients
-  call it when timers hit 0; the cron sweeps).
+  Result → `ready` → cron `/api/arena/settle` (every minute) batches on-chain → `settled`
+  (marked ONLY from `Settled` events in the receipt; skipped items → `disputed`).
+  **Engine rules == contract `_replay` rules** (missed commit/reveal with the other side
+  delivered = match forfeit; nobody committed/revealed = ends on score). Timeouts applied by
+  `tick` (clients call it when timers hit 0; the cron sweeps). If a loser never signs the
+  Result, after `Match.deadline` the cron files the on-chain `claim` with all evidence
+  (anyone may claim; evidence is player-signed) → `disputed` → `finalize` after 24h.
+  Guards (security review 2026-10-17): one open match per player enforced inside
+  `arena_pair` (profile row lock); both balances + pending withdrawals re-checked when a
+  match goes signing→playing (else cancelled); relayed withdrawals refused while queued or
+  in a match; signatures must be canonical 65-byte low-s (`isCanonicalSig`) so off-chain
+  and on-chain verification can't diverge; `settle_error` holds generic codes only.
 - **Client:** `useArena` hooks (realtime via Supabase browser client — the ONE place the
   browser talks to Supabase, read-only), `BattleArena` (real) vs `BattleLobbyDemo` (when
   `NEXT_PUBLIC_ARENA_ADDRESS` is unset). Perfil shows the Arena balance + "Regresar todo a

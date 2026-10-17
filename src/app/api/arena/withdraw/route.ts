@@ -6,7 +6,7 @@ import { isArenaConfigured } from "@/lib/arena/typed-data";
 function fail(e: unknown) {
   if (e instanceof ArenaError) return NextResponse.json({ error: e.message }, { status: e.status });
   console.error("[arena]", e);
-  return NextResponse.json({ error: e instanceof Error ? e.message : "error" }, { status: 500 });
+  return NextResponse.json({ error: "Algo falló de nuestro lado. Intenta de nuevo." }, { status: 500 });
 }
 async function guard(req: NextRequest) {
   if (!isArenaConfigured()) throw new ArenaError("La arena aún no está activa", 503);
@@ -16,7 +16,7 @@ async function guard(req: NextRequest) {
 }
 
 import { arenaBalance, arenaNonce, sendWithdrawWithSig, verifyWithdrawSig, waitForTx } from "@/lib/arena/server";
-import { openMatchFor } from "@/lib/arena/engine";
+import { leaveLobby, lobbyStatus, openMatchFor } from "@/lib/arena/engine";
 import { toUnits } from "@/lib/arena/typed-data";
 import type { Hex } from "viem";
 
@@ -29,6 +29,10 @@ export async function POST(req: NextRequest) {
     const units = toUnits(Number(amount));
     if (units <= 0n) throw new ArenaError("Monto inválido");
     if (await openMatchFor(me.profileId)) throw new ArenaError("Termina tu partida antes de retirar", 409);
+    if ((await lobbyStatus(me.profileId)).queued) {
+      await leaveLobby(me.profileId); // can't be matched while withdrawing
+      throw new ArenaError("Te sacamos del lobby. Intenta retirar de nuevo.", 409);
+    }
     const [bal, nonce] = await Promise.all([arenaBalance(me.eoa), arenaNonce(me.eoa)]);
     if (bal < units) throw new ArenaError("Saldo insuficiente en la arena");
     const msg = { player: me.eoa, to: me.wallet, amount: units, nonce, deadline: BigInt(deadline) };

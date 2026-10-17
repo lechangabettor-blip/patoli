@@ -4,7 +4,7 @@ import { ArenaError } from "@/lib/arena/engine";
 function fail(e: unknown) {
   if (e instanceof ArenaError) return NextResponse.json({ error: e.message }, { status: e.status });
   console.error("[arena]", e);
-  return NextResponse.json({ error: e instanceof Error ? e.message : "error" }, { status: 500 });
+  return NextResponse.json({ error: "Algo falló de nuestro lado. Intenta de nuevo." }, { status: 500 });
 }
 
 import { loadMatch } from "@/lib/arena/engine";

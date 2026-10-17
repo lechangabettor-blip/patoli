@@ -2,15 +2,23 @@ import "server-only";
 import { randomBytes } from "crypto";
 import type { Hex } from "viem";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { parseEventLogs } from "viem";
+import { arenaAbi } from "./abi";
 import {
   arenaBalance,
+  arenaLimits,
   arenaPendingWithdraw,
+  readClaim,
+  sendClaim,
+  sendFinalize,
   sendSettleBatch,
   verifyCommitSig,
   verifyMatchSig,
   verifyResultSig,
   waitForTx,
   type ArenaIdentity,
+  type ClaimCommit,
+  type ClaimReveal,
   type SettleItem,
 } from "./server";
 import {
@@ -32,11 +40,12 @@ import {
  * Nothing here can decide money on its own: the chain only accepts outcomes
  * signed by both players, or replays the players' own signed commits.
  *
- * Off-chain leniency vs on-chain rules: on-chain a missing commit/reveal
- * forfeits the MATCH (dispute path). Here, to be kind to flaky phones, a missed
- * commit/reveal only loses the ROUND. Both players still sign the final result,
- * so the lenient outcome is what gets settled; the harsh rule exists only for a
- * player who disappears and refuses to sign.
+ * The engine applies EXACTLY the contract's `_replay` rules, so the outcome both
+ * players are asked to sign is the same one the chain would compute from the
+ * signed artifacts: a missed commit or reveal (when the other side delivered)
+ * forfeits the match; a round where nobody commits/reveals ends the match on
+ * score (tie → draw). If a loser refuses to sign, the operator files the claim
+ * with all the evidence and the chain reaches the same result.
  */
 
 export type Side = "a" | "b";
@@ -61,6 +70,7 @@ export interface MatchRow {
   result_sig_a: string | null;
   result_sig_b: string | null;
   settle_tx: string | null;
+  claim_tx: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -92,7 +102,7 @@ export class ArenaError extends Error {
   }
 }
 
-const MATCH_COLS = "id, player_a, player_b, eoa_a, eoa_b, stake, best_of, deadline, status, sig_a, sig_b, round, score_a, score_b, winner_eoa, result_sig_a, result_sig_b, settle_tx, created_at, started_at, finished_at";
+const MATCH_COLS = "id, player_a, player_b, eoa_a, eoa_b, stake, best_of, deadline, status, sig_a, sig_b, round, score_a, score_b, winner_eoa, result_sig_a, result_sig_b, settle_tx, claim_tx, created_at, started_at, finished_at";
 const nowIso = () => new Date().toISOString();
 const plus = (sec: number) => new Date(Date.now() + sec * 1000).toISOString();
 const past = (iso: string | null) => !!iso && new Date(iso).getTime() <= Date.now();
@@ -123,11 +133,16 @@ export async function joinLobby(me: ArenaIdentity, stakeUsd: number): Promise<{ 
   const [bal, pending] = await Promise.all([arenaBalance(me.eoa), arenaPendingWithdraw(me.eoa)]);
   if (pending.amount > 0n) throw new ArenaError("Tienes un retiro en curso. Cancélalo para jugar.", 409);
   if (bal < toUnits(stakeUsd)) throw new ArenaError("Fondea tu arena primero.", 402);
+  const limits = await arenaLimits();
+  if (toUnits(stakeUsd) < limits.min || toUnits(stakeUsd) > limits.max) throw new ArenaError("Monto fuera de los límites de la arena.");
 
   const matchId = newMatchId();
   const deadline = new Date(Date.now() + MATCH_TTL_MINUTES * 60_000).toISOString();
   const { data, error } = await db.rpc("arena_pair", { p_profile: me.profileId, p_eoa: me.eoa, p_stake: stakeUsd, p_match_id: matchId, p_deadline: deadline });
-  if (error) throw new ArenaError(error.message, 500);
+  if (error) {
+    console.error("[arena] arena_pair", error.message);
+    throw new ArenaError("No se pudo entrar al lobby", 500);
+  }
   const row = (Array.isArray(data) ? data[0] : data) as { matched: boolean; match_id: string | null } | undefined;
   if (row?.matched && row.match_id) {
     // the pairing function created the row; stamp best_of (default in schema) — nothing else to do
@@ -180,6 +195,19 @@ export async function applyMatchSig(id: string, me: ArenaIdentity, sig: Hex) {
   const { data: fresh } = await db.from("arena_matches").select(MATCH_COLS).eq("id", id).single();
   const f = fresh as MatchRow;
   if (f.sig_a && f.sig_b && f.status === "signing") {
+    // Balances are not locked on-chain (zero gas per match), so re-check BOTH players
+    // right before play starts. Anyone short → cancel, nothing at stake yet.
+    const [balA, balB, pendA, pendB] = await Promise.all([
+      arenaBalance(f.eoa_a as Hex),
+      arenaBalance(f.eoa_b as Hex),
+      arenaPendingWithdraw(f.eoa_a as Hex),
+      arenaPendingWithdraw(f.eoa_b as Hex),
+    ]);
+    const need = toUnits(Number(f.stake));
+    if (balA < need || balB < need || pendA.amount > 0n || pendB.amount > 0n) {
+      await db.from("arena_matches").update({ status: "cancelled", settle_error: "stake no disponible al iniciar" }).eq("id", id).eq("status", "signing");
+      return (await loadMatch(id))!.match;
+    }
     const { data: started } = await db
       .from("arena_matches")
       .update({ status: "playing", round: 1, started_at: nowIso() })
@@ -290,7 +318,23 @@ async function settleRound(id: string, round: number, outcome: "a" | "b" | "tie"
   }
 }
 
-/** Timeouts. Called by clients when their timer hits zero and by the cron sweep. */
+/** Ends a match now. winnerSide null = decide on score (tie → draw). */
+async function finishMatch(id: string, winnerSide: Side | null, reason: string) {
+  const db = supabaseAdmin();
+  const { data: mrow } = await db.from("arena_matches").select(MATCH_COLS).eq("id", id).single();
+  const m = mrow as MatchRow;
+  if (m.status !== "playing") return;
+  const winner = winnerSide === "a" ? m.eoa_a : winnerSide === "b" ? m.eoa_b : m.score_a > m.score_b ? m.eoa_a : m.score_b > m.score_a ? m.eoa_b : null;
+  await db
+    .from("arena_matches")
+    .update({ status: "finished", winner_eoa: winner, finished_at: nowIso(), settle_error: reason })
+    .eq("id", id)
+    .eq("status", "playing");
+  // close the open round for the record
+  await db.from("arena_rounds").update({ outcome: winnerSide ?? "tie", resolved_at: nowIso() }).eq("match_id", id).eq("round", m.round).is("outcome", null);
+}
+
+/** Timeouts — the contract's replay rules, applied live. Called by clients when a timer hits zero and by the cron sweep. */
 export async function tick(id: string) {
   const db = supabaseAdmin();
   const loaded = await loadMatch(id);
@@ -312,17 +356,18 @@ export async function tick(id: string) {
       const a = secrets?.find((s) => s.side === "a");
       const b = secrets?.find((s) => s.side === "b");
       if (a && b) await resolveIfBothRevealed(id, m.round);
-      else {
-        const outcome: "a" | "b" | "tie" = a ? "a" : b ? "b" : "tie";
-        const reveals: Partial<RoundRow> = {};
-        if (a) Object.assign(reveals, { move_a: a.move, salt_a: a.salt });
-        if (b) Object.assign(reveals, { move_b: b.move, salt_b: b.salt });
-        await settleRound(id, m.round, outcome, reveals);
+      else if (a || b) {
+        // one revealed, the other did not → non-revealer forfeits the match (contract rule)
+        const reveals: Partial<RoundRow> = a ? { move_a: a.move, salt_a: a.salt } : { move_b: b!.move, salt_b: b!.salt };
+        await db.from("arena_rounds").update(reveals).eq("match_id", id).eq("round", m.round);
+        await finishMatch(id, a ? "a" : "b", "rival no reveló");
+      } else {
+        await finishMatch(id, null, "nadie reveló"); // neither revealed → match ends on score
       }
     }
   } else if (past(r.commit_deadline)) {
-    const outcome: "a" | "b" | "tie" = r.commit_a ? "a" : r.commit_b ? "b" : "tie";
-    await settleRound(id, m.round, outcome);
+    if (r.commit_a || r.commit_b) await finishMatch(id, r.commit_a ? "a" : "b", "rival no jugó"); // missing commit → forfeit
+    else await finishMatch(id, null, "nadie jugó"); // nobody committed → ends on score
   }
   return loadMatch(id);
 }
@@ -369,12 +414,23 @@ export async function settleReady(limit = 25): Promise<{ sent: number; tx: strin
     const receipt = await waitForTx(tx);
     const ok = receipt.status === "success";
     await db.from("arena_settlements").update({ status: ok ? "confirmed" : "failed" }).eq("tx_hash", tx);
-    if (ok) await db.from("arena_matches").update({ status: "settled", settle_tx: tx, settled_at: nowIso() }).in("id", ids).eq("status", "ready");
-    else await db.from("arena_matches").update({ settle_error: "tx reverted" }).in("id", ids);
-    return { sent: ids.length, tx, error: ok ? undefined : "reverted" };
+    if (!ok) {
+      await db.from("arena_matches").update({ settle_error: "tx reverted" }).in("id", ids);
+      return { sent: 0, tx, error: "reverted" };
+    }
+    // settleBatch skips bad items silently → trust only the Settled events in the receipt
+    const settledIds = new Set(
+      parseEventLogs({ abi: arenaAbi, logs: receipt.logs, eventName: "Settled" }).map((l) => (l.args.matchId as string).toLowerCase()),
+    );
+    const done = ids.filter((i) => settledIds.has(i.toLowerCase()));
+    const skipped = ids.filter((i) => !settledIds.has(i.toLowerCase()));
+    if (done.length) await db.from("arena_matches").update({ status: "settled", settle_tx: tx, settled_at: nowIso() }).in("id", done).eq("status", "ready");
+    if (skipped.length) await db.from("arena_matches").update({ settle_error: "omitida on-chain (firma/saldo inválido)", status: "disputed" }).in("id", skipped).eq("status", "ready");
+    return { sent: done.length, tx, error: skipped.length ? `${skipped.length} omitidas` : undefined };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await db.from("arena_matches").update({ settle_error: msg.slice(0, 300) }).in("id", ids);
+    console.error("[arena] settleBatch failed", msg);
+    await db.from("arena_matches").update({ settle_error: "error al liquidar, reintentando" }).in("id", ids);
     return { sent: 0, tx: null, error: msg };
   }
 }
@@ -388,10 +444,67 @@ export async function sweep(): Promise<{ ticked: number; settled: { sent: number
     await tick(row.id as string);
     ticked++;
   }
-  // finished matches whose loser never signed within the TTL stay 'finished' → winner can claim on-chain (dispute path)
   await db.from("arena_lobby").delete().lt("expires_at", nowIso());
+  await fileClaims();
+  await finalizeClaims();
   const settled = await settleReady();
   return { ticked, settled };
+}
+
+/** A finished match whose loser never signed, past Match.deadline → operator files the claim with all evidence. */
+async function fileClaims(limit = 5) {
+  const db = supabaseAdmin();
+  const { data: rows } = await db
+    .from("arena_matches")
+    .select(MATCH_COLS)
+    .eq("status", "finished")
+    .lt("deadline", nowIso())
+    .is("claim_tx", null)
+    .limit(limit);
+  for (const row of (rows ?? []) as MatchRow[]) {
+    if (row.result_sig_a && row.result_sig_b) continue; // will go the happy path
+    try {
+      const { data: rounds } = await db.from("arena_rounds").select("*").eq("match_id", row.id).order("round");
+      const { data: secrets } = await db.from("arena_round_secrets").select("round, side, move, salt").eq("match_id", row.id);
+      const commits: ClaimCommit[] = [];
+      const reveals: ClaimReveal[] = [];
+      for (const r of (rounds ?? []) as RoundRow[]) {
+        if (r.commit_a && r.commit_sig_a) commits.push({ round: r.round, player: row.eoa_a as Hex, hash: r.commit_a as Hex, sig: r.commit_sig_a as Hex });
+        if (r.commit_b && r.commit_sig_b) commits.push({ round: r.round, player: row.eoa_b as Hex, hash: r.commit_b as Hex, sig: r.commit_sig_b as Hex });
+        if (r.move_a && r.salt_a) reveals.push({ round: r.round, player: row.eoa_a as Hex, move: r.move_a, salt: r.salt_a as Hex });
+        if (r.move_b && r.salt_b) reveals.push({ round: r.round, player: row.eoa_b as Hex, move: r.move_b, salt: r.salt_b as Hex });
+      }
+      for (const s of secrets ?? []) {
+        const player = (s.side === "a" ? row.eoa_a : row.eoa_b) as Hex;
+        if (!reveals.some((x) => x.round === s.round && x.player === player)) reveals.push({ round: s.round as number, player, move: s.move as number, salt: s.salt as Hex });
+      }
+      const tx = await sendClaim(toMatchStruct(row), row.sig_a as Hex, row.sig_b as Hex, commits, reveals);
+      await waitForTx(tx);
+      await db.from("arena_matches").update({ status: "disputed", claim_tx: tx, settle_error: "reclamo en cadena (24h)" }).eq("id", row.id).eq("status", "finished");
+    } catch (e) {
+      console.error("[arena] claim failed", row.id, e instanceof Error ? e.message : e);
+    }
+  }
+}
+
+/** Claims past their challenge window → finalize (pays out). */
+async function finalizeClaims(limit = 5) {
+  const db = supabaseAdmin();
+  const { data: rows } = await db.from("arena_matches").select(MATCH_COLS).eq("status", "disputed").limit(limit);
+  for (const row of (rows ?? []) as MatchRow[]) {
+    try {
+      const c = await readClaim(row.id as Hex);
+      if (c.finalizeAt === 0n || BigInt(Math.floor(Date.now() / 1000)) < c.finalizeAt) continue;
+      const tx = await sendFinalize(toMatchStruct(row), row.sig_a as Hex, row.sig_b as Hex);
+      const receipt = await waitForTx(tx);
+      if (receipt.status === "success") {
+        const winner = c.winner.toLowerCase() === "0x0000000000000000000000000000000000000000" ? null : c.winner.toLowerCase();
+        await db.from("arena_matches").update({ status: "settled", settle_tx: tx, settled_at: nowIso(), winner_eoa: winner, settle_error: null }).eq("id", row.id).eq("status", "disputed");
+      }
+    } catch (e) {
+      console.error("[arena] finalize failed", row.id, e instanceof Error ? e.message : e);
+    }
+  }
 }
 
 export { BEST_OF };

@@ -191,11 +191,10 @@ describe("PatoliArena", () => {
       expect(await arena.balanceOf(b.address)).to.equal(USD(11));
     });
 
-    it("nobody played → draw, nothing moves; ties replay; a non-player cannot claim", async () => {
+    it("nobody played → draw, nothing moves; anyone (e.g. the operator) may file the claim", async () => {
       const { m, sigA, sigB } = await newMatch(USD(1), 3, 60);
       await warp(61);
-      await expect(arena.connect(relayer).claim(m, sigA, sigB, [], [])).to.be.revertedWithCustomError(arena, "NotPlayer");
-      await arena.connect(a).claim(m, sigA, sigB, [], []);
+      await arena.connect(relayer).claim(m, sigA, sigB, [], []);
       await warp(24 * 3600 + 1);
       await arena.finalize(m, sigA, sigB);
       expect(await arena.balanceOf(a.address)).to.equal(USD(10));

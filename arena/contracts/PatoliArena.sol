@@ -125,7 +125,6 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
     error AlreadySettled();
     error BadMatch();
     error StakeOutOfRange();
-    error NotPlayer();
     error NoClaim();
     error WeakerClaim();
     error ClaimPending();
@@ -244,14 +243,15 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
 
     // ----------------------------------------------------------- dispute path
 
-    /// @notice After the match deadline, a player presents the artifacts they hold. The
-    ///         contract replays the match; the outcome becomes payable after
-    ///         `challengeWindow` unless the opponent presents strictly more evidence.
+    /// @notice After the match deadline, anyone (a player, or Patoli's operator on the
+    ///         winner's behalf) presents the signed artifacts they hold. The contract
+    ///         replays the match; the outcome becomes payable after `challengeWindow`
+    ///         unless someone presents strictly more evidence. Evidence is player-signed,
+    ///         so a third party can only ever submit a subset, never a forgery.
     function claim(Match calldata m, bytes calldata sigA, bytes calldata sigB, SignedCommit[] calldata commits, Reveal[] calldata reveals)
         external
     {
         _checkMatch(m, sigA, sigB);
-        if (msg.sender != m.playerA && msg.sender != m.playerB) revert NotPlayer();
         if (block.timestamp <= m.deadline) revert TooEarly();
         (address winner, uint32 evidence) = _replay(m, commits, reveals);
         Claim memory prev = claims[m.id];

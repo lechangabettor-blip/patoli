@@ -49,16 +49,33 @@ export async function arenaLimits(): Promise<{ min: bigint; max: bigint }> {
 
 /** Signature checks (EOA or ERC-1271, via the chain) --------------------- */
 
+const SECP256K1_N_HALF = BigInt("0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0");
+/**
+ * Accept only what OpenZeppelin's ECDSA.recover accepts on-chain: exactly 65 bytes,
+ * low-s, v ∈ {27, 28}. Anything else is rejected here so a signature that verifies
+ * off-chain can never be one the contract later refuses (or vice versa).
+ */
+export function isCanonicalSig(sig: string): sig is Hex {
+  if (!/^0x[0-9a-fA-F]{130}$/.test(sig)) return false;
+  const s = BigInt("0x" + sig.slice(66, 130));
+  const v = parseInt(sig.slice(130, 132), 16);
+  return s > 0n && s <= SECP256K1_N_HALF && (v === 27 || v === 28);
+}
+
 export function verifyMatchSig(m: MatchStruct, signer: Hex, signature: Hex) {
+  if (!isCanonicalSig(signature)) return Promise.resolve(false);
   return arenaPublic.verifyTypedData({ address: signer, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Match", message: { ...m }, signature });
 }
 export function verifyCommitSig(matchId: Hex, round: number, hash: Hex, signer: Hex, signature: Hex) {
+  if (!isCanonicalSig(signature)) return Promise.resolve(false);
   return arenaPublic.verifyTypedData({ address: signer, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Commit", message: { matchId, round, hash }, signature });
 }
 export function verifyResultSig(matchId: Hex, winner: Hex, signer: Hex, signature: Hex) {
+  if (!isCanonicalSig(signature)) return Promise.resolve(false);
   return arenaPublic.verifyTypedData({ address: signer, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Result", message: { matchId, winner }, signature });
 }
 export function verifyWithdrawSig(msg: { player: Hex; to: Hex; amount: bigint; nonce: bigint; deadline: bigint }, signature: Hex) {
+  if (!isCanonicalSig(signature)) return Promise.resolve(false);
   return arenaPublic.verifyTypedData({ address: msg.player, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Withdraw", message: msg, signature });
 }
 
@@ -108,6 +125,23 @@ export async function sendSettleBatch(items: SettleItem[]): Promise<Hex> {
 export async function sendWithdrawWithSig(player: Hex, to: Hex, amount: bigint, deadline: bigint, sig: Hex): Promise<Hex> {
   const wallet = operatorWallet();
   return wallet.writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "withdrawWithSig", args: [player, to, amount, deadline, sig] });
+}
+
+export interface ClaimCommit { round: number; player: Hex; hash: Hex; sig: Hex }
+export interface ClaimReveal { round: number; player: Hex; move: number; salt: Hex }
+
+/** Operator files a dispute claim with every signed artifact we hold (the chain replays the game). */
+export async function sendClaim(m: MatchStruct, sigA: Hex, sigB: Hex, commits: ClaimCommit[], reveals: ClaimReveal[]): Promise<Hex> {
+  const wallet = operatorWallet();
+  return wallet.writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "claim", args: [m, sigA, sigB, commits, reveals] });
+}
+export async function sendFinalize(m: MatchStruct, sigA: Hex, sigB: Hex): Promise<Hex> {
+  const wallet = operatorWallet();
+  return wallet.writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "finalize", args: [m, sigA, sigB] });
+}
+export async function readClaim(matchId: Hex): Promise<{ claimant: Hex; winner: Hex; evidence: number; finalizeAt: bigint }> {
+  const [claimant, winner, evidence, finalizeAt] = await arenaPublic.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "claims", args: [matchId] });
+  return { claimant, winner, evidence, finalizeAt };
 }
 
 export async function waitForTx(hash: Hex) {

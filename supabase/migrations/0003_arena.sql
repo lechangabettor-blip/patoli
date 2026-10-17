@@ -33,7 +33,8 @@ create table if not exists public.arena_matches (
   result_sig_a  text,
   result_sig_b  text,
   settle_tx     text,
-  settle_error  text,
+  claim_tx      text,                       -- dispute path: operator-filed claim
+  settle_error  text,                       -- short generic code only (public table)
   created_at    timestamptz not null default now(),
   started_at    timestamptz,
   finished_at   timestamptz,
@@ -90,7 +91,18 @@ create or replace function public.arena_pair(p_profile uuid, p_eoa text, p_stake
 returns table (matched boolean, match_id text) language plpgsql as $$
 declare
   other record;
+  existing text;
 begin
+  -- one open match per player, decided inside this transaction (lock the caller's profile row)
+  perform 1 from public.profiles where id = p_profile for update;
+  select id into existing from public.arena_matches
+    where (player_a = p_profile or player_b = p_profile) and status in ('signing','playing','finished','ready')
+    order by created_at desc limit 1;
+  if existing is not null then
+    delete from public.arena_lobby where profile_id = p_profile;
+    return query select true, existing;
+    return;
+  end if;
   delete from public.arena_lobby where expires_at < now();
   select * into other from public.arena_lobby
     where stake = p_stake and profile_id <> p_profile
@@ -98,6 +110,16 @@ begin
   if other.profile_id is null then
     insert into public.arena_lobby (profile_id, eoa, stake)
       values (p_profile, p_eoa, p_stake)
+      on conflict (profile_id) do update set stake = excluded.stake, joined_at = now(), expires_at = now() + interval '2 minutes';
+    return query select false, null::text;
+    return;
+  end if;
+  -- the other player must not have an open match either (their lobby row may be stale)
+  if exists (select 1 from public.arena_matches
+             where (player_a = other.profile_id or player_b = other.profile_id)
+               and status in ('signing','playing','finished','ready')) then
+    delete from public.arena_lobby where profile_id = other.profile_id;
+    insert into public.arena_lobby (profile_id, eoa, stake) values (p_profile, p_eoa, p_stake)
       on conflict (profile_id) do update set stake = excluded.stake, joined_at = now(), expires_at = now() + interval '2 minutes';
     return query select false, null::text;
     return;
