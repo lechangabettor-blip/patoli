@@ -166,6 +166,19 @@ export function buildUnwrapCalls(to: `0x${string}`, amount: bigint): DepositWall
   ];
 }
 
+/**
+ * Fund the Arena from the deposit wallet: approve pUSD → arena.deposit(amount, eoa).
+ * The deposit wallet is msg.sender; the balance is credited to the owner EOA,
+ * which is the key that signs matches (Magic).
+ */
+export function buildArenaDepositCalls(arena: `0x${string}`, eoa: `0x${string}`, amount: bigint): DepositWalletCall[] {
+  const depositAbi = parseAbi(["function deposit(uint256 amount, address beneficiary)"]);
+  return [
+    { target: PUSD_ADDRESS, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [arena, amount] }) },
+    { target: arena, value: "0", data: encodeFunctionData({ abi: depositAbi, functionName: "deposit", args: [amount, eoa] }) },
+  ];
+}
+
 /** Send an ERC-20 out of the deposit wallet (withdrawals, moving funds). */
 export function buildErc20TransferCall(token: `0x${string}`, to: `0x${string}`, amount: bigint): DepositWalletCall {
   return { target: token, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [to, amount] }) };

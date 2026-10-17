@@ -31,7 +31,9 @@ import {
   isWrapPaused,
   buildErc20TransferCall,
   USDC_NATIVE_ADDRESS,
+  buildArenaDepositCalls,
 } from "@/lib/polymarket/v2";
+import { ARENA_ADDRESS, isArenaConfigured } from "@/lib/arena/typed-data";
 import {
   SESSION_VERSION,
   clearSession,
@@ -76,6 +78,8 @@ interface TradingContextType {
   migrateFromSafe: (amount: bigint) => Promise<void>;
   /** Withdraw: pUSD → USDC.e sent to `to` on Polygon (gasless). Returns tx hash if known. */
   withdraw: (to: `0x${string}`, amount: bigint) => Promise<string | undefined>;
+  /** Move pUSD from the deposit wallet into the Arena escrow (gasless batch; credited to the EOA). */
+  depositArena: (amount: bigint) => Promise<void>;
   /** Cobrar: redeem resolved positions into pUSD (gasless, one signature for all). */
   redeem: (targets: RedeemTarget[]) => Promise<string | undefined>;
   resetTrading: () => void;
@@ -290,6 +294,21 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     [relayClient, walletAddress],
   );
 
+  const depositArena = useCallback(
+    async (amount: bigint) => {
+      if (!relayClient || !walletAddress || !eoaAddress) throw new Error("Primero activa tu cuenta");
+      if (!isArenaConfigured()) throw new Error("La arena aún no está activa");
+      if (amount <= 0n) throw new Error("Monto inválido");
+      const resp = await relayClient.executeDepositWalletBatch(
+        buildArenaDepositCalls(ARENA_ADDRESS, eoaAddress as `0x${string}`, amount),
+        walletAddress,
+        batchDeadline(),
+      );
+      await resp.wait();
+    },
+    [relayClient, walletAddress, eoaAddress],
+  );
+
   const redeem = useCallback(
     async (targets: RedeemTarget[]) => {
       if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
@@ -344,10 +363,11 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       rescueNativeUsdc,
       migrateFromSafe,
       withdraw,
+      depositArena,
       redeem,
       resetTrading,
     }),
-    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, rescueNativeUsdc, migrateFromSafe, withdraw, redeem, resetTrading],
+    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, rescueNativeUsdc, migrateFromSafe, withdraw, depositArena, redeem, resetTrading],
   );
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>;

@@ -1,5 +1,12 @@
 {
   "crons": [
-    { "path": "/api/indexer/run", "schedule": "*/5 * * * *" }
+    {
+      "path": "/api/indexer/run",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/arena/settle",
+      "schedule": "* * * * *"
+    }
   ]
 }

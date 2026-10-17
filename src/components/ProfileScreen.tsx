@@ -23,6 +23,8 @@ import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { cn } from "@/lib/cn";
 import FeedCard from "./FeedCard";
 import { ticketFromItem, useSyncBets, useUser } from "@/hooks/useSocial";
+import { useArenaActions, useArenaMe } from "@/hooks/useArena";
+import { isArenaConfigured } from "@/lib/arena/typed-data";
 import { copyText } from "@/lib/clipboard";
 
 interface Position {
@@ -48,6 +50,26 @@ export default function ProfileScreen() {
   const { walletAddress, legacySafeAddress, isReady, step, setupTrading, error, wrapUsdc, rescueNativeUsdc, migrateFromSafe, redeem } = useTrading();
   const { balance, pendingUsdc, pendingUsdcRaw, legacyUsdc, legacyUsdcRaw, nativeUsdc, nativeUsdcRaw, refetch } = useUsdcBalance();
   const [rescueNote, setRescueNote] = useState<string | null>(null);
+  const arenaMe = useArenaMe();
+  const arena = useArenaActions();
+  const [arenaBusy, setArenaBusy] = useState(false);
+  const [arenaErr, setArenaErr] = useState<string | null>(null);
+
+  async function withdrawArena() {
+    const a = arenaMe.data;
+    if (!a || !walletAddress || a.balance <= 0) return;
+    setArenaErr(null);
+    setArenaBusy(true);
+    try {
+      await arena.withdraw(a.balance, a.nonce, walletAddress as `0x${string}`);
+      await refetch();
+      await arenaMe.refetch();
+    } catch (e) {
+      setArenaErr(e instanceof Error ? e.message : "No se pudo retirar");
+    } finally {
+      setArenaBusy(false);
+    }
+  }
   const qc = useQueryClient();
   const [copied, setCopied] = useState<"idle" | "ok" | "fail">("idle");
   const [showFullAddress, setShowFullAddress] = useState(false);
@@ -292,6 +314,35 @@ export default function ProfileScreen() {
           </div>
         ) : null}
         {rescueNote ? <p className="mt-2 text-xs text-win">{rescueNote}</p> : null}
+
+        {/* Arena balance (PvP escrow) */}
+        {isArenaConfigured() && isReady && arenaMe.data ? (
+          <div className="card mt-3 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-display text-sm font-extrabold uppercase">Arena</div>
+                <p className="mt-0.5 text-xs text-muted">Tu fondo para piedra, papel o tijera.</p>
+              </div>
+              <div className="tnum font-display text-lg font-extrabold">${formatUsd(arenaMe.data.balance)}</div>
+            </div>
+            {arenaMe.data.pending ? (
+              <p className="mt-2 text-xs text-accent-soft">Retiro en curso: ${formatUsd(arenaMe.data.pending.amount)}.</p>
+            ) : arenaMe.data.balance > 0 ? (
+              <button
+                onClick={withdrawArena}
+                disabled={arenaBusy || !!arenaMe.data.matchId}
+                className="btn-ghost mt-3 w-full py-2.5 font-display text-xs font-bold uppercase"
+              >
+                {arenaBusy ? "Retirando…" : arenaMe.data.matchId ? "Termina tu partida primero" : "Regresar todo a mi saldo"}
+              </button>
+            ) : (
+              <Link href="/batalla" className="btn-ghost mt-3 block w-full py-2.5 text-center font-display text-xs font-bold uppercase">
+                Fondear en Batalla
+              </Link>
+            )}
+            {arenaErr ? <p className="mt-2 text-xs text-loss">{arenaErr}</p> : null}
+          </div>
+        ) : null}
 
         {/* Funds parked in the v1 Safe (early testers only) */}
         {isReady && legacyUsdc > 0 && legacySafeAddress ? (

@@ -150,6 +150,39 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
 - **Client:** `MeProvider` syncs the profile after login; `useSocial` hooks;
   `FeedCard`/`HomeFeed`/`PublicProfile`/`SearchScreen` consume the APIs.
 
+## Arena — PvP piedra·papel·tijera (built 2026-10-17, NOT deployed yet)
+
+- **Contract** `arena/contracts/PatoliArena.sol` (Hardhat 2, Solidity 0.8.28, cancun, viaIR;
+  OpenZeppelin 5). Escrow token = pUSD. `deposit(amount, beneficiary)` is called by the
+  Polymarket deposit wallet with beneficiary = owner EOA (the Magic key that signs). Balances
+  are NOT locked per match (zero gas per match). Settlement: `settle`/`settleBatch` need the
+  players' EIP-712 `Match` sigs + both `Result` sigs (anyone may submit). Dispute path after
+  `Match.deadline`: `claim` with signed `Commit`s + reveals → contract replays the game;
+  counter-claim needs strictly more evidence; `finalize` after 24h. Withdrawals:
+  `requestWithdraw`→`finalizeWithdraw` (1h delay, no server) or `withdrawWithSig` (relayed).
+  Owner can only set limits ($0.50–$20), pause deposits, rescue non-escrow tokens.
+  Tests: `cd arena && npm test` (15 passing). Deploy: `npm run deploy:polygon` (needs
+  `arena/.env` ARENA_DEPLOYER_KEY funded with POL) → writes `arena/deployments/polygon.json`;
+  then set `NEXT_PUBLIC_ARENA_ADDRESS` in `.env.local`. Operator = same key as
+  `ARENA_OPERATOR_KEY` (pays gas for settle batches + relayed withdrawals, never holds funds).
+- **Off-chain engine** `src/lib/arena/engine.ts` on Supabase tables (migration
+  `0003_arena.sql`: arena_lobby, arena_matches, arena_rounds, arena_round_secrets,
+  arena_settlements, `arena_pair()` RPC, `arena_stats` view). Protocol: lobby → pair → both
+  sign Match (silent Magic sig) → per round: commit (hash+sig, 15s) → reveal after both
+  commits (15s; secrets kept server-side until both in) → score → finished → both sign
+  Result → `ready` → cron `/api/arena/settle` (every minute) batches on-chain → `settled`.
+  Off-chain leniency: a missed commit/reveal loses the ROUND (on-chain dispute rule forfeits
+  the MATCH; only matters if someone refuses to sign). Timeouts applied by `tick` (clients
+  call it when timers hit 0; the cron sweeps).
+- **Client:** `useArena` hooks (realtime via Supabase browser client — the ONE place the
+  browser talks to Supabase, read-only), `BattleArena` (real) vs `BattleLobbyDemo` (when
+  `NEXT_PUBLIC_ARENA_ADDRESS` is unset). Perfil shows the Arena balance + "Regresar todo a
+  mi saldo" (withdrawWithSig to the deposit wallet). Local secrets in localStorage
+  `arena:<matchId>:<round>` so a reload can still reveal.
+- **UNTESTED assumptions to verify on first real run:** Polymarket's relayer accepts a
+  deposit-wallet batch whose target is OUR contract (fallback: per-user CREATE2 forwarder);
+  Magic signs `eth_signTypedData_v4` silently; Realtime publication includes the tables.
+
 ## Status log
 
 - 2026-10-14 — Phase 0 scaffold: brand, nav, 5 tabs, Deportes live from
