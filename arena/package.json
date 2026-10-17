@@ -1,0 +1,25 @@
+{
+  "name": "patoli-arena",
+  "version": "1.0.0",
+  "description": "PatoliArena — PvP rock-paper-scissors escrow on Polygon",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "coverage": "hardhat coverage",
+    "deploy:amoy": "hardhat run scripts/deploy.ts --network amoy",
+    "deploy:polygon": "hardhat run scripts/deploy.ts --network polygon"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.6.1",
+    "dotenv": "^18.0.8",
+    "hardhat": "^2.29.1",
+    "typescript": "^5.5.4"
+  },
+  "private": true
+}
