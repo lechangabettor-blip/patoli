@@ -127,8 +127,18 @@ export async function sendWithdrawWithSig(player: Hex, to: Hex, amount: bigint, 
   return wallet.writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "withdrawWithSig", args: [player, to, amount, deadline, sig] });
 }
 
-export interface ClaimCommit { round: number; player: Hex; hash: Hex; sig: Hex }
-export interface ClaimReveal { round: number; player: Hex; move: number; salt: Hex }
+export interface ClaimCommit { round: number; player: Hex; hash: Hex; sig: Hex; opSig: Hex }
+export interface ClaimReveal { round: number; player: Hex; move: number; salt: Hex; opSig: Hex }
+
+/** Operator acknowledgements: "this move reached Patoli inside its window". Required by the contract's replay. */
+export function signCommitAck(matchId: Hex, round: number, player: Hex, hash: Hex): Promise<Hex> {
+  const account = privateKeyToAccount(process.env.ARENA_OPERATOR_KEY as Hex);
+  return account.signTypedData({ domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "CommitAck", message: { matchId, round, player, hash } });
+}
+export function signRevealAck(matchId: Hex, round: number, player: Hex, move: number, salt: Hex): Promise<Hex> {
+  const account = privateKeyToAccount(process.env.ARENA_OPERATOR_KEY as Hex);
+  return account.signTypedData({ domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "RevealAck", message: { matchId, round, player, move, salt } });
+}
 
 /** Operator files a dispute claim with every signed artifact we hold (the chain replays the game). */
 export async function sendClaim(m: MatchStruct, sigA: Hex, sigB: Hex, commits: ClaimCommit[], reveals: ClaimReveal[]): Promise<Hex> {

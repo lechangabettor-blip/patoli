@@ -34,6 +34,19 @@ export const ARENA_TYPES = {
     { name: "round", type: "uint8" },
     { name: "hash", type: "bytes32" },
   ],
+  CommitAck: [
+    { name: "matchId", type: "bytes32" },
+    { name: "round", type: "uint8" },
+    { name: "player", type: "address" },
+    { name: "hash", type: "bytes32" },
+  ],
+  RevealAck: [
+    { name: "matchId", type: "bytes32" },
+    { name: "round", type: "uint8" },
+    { name: "player", type: "address" },
+    { name: "move", type: "uint8" },
+    { name: "salt", type: "bytes32" },
+  ],
   Withdraw: [
     { name: "player", type: "address" },
     { name: "to", type: "address" },

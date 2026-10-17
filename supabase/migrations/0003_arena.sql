@@ -52,10 +52,10 @@ create index if not exists arena_matches_status_idx on public.arena_matches (sta
 create table if not exists public.arena_rounds (
   match_id      text not null references public.arena_matches(id) on delete cascade,
   round         int  not null,
-  commit_a      text,  commit_sig_a text,  committed_a_at timestamptz,
-  commit_b      text,  commit_sig_b text,  committed_b_at timestamptz,
-  move_a        int,   salt_a text,
-  move_b        int,   salt_b text,
+  commit_a      text,  commit_sig_a text,  commit_ack_a text,  committed_a_at timestamptz,
+  commit_b      text,  commit_sig_b text,  commit_ack_b text,  committed_b_at timestamptz,
+  move_a        int,   salt_a text,  reveal_ack_a text,
+  move_b        int,   salt_b text,  reveal_ack_b text,
   outcome       text,                       -- 'a' | 'b' | 'tie' | null
   opened_at     timestamptz not null default now(),
   commit_deadline timestamptz,
@@ -70,6 +70,7 @@ create table if not exists public.arena_round_secrets (
   side      text not null check (side in ('a','b')),
   move      int  not null check (move between 1 and 3),
   salt      text not null,
+  ack       text not null,                  -- operator RevealAck signature
   primary key (match_id, round, side)
 );
 
@@ -93,10 +94,10 @@ declare
   other record;
   existing text;
 begin
-  -- one open match per player, decided inside this transaction (lock the caller's profile row)
-  perform 1 from public.profiles where id = p_profile for update;
+  -- serialize all pairing (beta scale) → no double pairing, no lock-order deadlocks
+  perform pg_advisory_xact_lock(hashtext('arena_pair'));
   select id into existing from public.arena_matches
-    where (player_a = p_profile or player_b = p_profile) and status in ('signing','playing','finished','ready')
+    where (player_a = p_profile or player_b = p_profile) and status in ('signing','playing','finished','ready','disputed')
     order by created_at desc limit 1;
   if existing is not null then
     delete from public.arena_lobby where profile_id = p_profile;
@@ -117,7 +118,7 @@ begin
   -- the other player must not have an open match either (their lobby row may be stale)
   if exists (select 1 from public.arena_matches
              where (player_a = other.profile_id or player_b = other.profile_id)
-               and status in ('signing','playing','finished','ready')) then
+               and status in ('signing','playing','finished','ready','disputed')) then
     delete from public.arena_lobby where profile_id = other.profile_id;
     insert into public.arena_lobby (profile_id, eoa, stake) values (p_profile, p_eoa, p_stake)
       on conflict (profile_id) do update set stake = excluded.stake, joined_at = now(), expires_at = now() + interval '2 minutes';

@@ -23,11 +23,17 @@ import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step
  *
  * Two settlement paths
  *  1. Happy path: both players sign `Result(matchId, winner)` at the end → `settle`.
- *  2. Dispute path (opponent vanished): after `match.deadline`, either player opens a
- *     `claim` with every signed artifact they hold (round commits signed by both, reveals).
+ *  2. Dispute path (opponent vanished): after `match.deadline`, anyone opens a `claim`
+ *     with the signed artifacts they hold (round commits signed by the player, reveals).
  *     The contract replays the match from those artifacts. A counter-claim inside
- *     `challengeWindow` must carry strictly more valid artifacts (you can hide your
- *     opponent's moves, never your own) and replaces the pending outcome. `finalize` pays.
+ *     `challengeWindow` must carry strictly more valid artifacts and replaces the
+ *     pending outcome. `finalize` pays.
+ *     Signatures carry no clock, so a loser could sign a "late" commit after the match and
+ *     rewrite the replay. To prevent that, every commit and reveal must ALSO carry the
+ *     operator's acknowledgement (`CommitAck` / `RevealAck`), which the server issues only
+ *     for moves that arrived inside their window. The operator can therefore censor
+ *     (refuse to ack — a liveness failure, same as refusing to relay) but can never
+ *     forge a move or an outcome: every counted artifact is still player-signed.
  *
  * Owner powers are deliberately tiny: stake limits, pausing NEW deposits, rescuing tokens
  * that are not the escrow token. No function lets the owner touch player balances.
@@ -51,6 +57,7 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
         address player;
         bytes32 hash; // keccak256(abi.encodePacked(matchId, round, player, move, salt))
         bytes sig; // EIP-712 Commit signature by `player`
+        bytes opSig; // EIP-712 CommitAck signature by `operator` (proves it was in time)
     }
 
     struct Reveal {
@@ -58,6 +65,7 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
         address player;
         uint8 move; // 1 piedra · 2 papel · 3 tijera
         bytes32 salt;
+        bytes opSig; // EIP-712 RevealAck signature by `operator`
     }
 
     struct Claim {
@@ -79,6 +87,8 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
         keccak256("Match(bytes32 id,address playerA,address playerB,uint256 stake,uint8 bestOf,uint64 deadline)");
     bytes32 public constant RESULT_TYPEHASH = keccak256("Result(bytes32 matchId,address winner)");
     bytes32 public constant COMMIT_TYPEHASH = keccak256("Commit(bytes32 matchId,uint8 round,bytes32 hash)");
+    bytes32 public constant COMMIT_ACK_TYPEHASH = keccak256("CommitAck(bytes32 matchId,uint8 round,address player,bytes32 hash)");
+    bytes32 public constant REVEAL_ACK_TYPEHASH = keccak256("RevealAck(bytes32 matchId,uint8 round,address player,uint8 move,bytes32 salt)");
     bytes32 public constant WITHDRAW_TYPEHASH =
         keccak256("Withdraw(address player,address to,uint256 amount,uint256 nonce,uint256 deadline)");
 
@@ -88,6 +98,8 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
     // ---------------------------------------------------------------- storage
 
     IERC20 public immutable TOKEN;
+    /// @notice Patoli's clock: acknowledges moves that arrived in time. Cannot forge moves or outcomes.
+    address public operator;
 
     mapping(address => uint256) public balanceOf;
     mapping(address => uint256) public nonces; // withdrawWithSig
@@ -112,6 +124,7 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
     event ClaimOpened(bytes32 indexed matchId, address indexed claimant, address winner, uint32 evidence, uint64 finalizeAt);
     event LimitsSet(uint256 minStake, uint256 maxStake);
     event DepositsPaused(bool paused);
+    event OperatorSet(address operator);
 
     // ----------------------------------------------------------------- errors
 
@@ -130,11 +143,12 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
     error ClaimPending();
     error EscrowToken();
 
-    constructor(IERC20 token, address owner_, uint256 minStake_, uint256 maxStake_)
+    constructor(IERC20 token, address owner_, address operator_, uint256 minStake_, uint256 maxStake_)
         EIP712("PatoliArena", "1")
         Ownable(owner_)
     {
         TOKEN = token;
+        operator = operator_;
         minStake = minStake_;
         maxStake = maxStake_;
     }
@@ -282,6 +296,11 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
         emit LimitsSet(minStake_, maxStake_);
     }
 
+    function setOperator(address operator_) external onlyOwner {
+        operator = operator_;
+        emit OperatorSet(operator_);
+    }
+
     function setDepositsPaused(bool paused) external onlyOwner {
         depositsPaused = paused;
         emit DepositsPaused(paused);
@@ -399,20 +418,24 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
             SignedCommit calldata c = commits[i];
             if (c.round != round || c.player != player) continue;
             bytes32 d = _hashTypedDataV4(keccak256(abi.encode(COMMIT_TYPEHASH, m.id, round, c.hash)));
-            if (SignatureChecker.isValidSignatureNow(player, d, c.sig)) return (true, c.hash);
+            if (!SignatureChecker.isValidSignatureNow(player, d, c.sig)) continue;
+            bytes32 ack = _hashTypedDataV4(keccak256(abi.encode(COMMIT_ACK_TYPEHASH, m.id, round, player, c.hash)));
+            if (SignatureChecker.isValidSignatureNow(operator, ack, c.opSig)) return (true, c.hash);
         }
         return (false, bytes32(0));
     }
 
     function _findReveal(Match calldata m, Reveal[] calldata reveals, uint8 round, address player, bytes32 hash)
         internal
-        pure
+        view
         returns (uint8 move)
     {
         for (uint256 i = 0; i < reveals.length; i++) {
             Reveal calldata rv = reveals[i];
             if (rv.round != round || rv.player != player || rv.move == 0 || rv.move > 3) continue;
-            if (keccak256(abi.encodePacked(m.id, round, player, rv.move, rv.salt)) == hash) return rv.move;
+            if (keccak256(abi.encodePacked(m.id, round, player, rv.move, rv.salt)) != hash) continue;
+            bytes32 ack = _hashTypedDataV4(keccak256(abi.encode(REVEAL_ACK_TYPEHASH, m.id, round, player, rv.move, rv.salt)));
+            if (SignatureChecker.isValidSignatureNow(operator, ack, rv.opSig)) return rv.move;
         }
         return 0;
     }

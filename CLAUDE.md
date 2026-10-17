@@ -177,8 +177,14 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   `tick` (clients call it when timers hit 0; the cron sweeps). If a loser never signs the
   Result, after `Match.deadline` the cron files the on-chain `claim` with all evidence
   (anyone may claim; evidence is player-signed) → `disputed` → `finalize` after 24h.
+  **Operator acks:** signatures carry no clock, so the contract only counts commits/reveals
+  that also carry the operator's `CommitAck`/`RevealAck` (server signs them when a move
+  arrives in time; stored in `commit_ack_*`/`reveal_ack_*`). Trust assumption (stated, v1):
+  the operator can CENSOR a move (liveness, same as not relaying) but can never FORGE a move
+  or an outcome — every counted artifact is still player-signed. `finalizeClaims` refuses to
+  pay when the on-chain claim winner differs from the engine's (`settle_error: revisar reclamo`).
   Guards (security review 2026-10-17): one open match per player enforced inside
-  `arena_pair` (profile row lock); both balances + pending withdrawals re-checked when a
+  `arena_pair` (global advisory lock); `disputed` counts as an open status; both balances + pending withdrawals re-checked when a
   match goes signing→playing (else cancelled); relayed withdrawals refused while queued or
   in a match; signatures must be canonical 65-byte low-s (`isCanonicalSig`) so off-chain
   and on-chain verification can't diverge; `settle_error` holds generic codes only.

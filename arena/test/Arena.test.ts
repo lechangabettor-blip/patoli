@@ -11,7 +11,7 @@ type Match = { id: string; playerA: string; playerB: string; stake: bigint; best
 describe("PatoliArena", () => {
   let arena: PatoliArena;
   let usd: MockUSD;
-  let owner: HardhatEthersSigner, a: HardhatEthersSigner, b: HardhatEthersSigner, relayer: HardhatEthersSigner, vault: HardhatEthersSigner;
+  let owner: HardhatEthersSigner, a: HardhatEthersSigner, b: HardhatEthersSigner, relayer: HardhatEthersSigner, vault: HardhatEthersSigner, op: HardhatEthersSigner;
   let domain: { name: string; version: string; chainId: bigint; verifyingContract: string };
 
   const MatchTypes = {
@@ -26,6 +26,23 @@ describe("PatoliArena", () => {
   };
   const ResultTypes = { Result: [{ name: "matchId", type: "bytes32" }, { name: "winner", type: "address" }] };
   const CommitTypes = { Commit: [{ name: "matchId", type: "bytes32" }, { name: "round", type: "uint8" }, { name: "hash", type: "bytes32" }] };
+  const CommitAckTypes = {
+    CommitAck: [
+      { name: "matchId", type: "bytes32" },
+      { name: "round", type: "uint8" },
+      { name: "player", type: "address" },
+      { name: "hash", type: "bytes32" },
+    ],
+  };
+  const RevealAckTypes = {
+    RevealAck: [
+      { name: "matchId", type: "bytes32" },
+      { name: "round", type: "uint8" },
+      { name: "player", type: "address" },
+      { name: "move", type: "uint8" },
+      { name: "salt", type: "bytes32" },
+    ],
+  };
   const WithdrawTypes = {
     Withdraw: [
       { name: "player", type: "address" },
@@ -52,17 +69,20 @@ describe("PatoliArena", () => {
   const salt = () => ethers.hexlify(ethers.randomBytes(32));
   const chash = (matchId: string, round: number, player: string, move: number, s: string) =>
     ethers.solidityPackedKeccak256(["bytes32", "uint8", "address", "uint8", "bytes32"], [matchId, round, player, move, s]);
-  async function commit(s: HardhatEthersSigner, matchId: string, round: number, move: number) {
+  /** A move the operator acknowledged in time (acked = true) or a late/fabricated one (acked = false). */
+  async function commit(s: HardhatEthersSigner, matchId: string, round: number, move: number, acked = true) {
     const st = salt();
     const hash = chash(matchId, round, s.address, move, st);
     const sig = await s.signTypedData(domain, CommitTypes, { matchId, round, hash });
-    return { signed: { round, player: s.address, hash, sig }, reveal: { round, player: s.address, move, salt: st } };
+    const opSig = acked ? await op.signTypedData(domain, CommitAckTypes, { matchId, round, player: s.address, hash }) : "0x";
+    const rOpSig = acked ? await op.signTypedData(domain, RevealAckTypes, { matchId, round, player: s.address, move, salt: st }) : "0x";
+    return { signed: { round, player: s.address, hash, sig, opSig }, reveal: { round, player: s.address, move, salt: st, opSig: rOpSig } };
   }
 
   beforeEach(async () => {
-    [owner, a, b, relayer, vault] = await ethers.getSigners();
+    [owner, a, b, relayer, vault, op] = await ethers.getSigners();
     usd = (await (await ethers.getContractFactory("MockUSD")).deploy()) as unknown as MockUSD;
-    arena = (await (await ethers.getContractFactory("PatoliArena")).deploy(await usd.getAddress(), owner.address, USD(0.5), USD(20))) as unknown as PatoliArena;
+    arena = (await (await ethers.getContractFactory("PatoliArena")).deploy(await usd.getAddress(), owner.address, op.address, USD(0.5), USD(20))) as unknown as PatoliArena;
     const chainId = (await ethers.provider.getNetwork()).chainId;
     domain = { name: "PatoliArena", version: "1", chainId, verifyingContract: await arena.getAddress() };
     for (const s of [a, b]) {
@@ -199,6 +219,21 @@ describe("PatoliArena", () => {
       await arena.finalize(m, sigA, sigB);
       expect(await arena.balanceOf(a.address)).to.equal(USD(10));
       expect(await arena.balanceOf(b.address)).to.equal(USD(10));
+    });
+
+    it("a commit signed late (no operator ack) is ignored: the loser cannot rewrite a forfeit", async () => {
+      const { m, sigA, sigB } = await newMatch(USD(1), 3, 60);
+      const cA = await commit(a, m.id, 1, ROCK); // a played in time
+      await warp(61);
+      // operator files for a: only a committed in round 1 → b forfeits
+      await arena.connect(relayer).claim(m, sigA, sigB, [cA.signed], [cA.reveal]);
+      expect((await arena.claims(m.id)).winner).to.equal(a.address);
+      // b fabricates a commit + reveal now (knowing nothing was revealed on-chain yet is irrelevant: no ack)
+      const late = await commit(b, m.id, 1, PAPER, false);
+      await expect(arena.connect(b).claim(m, sigA, sigB, [cA.signed, late.signed], [cA.reveal, late.reveal])).to.be.revertedWithCustomError(arena, "WeakerClaim");
+      await warp(24 * 3600 + 1);
+      await arena.finalize(m, sigA, sigB);
+      expect(await arena.balanceOf(a.address)).to.equal(USD(11));
     });
 
     it("tie rounds don't count; score decides", async () => {

@@ -25,7 +25,8 @@ async function main() {
     console.log(`MockUSD ${token}`);
   }
 
-  const arena = await (await ethers.getContractFactory("PatoliArena")).deploy(token, deployer.address, USD(0.5), USD(20));
+  // operator = deployer for now (same key as ARENA_OPERATOR_KEY in the app); owner → multisig later
+  const arena = await (await ethers.getContractFactory("PatoliArena")).deploy(token, deployer.address, deployer.address, USD(0.5), USD(20));
   await arena.waitForDeployment();
   const address = await arena.getAddress();
   const receipt = await arena.deploymentTransaction()?.wait();
@@ -37,6 +38,7 @@ async function main() {
     arena: address,
     token,
     owner: deployer.address,
+    operator: deployer.address,
     deployedAt: new Date().toISOString(),
     block: receipt?.blockNumber ?? null,
     minStake: "0.5",
@@ -48,7 +50,7 @@ async function main() {
   if (process.env.POLYGONSCAN_API_KEY && network.name !== "hardhat") {
     console.log("verifying…");
     try {
-      await run("verify:verify", { address, constructorArguments: [token, deployer.address, USD(0.5), USD(20)] });
+      await run("verify:verify", { address, constructorArguments: [token, deployer.address, deployer.address, USD(0.5), USD(20)] });
     } catch (e) {
       console.warn("verify failed (retry later with `hardhat verify`):", (e as Error).message);
     }

@@ -12,6 +12,8 @@ import {
   sendClaim,
   sendFinalize,
   sendSettleBatch,
+  signCommitAck,
+  signRevealAck,
   verifyCommitSig,
   verifyMatchSig,
   verifyResultSig,
@@ -49,7 +51,8 @@ import {
  */
 
 export type Side = "a" | "b";
-export const OPEN_STATUSES = ["signing", "playing", "finished", "ready"] as const;
+/** Statuses that keep a player's stake committed (no new match, no relayed withdrawal). */
+export const OPEN_STATUSES = ["signing", "playing", "finished", "ready", "disputed"] as const;
 
 export interface MatchRow {
   id: string;
@@ -81,14 +84,18 @@ export interface RoundRow {
   round: number;
   commit_a: string | null;
   commit_sig_a: string | null;
+  commit_ack_a: string | null;
   committed_a_at: string | null;
   commit_b: string | null;
   commit_sig_b: string | null;
+  commit_ack_b: string | null;
   committed_b_at: string | null;
   move_a: number | null;
   salt_a: string | null;
+  reveal_ack_a: string | null;
   move_b: number | null;
   salt_b: string | null;
+  reveal_ack_b: string | null;
   outcome: "a" | "b" | "tie" | null;
   opened_at: string;
   commit_deadline: string | null;
@@ -242,7 +249,12 @@ export async function applyCommit(id: string, me: ArenaIdentity, round: number, 
   }
   const ok = await verifyCommitSig(id as Hex, round, hash, me.eoa, sig);
   if (!ok) throw new ArenaError("Firma inválida");
-  const patch = side === "a" ? { commit_a: hash, commit_sig_a: sig, committed_a_at: nowIso() } : { commit_b: hash, commit_sig_b: sig, committed_b_at: nowIso() };
+  // operator ack = "arrived in time"; without it the chain ignores this commit
+  const ack = await signCommitAck(id as Hex, round, me.eoa, hash);
+  const patch =
+    side === "a"
+      ? { commit_a: hash, commit_sig_a: sig, commit_ack_a: ack, committed_a_at: nowIso() }
+      : { commit_b: hash, commit_sig_b: sig, commit_ack_b: ack, committed_b_at: nowIso() };
   await db.from("arena_rounds").update(patch).eq("match_id", id).eq("round", round).is(side === "a" ? "commit_a" : "commit_b", null);
   // both committed → open the reveal window
   const { data: fresh } = await db.from("arena_rounds").select("*").eq("match_id", id).eq("round", round).single();
@@ -269,21 +281,29 @@ export async function applyReveal(id: string, me: ArenaIdentity, round: number, 
     await tick(id);
     throw new ArenaError("Se acabó el tiempo", 409);
   }
-  await db.from("arena_round_secrets").upsert({ match_id: id, round, side, move, salt }, { onConflict: "match_id,round,side", ignoreDuplicates: true });
+  const ack = await signRevealAck(id as Hex, round, me.eoa, move, salt);
+  await db.from("arena_round_secrets").upsert({ match_id: id, round, side, move, salt, ack }, { onConflict: "match_id,round,side", ignoreDuplicates: true });
   await resolveIfBothRevealed(id, round);
   return loadMatch(id);
 }
 
 async function resolveIfBothRevealed(id: string, round: number) {
   const db = supabaseAdmin();
-  const { data: secrets } = await db.from("arena_round_secrets").select("side, move, salt").eq("match_id", id).eq("round", round);
+  const { data: secrets } = await db.from("arena_round_secrets").select("side, move, salt, ack").eq("match_id", id).eq("round", round);
   const a = secrets?.find((s) => s.side === "a");
   const b = secrets?.find((s) => s.side === "b");
   if (!a || !b) return;
   const ma = a.move as Move;
   const mb = b.move as Move;
   const outcome: "a" | "b" | "tie" = beats(ma, mb) ? "a" : beats(mb, ma) ? "b" : "tie";
-  await settleRound(id, round, outcome, { move_a: ma, salt_a: a.salt as string, move_b: mb, salt_b: b.salt as string });
+  await settleRound(id, round, outcome, {
+    move_a: ma,
+    salt_a: a.salt as string,
+    reveal_ack_a: a.ack as string,
+    move_b: mb,
+    salt_b: b.salt as string,
+    reveal_ack_b: b.ack as string,
+  });
 }
 
 /** Writes the round outcome (guarded against double resolution) and advances the match. */
@@ -352,13 +372,15 @@ export async function tick(id: string) {
   if (!r || r.outcome) return loaded;
   if (r.commit_a && r.commit_b) {
     if (past(r.reveal_deadline)) {
-      const { data: secrets } = await db.from("arena_round_secrets").select("side, move, salt").eq("match_id", id).eq("round", m.round);
+      const { data: secrets } = await db.from("arena_round_secrets").select("side, move, salt, ack").eq("match_id", id).eq("round", m.round);
       const a = secrets?.find((s) => s.side === "a");
       const b = secrets?.find((s) => s.side === "b");
       if (a && b) await resolveIfBothRevealed(id, m.round);
       else if (a || b) {
         // one revealed, the other did not → non-revealer forfeits the match (contract rule)
-        const reveals: Partial<RoundRow> = a ? { move_a: a.move, salt_a: a.salt } : { move_b: b!.move, salt_b: b!.salt };
+        const reveals: Partial<RoundRow> = a
+          ? { move_a: a.move, salt_a: a.salt, reveal_ack_a: a.ack }
+          : { move_b: b!.move, salt_b: b!.salt, reveal_ack_b: b!.ack };
         await db.from("arena_rounds").update(reveals).eq("match_id", id).eq("round", m.round);
         await finishMatch(id, a ? "a" : "b", "rival no reveló");
       } else {
@@ -425,7 +447,8 @@ export async function settleReady(limit = 25): Promise<{ sent: number; tx: strin
     const done = ids.filter((i) => settledIds.has(i.toLowerCase()));
     const skipped = ids.filter((i) => !settledIds.has(i.toLowerCase()));
     if (done.length) await db.from("arena_matches").update({ status: "settled", settle_tx: tx, settled_at: nowIso() }).in("id", done).eq("status", "ready");
-    if (skipped.length) await db.from("arena_matches").update({ settle_error: "omitida on-chain (firma/saldo inválido)", status: "disputed" }).in("id", skipped).eq("status", "ready");
+    // skipped on-chain (bad sig / already settled) → back to 'finished' so the claim path picks it up after the deadline
+    if (skipped.length) await db.from("arena_matches").update({ settle_error: "omitida on-chain, va por reclamo", status: "finished" }).in("id", skipped).eq("status", "ready");
     return { sent: done.length, tx, error: skipped.length ? `${skipped.length} omitidas` : undefined };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -465,21 +488,24 @@ async function fileClaims(limit = 5) {
     if (row.result_sig_a && row.result_sig_b) continue; // will go the happy path
     try {
       const { data: rounds } = await db.from("arena_rounds").select("*").eq("match_id", row.id).order("round");
-      const { data: secrets } = await db.from("arena_round_secrets").select("round, side, move, salt").eq("match_id", row.id);
+      const { data: secrets } = await db.from("arena_round_secrets").select("round, side, move, salt, ack").eq("match_id", row.id);
       const commits: ClaimCommit[] = [];
       const reveals: ClaimReveal[] = [];
       for (const r of (rounds ?? []) as RoundRow[]) {
-        if (r.commit_a && r.commit_sig_a) commits.push({ round: r.round, player: row.eoa_a as Hex, hash: r.commit_a as Hex, sig: r.commit_sig_a as Hex });
-        if (r.commit_b && r.commit_sig_b) commits.push({ round: r.round, player: row.eoa_b as Hex, hash: r.commit_b as Hex, sig: r.commit_sig_b as Hex });
-        if (r.move_a && r.salt_a) reveals.push({ round: r.round, player: row.eoa_a as Hex, move: r.move_a, salt: r.salt_a as Hex });
-        if (r.move_b && r.salt_b) reveals.push({ round: r.round, player: row.eoa_b as Hex, move: r.move_b, salt: r.salt_b as Hex });
+        if (r.commit_a && r.commit_sig_a && r.commit_ack_a) commits.push({ round: r.round, player: row.eoa_a as Hex, hash: r.commit_a as Hex, sig: r.commit_sig_a as Hex, opSig: r.commit_ack_a as Hex });
+        if (r.commit_b && r.commit_sig_b && r.commit_ack_b) commits.push({ round: r.round, player: row.eoa_b as Hex, hash: r.commit_b as Hex, sig: r.commit_sig_b as Hex, opSig: r.commit_ack_b as Hex });
+        if (r.move_a && r.salt_a && r.reveal_ack_a) reveals.push({ round: r.round, player: row.eoa_a as Hex, move: r.move_a, salt: r.salt_a as Hex, opSig: r.reveal_ack_a as Hex });
+        if (r.move_b && r.salt_b && r.reveal_ack_b) reveals.push({ round: r.round, player: row.eoa_b as Hex, move: r.move_b, salt: r.salt_b as Hex, opSig: r.reveal_ack_b as Hex });
       }
       for (const s of secrets ?? []) {
         const player = (s.side === "a" ? row.eoa_a : row.eoa_b) as Hex;
-        if (!reveals.some((x) => x.round === s.round && x.player === player)) reveals.push({ round: s.round as number, player, move: s.move as number, salt: s.salt as Hex });
+        if (!reveals.some((x) => x.round === s.round && x.player === player)) {
+          reveals.push({ round: s.round as number, player, move: s.move as number, salt: s.salt as Hex, opSig: s.ack as Hex });
+        }
       }
       const tx = await sendClaim(toMatchStruct(row), row.sig_a as Hex, row.sig_b as Hex, commits, reveals);
-      await waitForTx(tx);
+      const receipt = await waitForTx(tx);
+      if (receipt.status !== "success") throw new Error("claim reverted");
       await db.from("arena_matches").update({ status: "disputed", claim_tx: tx, settle_error: "reclamo en cadena (24h)" }).eq("id", row.id).eq("status", "finished");
     } catch (e) {
       console.error("[arena] claim failed", row.id, e instanceof Error ? e.message : e);
@@ -494,7 +520,21 @@ async function finalizeClaims(limit = 5) {
   for (const row of (rows ?? []) as MatchRow[]) {
     try {
       const c = await readClaim(row.id as Hex);
-      if (c.finalizeAt === 0n || BigInt(Math.floor(Date.now() / 1000)) < c.finalizeAt) continue;
+      if (c.finalizeAt === 0n) {
+        // no claim on-chain (reorg / stale row) → let fileClaims re-file
+        await db.from("arena_matches").update({ status: "finished", claim_tx: null }).eq("id", row.id).eq("status", "disputed");
+        continue;
+      }
+      if (BigInt(Math.floor(Date.now() / 1000)) < c.finalizeAt) continue;
+      // The chain must agree with the engine. A different winner means a counter-claim
+      // beat ours (or we lost evidence) → hold for human review instead of paying out.
+      const onchainWinner = c.winner.toLowerCase() === "0x0000000000000000000000000000000000000000" ? null : c.winner.toLowerCase();
+      const ours = row.winner_eoa ? row.winner_eoa.toLowerCase() : null;
+      if (onchainWinner !== ours) {
+        console.error("[arena] claim winner mismatch", row.id, { onchainWinner, ours, claimant: c.claimant });
+        await db.from("arena_matches").update({ settle_error: "revisar reclamo" }).eq("id", row.id);
+        continue;
+      }
       const tx = await sendFinalize(toMatchStruct(row), row.sig_a as Hex, row.sig_b as Hex);
       const receipt = await waitForTx(tx);
       if (receipt.status === "success") {
