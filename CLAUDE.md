@@ -197,9 +197,18 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   `NEXT_PUBLIC_ARENA_ADDRESS` is unset). Perfil shows the Arena balance + "Regresar todo a
   mi saldo" (withdrawWithSig to the deposit wallet). Local secrets in localStorage
   `arena:<matchId>:<round>` so a reload can still reveal.
-- **UNTESTED assumptions to verify on first real run:** Polymarket's relayer accepts a
-  deposit-wallet batch whose target is OUR contract (fallback: per-user CREATE2 forwarder);
-  Magic signs `eth_signTypedData_v4` silently; Realtime publication includes the tables.
+- **Funding (verified 2026-10-19):** Polymarket's relayer REJECTS deposit-wallet batches that
+  `approve` a spender outside its allowlist ("approve spender 0xa2B4… is not in the allowed
+  list"). Plain pUSD `transfer`s are allowed. So funding = transfer to the user's
+  `DepositForwarder` (CREATE2, salt = EOA, from `ArenaDepositRouter.forwarderOf`) + operator
+  calls `router.sweep(user)` (`POST /api/arena/sweep`), which deploys the forwarder on first
+  use and credits `Arena.deposit(amount, user)`. Router `0x7253021A500C2b7e9f98bd210FAC98a554Bcef28`
+  (`NEXT_PUBLIC_ARENA_ROUTER_ADDRESS`), stateless, no owner. `/api/arena/me` reports
+  `waiting` (pUSD stranded in the forwarder) and the lobby shows "Acreditar" to finish.
+- Live: Arena `0xa2B447C73935Ee0e777F3B41251610ED47C9F612` (owner = LeChanga's MetaMask
+  `0x22F9…b5Ea`, operator = server key `0xC16B…2296`). Owner console: `/arena/owner`.
+- Still unverified on a real run: Magic signs `eth_signTypedData_v4` silently; Realtime
+  publication includes the tables.
 
 ## Status log
 
