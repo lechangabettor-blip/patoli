@@ -41,6 +41,15 @@ export function loadSecret(matchId: string, round: number): { move: Move; salt: 
   }
 }
 
+/**
+ * Pre-signed commits: when a round opens we sign all three possible moves in the
+ * background (salt + hash + Magic signature each). The tap then only sends the one
+ * chosen — no signing round trip between the finger and the screen.
+ */
+type Prepared = Record<Move, { salt: Hex; hash: Hex; sig: Hex }>;
+const prepared = new Map<string, Prepared | Promise<Prepared>>();
+const prepKey = (matchId: string, round: number) => `${matchId}:${round}`;
+
 function randomSalt(): Hex {
   const b = new Uint8Array(32);
   crypto.getRandomValues(b);
@@ -145,13 +154,42 @@ export function useArenaActions() {
       await call(`/api/arena/match/${m.id}/sign`, { method: "POST", body: JSON.stringify({ sig }) });
       refresh(m.id);
     },
+    /** Sign the three possible moves for this round ahead of time (idempotent). */
+    prepare: (matchId: Hex, round: number): Promise<Prepared> => {
+      const key = prepKey(matchId, round);
+      const hit = prepared.get(key);
+      if (hit) return Promise.resolve(hit);
+      if (!eoaAddress) return Promise.reject(new Error("Sin wallet"));
+      const p = (async () => {
+        const out = {} as Prepared;
+        for (const move of [1, 2, 3] as Move[]) {
+          const salt = randomSalt();
+          const hash = commitHash(matchId, round, eoaAddress as Hex, move, salt);
+          const sig = await sign("Commit", { matchId, round, hash });
+          out[move] = { salt, hash, sig };
+        }
+        prepared.set(key, out);
+        return out;
+      })();
+      prepared.set(key, p);
+      p.catch(() => prepared.delete(key));
+      return p;
+    },
     commit: async (matchId: Hex, round: number, move: Move) => {
       if (!eoaAddress) throw new Error("Sin wallet");
-      const salt = randomSalt();
-      const hash = commitHash(matchId, round, eoaAddress as Hex, move, salt);
-      saveSecret(matchId, round, move, salt);
-      const sig = await sign("Commit", { matchId, round, hash });
-      await call(`/api/arena/match/${matchId}/commit`, { method: "POST", body: JSON.stringify({ round, hash, sig }) });
+      const key = prepKey(matchId, round);
+      let entry: { salt: Hex; hash: Hex; sig: Hex };
+      const hit = prepared.get(key);
+      if (hit) entry = (await hit)[move];
+      else {
+        const salt = randomSalt();
+        const hash = commitHash(matchId, round, eoaAddress as Hex, move, salt);
+        const sig = await sign("Commit", { matchId, round, hash });
+        entry = { salt, hash, sig };
+      }
+      saveSecret(matchId, round, move, entry.salt);
+      await call(`/api/arena/match/${matchId}/commit`, { method: "POST", body: JSON.stringify({ round, hash: entry.hash, sig: entry.sig }) });
+      prepared.delete(key);
       refresh(matchId);
     },
     reveal: async (matchId: string, round: number) => {

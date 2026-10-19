@@ -7,6 +7,7 @@ import type { Hex } from "viem";
 import TopBar from "./TopBar";
 import Avatar from "./Avatar";
 import Sheet from "./Sheet";
+import RoundClash from "./RoundClash";
 import TicketShare from "./TicketShare";
 import type { TicketData } from "./Ticket";
 import { Share2 } from "lucide-react";
@@ -256,7 +257,10 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
   const actions = useArenaActions();
   const [err, setErr] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [myPick, setMyPick] = useState<{ round: number; move: Move } | null>(null); // optimistic
   const [share, setShare] = useState(false);
+  const [clash, setClash] = useState<number | null>(null); // round whose clash is on screen
+  const shownRef = useRef(0); // highest resolved round already shown
   const [now, setNow] = useState(() => Date.now());
   const once = useRef(new Set<string>());
 
@@ -264,6 +268,22 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);
   }, []);
+
+  // A newly resolved round → hold the clash on screen for ~2.4s, then move on.
+  const lastResolvedRound = q.data?.rounds.reduce((mx, r) => (r.outcome && r.round > mx ? r.round : mx), 0) ?? 0;
+  useEffect(() => {
+    const r = lastResolvedRound;
+    if (!r || r <= shownRef.current) return;
+    const prev = shownRef.current;
+    shownRef.current = r;
+    const t1 = setTimeout(() => setClash(r), 0);
+    const t2 = setTimeout(() => setClash((c) => (c === r ? null : c)), 2400);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      shownRef.current = prev;
+    };
+  }, [lastResolvedRound]);
 
   const state = q.data ?? null;
   const m = state?.match ?? null;
@@ -285,6 +305,10 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
     };
     const mySig = side === "a" ? m.sig_a : m.sig_b;
     if (m.status === "signing" && !mySig) void run(`sign:${m.id}`, () => actions.signMatch(toMatchStruct(m)));
+
+    // round open and I haven't committed → pre-sign the three moves while the player thinks
+    const myC = cur ? (side === "a" ? cur.commit_a : cur.commit_b) : null;
+    if (m.status === "playing" && cur && !cur.outcome && !myC) void run(`prep:${m.id}:${cur.round}`, () => actions.prepare(m.id as Hex, cur.round).then(() => undefined));
 
     if (m.status === "playing" && cur && !cur.outcome && cur.commit_a && cur.commit_b && loadSecret(m.id, cur.round)) {
       void run(`reveal:${m.id}:${cur.round}`, () => actions.reveal(m.id, cur.round));
@@ -313,14 +337,20 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
   const done = m.status === "finished" || m.status === "ready" || m.status === "settled" || m.status === "disputed";
   const draw = done && !m.winner_eoa;
   const lastResolved = [...state.rounds].reverse().find((r) => r.outcome);
+  const pendingClash = clash != null ? state.rounds.find((r) => r.round === clash) ?? null : null;
+  const clashing = !!pendingClash && !done;
+  const optimistic = myPick && cur && myPick.round === cur.round ? myPick.move : null;
+  const sealed = !!myCommit || !!optimistic;
 
   async function pick(move: Move) {
     if (!cur || myCommit || picking) return;
     setErr(null);
     setPicking(true);
+    setMyPick({ round: cur.round, move }); // instant feedback; the server confirms behind it
     try {
       await actions.commit(m!.id as Hex, cur.round, move);
     } catch (e) {
+      setMyPick(null);
       setErr(e instanceof Error ? e.message : "No se pudo enviar");
     } finally {
       setPicking(false);
@@ -353,31 +383,63 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
               Volver al lobby
             </button>
           </Stage>
+        ) : clashing && pendingClash ? (
+          <motion.div key={`clash${pendingClash.round}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="card mt-3 p-2">
+            <RoundClash
+              round={pendingClash.round}
+              mine={(side === "a" ? pendingClash.move_a : pendingClash.move_b) as Move | null}
+              theirs={(side === "a" ? pendingClash.move_b : pendingClash.move_a) as Move | null}
+              outcome={pendingClash.outcome === "tie" ? "tie" : pendingClash.outcome === side ? "me" : "them"}
+              meLabel={meP ? `@${meP.handle}` : "Tú"}
+              themLabel={rivalP ? `@${rivalP.handle}` : "Rival"}
+            />
+          </motion.div>
         ) : m.status === "playing" && cur ? (
           <motion.div key={`r${cur.round}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="card mt-3 p-4">
             <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-muted">
               <span>Ronda {cur.round}</span>
               <span className={cn("tnum", secondsLeft != null && secondsLeft <= 5 && "text-loss")}>{secondsLeft != null ? `${secondsLeft}s` : ""}</span>
             </div>
-            {!myCommit ? (
+            {!sealed ? (
               <>
                 <div className="mt-2 font-display text-lg font-extrabold uppercase">Elige tu jugada</div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {MOVES.map((mv) => (
-                    <button key={mv} onClick={() => pick(mv)} disabled={picking} className="card flex flex-col items-center gap-1 py-4 active:border-accent active:bg-[rgba(255,61,23,.12)]">
+                    <motion.button
+                      key={mv}
+                      whileTap={{ scale: 0.92 }}
+                      onClick={() => pick(mv)}
+                      disabled={picking}
+                      className="card flex flex-col items-center gap-1 py-4 active:border-accent active:bg-[rgba(255,61,23,.12)]"
+                    >
                       <span className="text-4xl">{MOVE_LABEL[mv].emoji}</span>
                       <span className="text-xs text-muted">{MOVE_LABEL[mv].label}</span>
-                    </button>
+                    </motion.button>
                   ))}
                 </div>
                 <p className="mt-2 text-center text-[11px] text-muted-2">{theirCommit ? "Tu rival ya eligió." : "Tu rival está eligiendo…"}</p>
               </>
-            ) : !theirCommit ? (
-              <Waiting text="Jugada enviada y sellada. Esperando al rival…" />
             ) : (
-              <Waiting text="Revelando jugadas…" />
+              <div className="mt-3 flex flex-col items-center py-3">
+                <motion.div
+                  initial={{ scale: 0.6, rotate: -10, opacity: 0 }}
+                  animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                  className="relative flex h-24 w-24 items-center justify-center rounded-2xl bg-surface"
+                >
+                  <span className="text-5xl">{optimistic ? MOVE_LABEL[optimistic].emoji : "🔒"}</span>
+                  <motion.span
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: 0.15, type: "spring", stiffness: 500, damping: 20 }}
+                    className="absolute -right-2 -top-2 rounded-full bg-accent px-2 py-0.5 font-display text-[10px] font-extrabold uppercase text-white"
+                  >
+                    {myCommit ? "Sellada" : "Sellando"}
+                  </motion.span>
+                </motion.div>
+                <p className="pulse-soft mt-4 text-sm text-muted">{!theirCommit ? "Esperando al rival…" : "Revelando jugadas…"}</p>
+              </div>
             )}
-            {lastResolved && lastResolved.round === cur.round - 1 ? <RoundRecap r={lastResolved} side={side} /> : null}
           </motion.div>
         ) : done ? (
           <Stage
@@ -392,7 +454,16 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
             }
             tone={draw ? "muted" : iWon ? "win" : "loss"}
           >
-            {lastResolved ? <RoundRecap r={lastResolved} side={side} /> : null}
+            {lastResolved ? (
+              <RoundClash
+                round={lastResolved.round}
+                mine={(side === "a" ? lastResolved.move_a : lastResolved.move_b) as Move | null}
+                theirs={(side === "a" ? lastResolved.move_b : lastResolved.move_a) as Move | null}
+                outcome={lastResolved.outcome === "tie" ? "tie" : lastResolved.outcome === side ? "me" : "them"}
+                meLabel={meP ? `@${meP.handle}` : "Tú"}
+                themLabel={rivalP ? `@${rivalP.handle}` : "Rival"}
+              />
+            ) : null}
             <p className="mt-3 text-[11px] text-muted-2">
               {m.status === "settled"
                 ? "Liquidado en Polygon."
@@ -470,21 +541,4 @@ function Stage({ title, sub, children, pulse, tone }: { title: string; sub: stri
   );
 }
 
-function Waiting({ text }: { text: string }) {
-  return <div className="pulse-soft mt-4 py-6 text-center text-sm text-muted">{text}</div>;
-}
 
-function RoundRecap({ r, side }: { r: MatchState["rounds"][number]; side: "a" | "b" }) {
-  const mine = (side === "a" ? r.move_a : r.move_b) as Move | null;
-  const theirs = (side === "a" ? r.move_b : r.move_a) as Move | null;
-  const res = r.outcome === "tie" ? "Empate" : r.outcome === side ? "Punto para ti" : "Punto del rival";
-  return (
-    <div className="mt-4 flex items-center justify-center gap-4 rounded-xl bg-surface px-3 py-2 text-sm">
-      <span className="text-2xl">{mine ? MOVE_LABEL[mine].emoji : "⏱️"}</span>
-      <span className="text-xs text-muted">
-        Ronda {r.round} · {res}
-      </span>
-      <span className="text-2xl">{theirs ? MOVE_LABEL[theirs].emoji : "⏱️"}</span>
-    </div>
-  );
-}

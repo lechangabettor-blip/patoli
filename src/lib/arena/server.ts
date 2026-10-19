@@ -1,5 +1,5 @@
 import "server-only";
-import { createPublicClient, createWalletClient, http, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, verifyTypedData, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon, polygonAmoy } from "viem/chains";
 import type { NextRequest } from "next/server";
@@ -62,17 +62,29 @@ export function isCanonicalSig(sig: string): sig is Hex {
   return s > 0n && s <= SECP256K1_N_HALF && (v === 27 || v === 28);
 }
 
+/**
+ * Fast path: pure ECDSA recovery in-process (what every Magic EOA produces, ~1ms).
+ * Fallback: on-chain verification (ERC-1271 contract wallets), one RPC round trip.
+ */
+async function verifyTyped(args: { address: Hex; primaryType: "Match" | "Commit" | "Withdraw"; message: Record<string, unknown>; signature: Hex }): Promise<boolean> {
+  if (!isCanonicalSig(args.signature)) return false;
+  try {
+    const ok = await verifyTypedData({ address: args.address, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: args.primaryType, message: args.message as never, signature: args.signature });
+    if (ok) return true;
+  } catch {
+    /* fall through */
+  }
+  return arenaPublic.verifyTypedData({ address: args.address, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: args.primaryType, message: args.message as never, signature: args.signature });
+}
+
 export function verifyMatchSig(m: MatchStruct, signer: Hex, signature: Hex) {
-  if (!isCanonicalSig(signature)) return Promise.resolve(false);
-  return arenaPublic.verifyTypedData({ address: signer, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Match", message: { ...m }, signature });
+  return verifyTyped({ address: signer, primaryType: "Match", message: { ...m }, signature });
 }
 export function verifyCommitSig(matchId: Hex, round: number, hash: Hex, signer: Hex, signature: Hex) {
-  if (!isCanonicalSig(signature)) return Promise.resolve(false);
-  return arenaPublic.verifyTypedData({ address: signer, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Commit", message: { matchId, round, hash }, signature });
+  return verifyTyped({ address: signer, primaryType: "Commit", message: { matchId, round, hash }, signature });
 }
 export function verifyWithdrawSig(msg: { player: Hex; to: Hex; amount: bigint; nonce: bigint; deadline: bigint }, signature: Hex) {
-  if (!isCanonicalSig(signature)) return Promise.resolve(false);
-  return arenaPublic.verifyTypedData({ address: msg.player, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Withdraw", message: msg, signature });
+  return verifyTyped({ address: msg.player, primaryType: "Withdraw", message: { ...msg }, signature });
 }
 
 /** Auth: Magic DID token → our profile (id, eoa, wallet) ------------------- */
