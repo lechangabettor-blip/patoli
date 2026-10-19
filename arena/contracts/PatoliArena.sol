@@ -309,7 +309,9 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
     }
 
     function setDelays(uint64 withdrawDelay_, uint64 challengeWindow_) external onlyOwner {
-        require(withdrawDelay_ <= 7 days && challengeWindow_ <= 7 days, "too long");
+        // floors: a compromised owner key must not be able to shorten the dispute window to nothing
+        require(withdrawDelay_ >= 15 minutes && withdrawDelay_ <= 7 days, "withdrawDelay out of range");
+        require(challengeWindow_ >= 1 hours && challengeWindow_ <= 7 days, "challengeWindow out of range");
         withdrawDelay = withdrawDelay_;
         challengeWindow = challengeWindow_;
     }

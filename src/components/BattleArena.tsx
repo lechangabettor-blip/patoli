@@ -218,7 +218,7 @@ function Lobby({ balance, loading, onMatched, onFunded }: { balance: number; loa
         {err ? <p className="mt-3 text-xs text-loss">{err}</p> : null}
       </div>
       <p className="mt-4 text-center text-[11px] text-muted-2">
-        Cada jugada va firmada con tu wallet. El contrato solo paga lo que ambos firmaron. Nadie, ni Patoli, puede inventarse un resultado.
+        Cada jugada va firmada con tu wallet. El contrato repite la partida con esas jugadas y paga solo. Nadie, ni Patoli, puede inventarse un resultado.
       </p>
     </div>
   );

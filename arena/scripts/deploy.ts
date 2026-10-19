@@ -25,8 +25,13 @@ async function main() {
     console.log(`MockUSD ${token}`);
   }
 
-  // operator = deployer for now (same key as ARENA_OPERATOR_KEY in the app); owner → multisig later
-  const arena = await (await ethers.getContractFactory("PatoliArena")).deploy(token, deployer.address, deployer.address, USD(0.5), USD(20));
+  // operator = deployer (the server's hot key, ARENA_OPERATOR_KEY). Owner must be a SEPARATE cold
+  // wallet / multisig on mainnet (ARENA_OWNER); same-key deploys are refused unless explicitly allowed.
+  const owner = process.env.ARENA_OWNER && /^0x[0-9a-fA-F]{40}$/.test(process.env.ARENA_OWNER) ? process.env.ARENA_OWNER : deployer.address;
+  if (network.name === "polygon" && owner.toLowerCase() === deployer.address.toLowerCase() && process.env.ALLOW_SAME_OWNER !== "1") {
+    throw new Error("Refusing mainnet deploy with owner == operator. Set ARENA_OWNER to a cold wallet (or ALLOW_SAME_OWNER=1 for a beta you will hand over).");
+  }
+  const arena = await (await ethers.getContractFactory("PatoliArena")).deploy(token, owner, deployer.address, USD(0.5), USD(20));
   await arena.waitForDeployment();
   const address = await arena.getAddress();
   const receipt = await arena.deploymentTransaction()?.wait();
@@ -37,7 +42,7 @@ async function main() {
     chainId: Number((await ethers.provider.getNetwork()).chainId),
     arena: address,
     token,
-    owner: deployer.address,
+    owner,
     operator: deployer.address,
     deployedAt: new Date().toISOString(),
     block: receipt?.blockNumber ?? null,
@@ -50,7 +55,7 @@ async function main() {
   if (process.env.POLYGONSCAN_API_KEY && network.name !== "hardhat") {
     console.log("verifying…");
     try {
-      await run("verify:verify", { address, constructorArguments: [token, deployer.address, deployer.address, USD(0.5), USD(20)] });
+      await run("verify:verify", { address, constructorArguments: [token, owner, deployer.address, USD(0.5), USD(20)] });
     } catch (e) {
       console.warn("verify failed (retry later with `hardhat verify`):", (e as Error).message);
     }
