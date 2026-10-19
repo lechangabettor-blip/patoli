@@ -366,7 +366,7 @@ function MatchView({ id, myEoa, onExit, onRematch }: { id: string; myEoa: Hex; o
   const rematchOpen = rematchExpires != null && now < rematchExpires;
   const rematchExpired = rematchExpires != null && now >= rematchExpires && !m.rematch_id;
   const rematchLeft = rematchExpires != null ? Math.max(0, rematchExpires - now) : 0;
-  const nextStake = Math.min(Number(m.stake) * 2, 20);
+  const nextStake = Number(m.stake); // doble o nada = same stake again
 
   async function doubleOrNothing() {
     setErr(null);

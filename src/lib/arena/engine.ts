@@ -380,6 +380,8 @@ async function settleRound(id: string, round: number, outcome: "a" | "b" | "tie"
       .update({ score_a: scoreA, score_b: scoreB, status: complete ? "ready" : "finished", winner_eoa: winner, finished_at: nowIso() })
       .eq("id", id)
       .eq("status", "playing");
+    // don't wait for the cron: start the on-chain settlement right away (serialized by the operator queue)
+    if (complete) void settleReady().catch((e) => console.error("[arena] instant settle", e instanceof Error ? e.message : e));
   } else {
     await db.from("arena_matches").update({ score_a: scoreA, score_b: scoreB, round: round + 1 }).eq("id", id).eq("status", "playing");
     await openRound(id, round + 1);
@@ -463,7 +465,8 @@ export async function proposeRematch(id: string, me: ArenaIdentity): Promise<Mat
   if (m.rematch_id) return m; // already created
   const endedAt = new Date(m.finished_at ?? m.created_at).getTime();
   if (Date.now() - endedAt > REMATCH_GRACE_MS) throw new ArenaError("Ya pasó el momento. Busca otro rival.", 409);
-  if (m.rematch_expires_at && past(m.rematch_expires_at)) throw new ArenaError("Se acabó el tiempo.", 409);
+  const GRACE_MS = 2000; // network latency between the rival's tap and our clock
+  if (m.rematch_expires_at && new Date(m.rematch_expires_at).getTime() + GRACE_MS <= Date.now()) throw new ArenaError("Se acabó el tiempo.", 409);
 
   const col = side === "a" ? "rematch_a_at" : "rematch_b_at";
   const patch: Record<string, string> = { [col]: nowIso() };
@@ -473,15 +476,23 @@ export async function proposeRematch(id: string, me: ArenaIdentity): Promise<Mat
   const { data: fresh } = await db.from("arena_matches").select(MATCH_COLS).eq("id", id).single();
   const f = fresh as MatchRow;
   if (!(f.rematch_a_at && f.rematch_b_at) || f.rematch_id) return f;
-  if (f.rematch_expires_at && new Date(f.rematch_b_at > f.rematch_a_at ? f.rematch_b_at : f.rematch_a_at).getTime() > new Date(f.rematch_expires_at).getTime()) {
+  if (f.rematch_expires_at && new Date(f.rematch_b_at > f.rematch_a_at ? f.rematch_b_at : f.rematch_a_at).getTime() > new Date(f.rematch_expires_at).getTime() + GRACE_MS) {
     throw new ArenaError("Se acabó el tiempo.", 409);
+  }
+  // Both are in. If the previous match hasn't settled yet, settle it now (a few seconds)
+  // so the loser's stake isn't counted twice in the exposure check below.
+  if (f.status === "ready") {
+    try {
+      await settleReady();
+    } catch (e) {
+      console.error("[arena] pre-rematch settle", e instanceof Error ? e.message : e);
+    }
   }
 
   // both in → create the next match (guard with the rematch_id column so only one gets created)
-  const limits = await arenaLimits();
+  // "Doble o nada" = the same stake again (win it back, or lose it again)
   const prev = toUnits(Number(f.stake));
-  let next = prev * 2n;
-  if (next > limits.max) next = limits.max;
+  const next = prev;
   const [balA, balB, pendA, pendB] = await Promise.all([arenaBalance(f.eoa_a as Hex), arenaBalance(f.eoa_b as Hex), arenaPendingWithdraw(f.eoa_a as Hex), arenaPendingWithdraw(f.eoa_b as Hex)]);
   // everything either player still owes from decided-but-unsettled matches (this one included)
   const [owesA, owesB, otherA, otherB] = await Promise.all([unsettledOwed(f.eoa_a), unsettledOwed(f.eoa_b), otherOpenMatch(f.player_a, id), otherOpenMatch(f.player_b, id)]);
