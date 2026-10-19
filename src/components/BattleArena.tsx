@@ -16,7 +16,7 @@ import { useWallet } from "@/providers/WalletContext";
 import { useMe } from "@/providers/MeProvider";
 import { useTrading } from "@/providers/TradingProvider";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
-import { loadSecret, useArenaActions, useArenaMatch, useArenaMe, type MatchState } from "@/hooks/useArena";
+import { loadSecret, useArenaActions, useArenaMatch, useArenaMe } from "@/hooks/useArena";
 import { BEST_OF, LOBBY_STAKE_USD, MOVE_LABEL, toMatchStruct, toUnits, type Move } from "@/lib/arena/typed-data";
 import { formatUsd } from "@/lib/polymarket/odds";
 
