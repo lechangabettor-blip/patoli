@@ -203,6 +203,11 @@ export function useArenaActions() {
       refresh();
       return r;
     },
+    rematch: async (matchId: string) => {
+      const r = await call<{ match: unknown }>(`/api/arena/match/${matchId}/rematch`, { method: "POST" });
+      refresh(matchId);
+      return r;
+    },
     tick: async (matchId: string) => {
       await call(`/api/arena/match/${matchId}/tick`, { method: "POST" });
       refresh(matchId);

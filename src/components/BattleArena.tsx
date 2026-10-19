@@ -69,6 +69,10 @@ export default function BattleArena() {
           <MatchView
             id={activeId}
             myEoa={(eoaAddress ?? "").toLowerCase() as Hex}
+            onRematch={(newId) => {
+              setDismissed(null);
+              setMatchId(newId);
+            }}
             onExit={() => {
               setDismissed(activeId);
               setMatchId(null);
@@ -252,13 +256,14 @@ function Lobby({ balance, stranded, loading, onMatched, onFunded }: { balance: n
 
 /* ------------------------------------------------------------------ match */
 
-function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () => void }) {
+function MatchView({ id, myEoa, onExit, onRematch }: { id: string; myEoa: Hex; onExit: () => void; onRematch: (newId: string) => void }) {
   const q = useArenaMatch(id);
   const actions = useArenaActions();
   const [err, setErr] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [myPick, setMyPick] = useState<{ round: number; move: Move } | null>(null); // optimistic
   const [share, setShare] = useState(false);
+  const [rematchBusy, setRematchBusy] = useState(false);
   const [clash, setClash] = useState<number | null>(null); // round whose clash is on screen
   const shownRef = useRef(0); // highest resolved round already shown
   const [now, setNow] = useState(() => Date.now());
@@ -318,7 +323,21 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
     const deadline = cur && !cur.outcome ? (cur.commit_a && cur.commit_b ? cur.reveal_deadline : cur.commit_deadline) : null;
     if (m.status === "playing" && deadline && new Date(deadline).getTime() + 1500 < now) void run(`tick:${m.id}:${cur!.round}:${deadline}`, () => actions.tick(m.id));
     if (m.status === "signing" && new Date(m.created_at).getTime() + 22_000 < now) void run(`tick:sign:${m.id}`, () => actions.tick(m.id));
-  }, [m, cur, side, now, actions]);
+
+    // doble o nada accepted by both → jump to the new match
+    if (m.rematch_id) void run(`rematch:${m.id}`, async () => onRematch(m.rematch_id!));
+    // rival proposed → buzz once
+    const theirs = side === "a" ? m.rematch_b_at : m.rematch_a_at;
+    const mine = side === "a" ? m.rematch_a_at : m.rematch_b_at;
+    if (theirs && !mine && !m.rematch_id)
+      void run(`buzz:${m.id}`, async () => {
+        try {
+          navigator.vibrate?.([80, 40, 80]);
+        } catch {
+          /* no haptics */
+        }
+      });
+  }, [m, cur, side, now, actions, onRematch]);
 
   if (!state || !m || !side) {
     return <div className="skeleton h-64" />;
@@ -340,6 +359,26 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
   const pendingClash = clash != null ? state.rounds.find((r) => r.round === clash) ?? null : null;
   const clashing = !!pendingClash && !done;
   const optimistic = myPick && cur && myPick.round === cur.round ? myPick.move : null;
+  // doble o nada state
+  const myRematch = side === "a" ? m.rematch_a_at : m.rematch_b_at;
+  const theirRematch = side === "a" ? m.rematch_b_at : m.rematch_a_at;
+  const rematchExpires = m.rematch_expires_at ? new Date(m.rematch_expires_at).getTime() : null;
+  const rematchOpen = rematchExpires != null && now < rematchExpires;
+  const rematchExpired = rematchExpires != null && now >= rematchExpires && !m.rematch_id;
+  const rematchLeft = rematchExpires != null ? Math.max(0, rematchExpires - now) : 0;
+  const nextStake = Math.min(Number(m.stake) * 2, 20);
+
+  async function doubleOrNothing() {
+    setErr(null);
+    setRematchBusy(true);
+    try {
+      await actions.rematch(m!.id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "No se pudo");
+    } finally {
+      setRematchBusy(false);
+    }
+  }
   const sealed = !!myCommit || !!optimistic;
 
   async function pick(move: Move) {
@@ -481,12 +520,38 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
                 </>
               ) : null}
             </p>
+            {/* Doble o nada */}
+            {m.rematch_id ? (
+              <p className="pulse-soft mt-4 text-sm text-accent-soft">Va la revancha…</p>
+            ) : rematchExpired ? (
+              <p className="mt-4 text-xs text-muted">Se acabó el tiempo para la revancha.</p>
+            ) : theirRematch && !myRematch ? (
+              <div className="mt-4 rounded-2xl border border-accent bg-[rgba(255,61,23,.10)] p-3">
+                <div className="font-display text-sm font-extrabold uppercase text-accent-soft">@{rival} quiere doble o nada</div>
+                <p className="mt-0.5 text-xs text-muted">${formatUsd(nextStake)} cada quien. Ganas ${formatUsd(nextStake * 2)}.</p>
+                <TimeBar msLeft={rematchLeft} total={10_000} />
+                <button onClick={doubleOrNothing} disabled={rematchBusy} className="btn-accent mt-3 w-full py-3 text-sm">
+                  {rematchBusy ? "Entrando…" : `Aceptar · $${formatUsd(nextStake)}`}
+                </button>
+              </div>
+            ) : myRematch && rematchOpen ? (
+              <div className="mt-4 rounded-2xl bg-surface p-3">
+                <div className="pulse-soft font-display text-sm font-extrabold uppercase">Esperando a @{rival}…</div>
+                <TimeBar msLeft={rematchLeft} total={10_000} />
+              </div>
+            ) : null}
+
             <div className="mt-4 flex gap-2">
-              <button onClick={() => setShare(true)} className="btn-ghost flex flex-1 items-center justify-center gap-1.5 py-3 text-sm">
-                <Share2 className="h-4 w-4" /> Compartir
+              <button onClick={() => setShare(true)} className="btn-ghost flex items-center justify-center gap-1.5 px-4 py-3 text-sm" aria-label="Compartir">
+                <Share2 className="h-4 w-4" />
               </button>
-              <button onClick={onExit} className="btn-accent flex-1 py-3 text-sm">
-                Jugar otra
+              {!myRematch && !rematchExpired && !m.rematch_id ? (
+                <button onClick={doubleOrNothing} disabled={rematchBusy} className="btn-accent flex-1 py-3 text-sm">
+                  {rematchBusy ? "…" : `Doble o nada · $${formatUsd(nextStake)}`}
+                </button>
+              ) : null}
+              <button onClick={onExit} className="btn-ghost flex-1 py-3 text-sm">
+                Salir
               </button>
             </div>
           </Stage>
@@ -517,6 +582,16 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
           />
         ) : null}
       </Sheet>
+    </div>
+  );
+}
+
+/** A bar that drains from full to empty as the window closes. */
+function TimeBar({ msLeft, total }: { msLeft: number; total: number }) {
+  const pct = Math.max(0, Math.min(100, (msLeft / total) * 100));
+  return (
+    <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[rgba(255,255,255,.08)]">
+      <div className={cn("h-full rounded-full transition-[width] duration-500 ease-linear", pct > 30 ? "bg-accent" : "bg-loss")} style={{ width: `${pct}%` }} />
     </div>
   );
 }

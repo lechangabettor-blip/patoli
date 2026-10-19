@@ -25,6 +25,7 @@ import {
 import {
   BEST_OF,
   COMMIT_SECONDS,
+  fromUnits,
   MATCH_TTL_MINUTES,
   REVEAL_SECONDS,
   SIGN_SECONDS,
@@ -72,6 +73,11 @@ export interface MatchRow {
   winner_eoa: string | null;
   settle_tx: string | null;
   claim_tx: string | null;
+  rematch_a_at: string | null;
+  rematch_b_at: string | null;
+  rematch_expires_at: string | null;
+  rematch_id: string | null;
+  parent_id: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -107,7 +113,7 @@ export class ArenaError extends Error {
   }
 }
 
-const MATCH_COLS = "id, player_a, player_b, eoa_a, eoa_b, stake, best_of, deadline, status, sig_a, sig_b, round, score_a, score_b, winner_eoa, settle_tx, claim_tx, created_at, started_at, finished_at";
+const MATCH_COLS = "id, player_a, player_b, eoa_a, eoa_b, stake, best_of, deadline, status, sig_a, sig_b, round, score_a, score_b, winner_eoa, settle_tx, claim_tx, rematch_a_at, rematch_b_at, rematch_expires_at, rematch_id, parent_id, created_at, started_at, finished_at";
 const nowIso = () => new Date().toISOString();
 const plus = (sec: number) => new Date(Date.now() + sec * 1000).toISOString();
 const past = (iso: string | null) => !!iso && new Date(iso).getTime() <= Date.now();
@@ -404,6 +410,77 @@ export async function tick(id: string) {
     else await finishMatch(id, null, "nadie jugó"); // nobody committed → ends on score
   }
   return loadMatch(id);
+}
+
+/** ------------------------------------------------------------ doble o nada */
+
+export const REMATCH_WINDOW_SECONDS = 10;
+const REMATCH_GRACE_MS = 3 * 60_000; // how long after a match ends a rematch may be opened
+
+/**
+ * Either player taps "Doble o nada" → opens a 10s window (first tap sets the clock).
+ * When both have tapped inside it, the next match is created: same players, double
+ * stake (capped by the Arena max), fresh signatures. Balances are re-checked including
+ * what the previous match will still take once it settles.
+ */
+export async function proposeRematch(id: string, me: ArenaIdentity): Promise<MatchRow> {
+  const db = supabaseAdmin();
+  const loaded = await loadMatch(id);
+  if (!loaded) throw new ArenaError("Partida no existe", 404);
+  const m = loaded.match;
+  const side = sideOf(m, me);
+  if (!["finished", "ready", "settled", "disputed"].includes(m.status)) throw new ArenaError("La partida no ha terminado", 409);
+  if (m.rematch_id) return m; // already created
+  const endedAt = new Date(m.finished_at ?? m.created_at).getTime();
+  if (Date.now() - endedAt > REMATCH_GRACE_MS) throw new ArenaError("Ya pasó el momento. Busca otro rival.", 409);
+  if (m.rematch_expires_at && past(m.rematch_expires_at)) throw new ArenaError("Se acabó el tiempo.", 409);
+
+  const col = side === "a" ? "rematch_a_at" : "rematch_b_at";
+  const patch: Record<string, string> = { [col]: nowIso() };
+  if (!m.rematch_expires_at) patch.rematch_expires_at = plus(REMATCH_WINDOW_SECONDS);
+  await db.from("arena_matches").update(patch).eq("id", id).is(col, null);
+
+  const { data: fresh } = await db.from("arena_matches").select(MATCH_COLS).eq("id", id).single();
+  const f = fresh as MatchRow;
+  if (!(f.rematch_a_at && f.rematch_b_at) || f.rematch_id) return f;
+  if (f.rematch_expires_at && new Date(f.rematch_b_at > f.rematch_a_at ? f.rematch_b_at : f.rematch_a_at).getTime() > new Date(f.rematch_expires_at).getTime()) {
+    throw new ArenaError("Se acabó el tiempo.", 409);
+  }
+
+  // both in → create the next match (guard with the rematch_id column so only one gets created)
+  const limits = await arenaLimits();
+  const prev = toUnits(Number(f.stake));
+  let next = prev * 2n;
+  if (next > limits.max) next = limits.max;
+  const [balA, balB, pendA, pendB] = await Promise.all([arenaBalance(f.eoa_a as Hex), arenaBalance(f.eoa_b as Hex), arenaPendingWithdraw(f.eoa_a as Hex), arenaPendingWithdraw(f.eoa_b as Hex)]);
+  // if the previous match is not settled yet, the loser still owes its stake on-chain
+  const unsettled = f.status !== "settled";
+  const owesA = unsettled && f.winner_eoa && f.winner_eoa.toLowerCase() === f.eoa_b.toLowerCase() ? prev : 0n;
+  const owesB = unsettled && f.winner_eoa && f.winner_eoa.toLowerCase() === f.eoa_a.toLowerCase() ? prev : 0n;
+  if (pendA.amount > 0n || pendB.amount > 0n) throw new ArenaError("Hay un retiro en curso.", 409);
+  if (balA < next + owesA || balB < next + owesB) throw new ArenaError(`Alguien no tiene $${fromUnits(next)} en su arena.`, 402);
+
+  const newId = newMatchId();
+  const deadline = new Date(Date.now() + MATCH_TTL_MINUTES * 60_000).toISOString();
+  const { data: claimed } = await db.from("arena_matches").update({ rematch_id: newId }).eq("id", id).is("rematch_id", null).select("id");
+  if (!claimed?.length) return (await loadMatch(id))!.match; // the other request won the race
+  const { error } = await db.from("arena_matches").insert({
+    id: newId,
+    player_a: f.player_a,
+    player_b: f.player_b,
+    eoa_a: f.eoa_a,
+    eoa_b: f.eoa_b,
+    stake: fromUnits(next),
+    best_of: f.best_of,
+    deadline,
+    parent_id: id,
+  });
+  if (error) {
+    console.error("[arena] rematch insert", error.message);
+    await db.from("arena_matches").update({ rematch_id: null }).eq("id", id);
+    throw new ArenaError("No se pudo crear la revancha", 500);
+  }
+  return (await loadMatch(id))!.match;
 }
 
 /** ------------------------------------------------------------ settlement */
