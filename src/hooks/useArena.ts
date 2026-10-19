@@ -158,11 +158,6 @@ export function useArenaActions() {
       await call(`/api/arena/match/${matchId}/reveal`, { method: "POST", body: JSON.stringify({ round, move: s.move, salt: s.salt }) });
       refresh(matchId);
     },
-    signResult: async (matchId: Hex, winner: Hex | null) => {
-      const sig = await sign("Result", { matchId, winner: winner ?? "0x0000000000000000000000000000000000000000" });
-      await call(`/api/arena/match/${matchId}/result`, { method: "POST", body: JSON.stringify({ sig }) });
-      refresh(matchId);
-    },
     tick: async (matchId: string) => {
       await call(`/api/arena/match/${matchId}/tick`, { method: "POST" });
       refresh(matchId);

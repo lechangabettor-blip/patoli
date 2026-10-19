@@ -70,10 +70,6 @@ export function verifyCommitSig(matchId: Hex, round: number, hash: Hex, signer: 
   if (!isCanonicalSig(signature)) return Promise.resolve(false);
   return arenaPublic.verifyTypedData({ address: signer, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Commit", message: { matchId, round, hash }, signature });
 }
-export function verifyResultSig(matchId: Hex, winner: Hex, signer: Hex, signature: Hex) {
-  if (!isCanonicalSig(signature)) return Promise.resolve(false);
-  return arenaPublic.verifyTypedData({ address: signer, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Result", message: { matchId, winner }, signature });
-}
 export function verifyWithdrawSig(msg: { player: Hex; to: Hex; amount: bigint; nonce: bigint; deadline: bigint }, signature: Hex) {
   if (!isCanonicalSig(signature)) return Promise.resolve(false);
   return arenaPublic.verifyTypedData({ address: msg.player, domain: ARENA_DOMAIN, types: ARENA_TYPES, primaryType: "Withdraw", message: msg, signature });
@@ -102,13 +98,16 @@ export async function arenaIdentity(req: NextRequest): Promise<ArenaIdentity | n
 
 /** Transactions ------------------------------------------------------------ */
 
+export interface ClaimCommit { round: number; player: Hex; hash: Hex; sig: Hex; opSig: Hex }
+export interface ClaimReveal { round: number; player: Hex; move: number; salt: Hex; opSig: Hex }
+
+/** A completed match: the players' signed, operator-acked moves. The chain replays them. */
 export interface SettleItem {
   m: MatchStruct;
   sigA: Hex;
   sigB: Hex;
-  winner: Hex;
-  resSigA: Hex;
-  resSigB: Hex;
+  commits: ClaimCommit[];
+  reveals: ClaimReveal[];
 }
 
 export async function sendSettleBatch(items: SettleItem[]): Promise<Hex> {
@@ -117,7 +116,7 @@ export async function sendSettleBatch(items: SettleItem[]): Promise<Hex> {
     address: ARENA_ADDRESS,
     abi: arenaAbi,
     functionName: "settleBatch",
-    args: [items.map((it) => ({ m: it.m, sigA: it.sigA, sigB: it.sigB, winner: it.winner, resSigA: it.resSigA, resSigB: it.resSigB }))],
+    args: [items.map((it) => ({ m: it.m, sigA: it.sigA, sigB: it.sigB, commits: it.commits, reveals: it.reveals }))],
   });
   return hash;
 }
@@ -126,9 +125,6 @@ export async function sendWithdrawWithSig(player: Hex, to: Hex, amount: bigint, 
   const wallet = operatorWallet();
   return wallet.writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "withdrawWithSig", args: [player, to, amount, deadline, sig] });
 }
-
-export interface ClaimCommit { round: number; player: Hex; hash: Hex; sig: Hex; opSig: Hex }
-export interface ClaimReveal { round: number; player: Hex; move: number; salt: Hex; opSig: Hex }
 
 /** Operator acknowledgements: "this move reached Patoli inside its window". Required by the contract's replay. */
 export function signCommitAck(matchId: Hex, round: number, player: Hex, hash: Hex): Promise<Hex> {

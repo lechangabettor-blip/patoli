@@ -263,8 +263,6 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
     if (m.status === "playing" && cur && !cur.outcome && cur.commit_a && cur.commit_b && loadSecret(m.id, cur.round)) {
       void run(`reveal:${m.id}:${cur.round}`, () => actions.reveal(m.id, cur.round));
     }
-    const myRes = side === "a" ? m.result_sig_a : m.result_sig_b;
-    if (m.status === "finished" && !myRes) void run(`result:${m.id}`, () => actions.signResult(m.id as Hex, (m.winner_eoa as Hex | null) ?? null));
 
     // timeouts → ask the server to apply the rule
     const deadline = cur && !cur.outcome ? (cur.commit_a && cur.commit_b ? cur.reveal_deadline : cur.commit_deadline) : null;
@@ -284,7 +282,8 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
   const deadline = cur && !cur.outcome ? (cur.commit_a && cur.commit_b ? cur.reveal_deadline : cur.commit_deadline) : null;
   const secondsLeft = deadline ? Math.max(0, Math.ceil((new Date(deadline).getTime() - now) / 1000)) : null;
   const iWon = m.winner_eoa && m.winner_eoa.toLowerCase() === myEoa;
-  const draw = (m.status === "finished" || m.status === "ready" || m.status === "settled") && !m.winner_eoa;
+  const done = m.status === "finished" || m.status === "ready" || m.status === "settled" || m.status === "disputed";
+  const draw = done && !m.winner_eoa;
   const lastResolved = [...state.rounds].reverse().find((r) => r.outcome);
 
   async function pick(move: Move) {
@@ -352,7 +351,7 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
             )}
             {lastResolved && lastResolved.round === cur.round - 1 ? <RoundRecap r={lastResolved} side={side} /> : null}
           </motion.div>
-        ) : m.status === "finished" || m.status === "ready" || m.status === "settled" ? (
+        ) : done ? (
           <Stage
             key="done"
             title={draw ? "Empate" : iWon ? "Ganaste" : "Perdiste"}
@@ -370,8 +369,10 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
               {m.status === "settled"
                 ? "Liquidado en Polygon."
                 : m.status === "ready"
-                  ? "Ambos firmaron. Liquidando en la blockchain…"
-                  : "Firmando el resultado…"}
+                  ? "Resultado definido por las jugadas. Liquidando en la blockchain…"
+                  : m.status === "disputed"
+                    ? "Registrado en la blockchain. Se paga en 24 h."
+                    : "Rival ausente. Registrando en la blockchain…"}
               {m.settle_tx ? (
                 <>
                   {" "}

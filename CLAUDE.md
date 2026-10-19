@@ -169,9 +169,13 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   `0003_arena.sql`: arena_lobby, arena_matches, arena_rounds, arena_round_secrets,
   arena_settlements, `arena_pair()` RPC, `arena_stats` view). Protocol: lobby → pair → both
   sign Match (silent Magic sig) → per round: commit (hash+sig, 15s) → reveal after both
-  commits (15s; secrets kept server-side until both in) → score → finished → both sign
-  Result → `ready` → cron `/api/arena/settle` (every minute) batches on-chain → `settled`
-  (marked ONLY from `Settled` events in the receipt; skipped items → `disputed`).
+  commits (15s; secrets kept server-side until both in) → score. **Nobody signs a result
+  (LeChanga, 2026-10-19):** a match decided by score through revealed rounds becomes `ready`
+  and the cron `/api/arena/settle` (every minute) calls `settleBatch` with the moves
+  themselves; the contract replays them and pays (rock vs paper = loss, automatically).
+  Forfeits/abandons → `finished` → operator `claim` after `Match.deadline` → `disputed` →
+  `finalize` after 24h. `settled` is marked ONLY from `Settled` events in the receipt;
+  skipped items go back to `finished` (claim path).
   **Engine rules == contract `_replay` rules** (missed commit/reveal with the other side
   delivered = match forfeit; nobody committed/revealed = ends on score). Timeouts applied by
   `tick` (clients call it when timers hit 0; the cron sweeps). If a loser never signs the

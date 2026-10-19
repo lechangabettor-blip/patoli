@@ -25,10 +25,6 @@ export const ARENA_TYPES = {
     { name: "bestOf", type: "uint8" },
     { name: "deadline", type: "uint64" },
   ],
-  Result: [
-    { name: "matchId", type: "bytes32" },
-    { name: "winner", type: "address" },
-  ],
   Commit: [
     { name: "matchId", type: "bytes32" },
     { name: "round", type: "uint8" },

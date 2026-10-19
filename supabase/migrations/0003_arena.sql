@@ -23,15 +23,15 @@ create table if not exists public.arena_matches (
   best_of       int  not null default 3,
   deadline      timestamptz not null,       -- Match.deadline (dispute path opens after)
   status        text not null default 'signing',
-  -- signing → playing → finished → ready (both result sigs) → settled | cancelled | disputed
+  -- signing → playing → ready (decided by score: settles from the moves) → settled
+  --                     → finished (forfeit/abandon: on-chain claim) → disputed → settled
+  --                     → cancelled (never started)
   sig_a         text,                       -- EIP-712 Match signatures (public: evidence)
   sig_b         text,
   round         int  not null default 0,    -- current round (1-based once playing)
   score_a       int  not null default 0,
   score_b       int  not null default 0,
   winner_eoa    text,                       -- null = draw (when finished)
-  result_sig_a  text,
-  result_sig_b  text,
   settle_tx     text,
   claim_tx      text,                       -- dispute path: operator-filed claim
   settle_error  text,                       -- short generic code only (public table)

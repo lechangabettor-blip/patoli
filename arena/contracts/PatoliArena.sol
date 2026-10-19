@@ -22,7 +22,9 @@ import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step
  *    (`withdrawWithSig`, relayed and gas-paid by Patoli).
  *
  * Two settlement paths
- *  1. Happy path: both players sign `Result(matchId, winner)` at the end → `settle`.
+ *  1. Happy path: a COMPLETED match (someone reached the needed wins through rounds where
+ *     both revealed) settles straight from the players' signed, operator-acked moves →
+ *     `settle` / `settleBatch`. No result signature, nothing for the players to do.
  *  2. Dispute path (opponent vanished): after `match.deadline`, anyone opens a `claim`
  *     with the signed artifacts they hold (round commits signed by the player, reveals).
  *     The contract replays the match from those artifacts. A counter-claim inside
@@ -85,7 +87,6 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
 
     bytes32 public constant MATCH_TYPEHASH =
         keccak256("Match(bytes32 id,address playerA,address playerB,uint256 stake,uint8 bestOf,uint64 deadline)");
-    bytes32 public constant RESULT_TYPEHASH = keccak256("Result(bytes32 matchId,address winner)");
     bytes32 public constant COMMIT_TYPEHASH = keccak256("Commit(bytes32 matchId,uint8 round,bytes32 hash)");
     bytes32 public constant COMMIT_ACK_TYPEHASH = keccak256("CommitAck(bytes32 matchId,uint8 round,address player,bytes32 hash)");
     bytes32 public constant REVEAL_ACK_TYPEHASH = keccak256("RevealAck(bytes32 matchId,uint8 round,address player,uint8 move,bytes32 salt)");
@@ -142,6 +143,7 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
     error WeakerClaim();
     error ClaimPending();
     error EscrowToken();
+    error Incomplete();
 
     constructor(IERC20 token, address owner_, address operator_, uint256 minStake_, uint256 maxStake_)
         EIP712("PatoliArena", "1")
@@ -217,17 +219,19 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
 
     // ------------------------------------------------------------ happy path
 
-    /// @notice Settle a match both players agreed on and whose result both signed.
-    /// @param winner address(0) for a draw (both refunded, i.e. nothing moves).
-    function settle(Match calldata m, bytes calldata sigA, bytes calldata sigB, address winner, bytes calldata resSigA, bytes calldata resSigB)
+    /// @notice Settle a COMPLETED match straight from the players' signed moves. Complete =
+    ///         a player reached the needed wins through rounds where BOTH revealed. Every
+    ///         artifact is player-signed and operator-acked, and there is at most one acked
+    ///         commit per player per round, so no later evidence can change the replay:
+    ///         the outcome is final the moment the last move is revealed.
+    ///         Forfeits and abandoned matches are NOT complete — they go through claim/finalize.
+    function settle(Match calldata m, bytes calldata sigA, bytes calldata sigB, SignedCommit[] calldata commits, Reveal[] calldata reveals)
         external
         nonReentrant
     {
         _checkMatch(m, sigA, sigB);
-        bytes32 rd = _hashTypedDataV4(keccak256(abi.encode(RESULT_TYPEHASH, m.id, winner)));
-        if (!SignatureChecker.isValidSignatureNow(m.playerA, rd, resSigA)) revert BadSignature();
-        if (!SignatureChecker.isValidSignatureNow(m.playerB, rd, resSigB)) revert BadSignature();
-        if (winner != address(0) && winner != m.playerA && winner != m.playerB) revert BadMatch();
+        (address winner,, bool complete) = _replay(m, commits, reveals);
+        if (!complete) revert Incomplete();
         _apply(m, winner, false);
     }
 
@@ -235,23 +239,21 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
         Match m;
         bytes sigA;
         bytes sigB;
-        address winner;
-        bytes resSigA;
-        bytes resSigB;
+        SignedCommit[] commits;
+        Reveal[] reveals;
     }
 
-    /// @notice Batch of happy-path settlements (Patoli submits these every few minutes).
-    ///         A bad item is skipped, not reverted, so one broken match can't block the rest.
+    /// @notice Batch of completed-match settlements (Patoli submits these every minute).
+    ///         A bad or incomplete item is skipped, not reverted, so one broken match can't
+    ///         block the rest. Check the `Settled` events to see which ones went through.
     function settleBatch(SettleInput[] calldata items) external nonReentrant {
         for (uint256 i = 0; i < items.length; i++) {
             SettleInput calldata it = items[i];
             if (matchStatus[it.m.id] == SETTLED) continue;
             if (!_matchOk(it.m, it.sigA, it.sigB)) continue;
-            bytes32 rd = _hashTypedDataV4(keccak256(abi.encode(RESULT_TYPEHASH, it.m.id, it.winner)));
-            if (!SignatureChecker.isValidSignatureNow(it.m.playerA, rd, it.resSigA)) continue;
-            if (!SignatureChecker.isValidSignatureNow(it.m.playerB, rd, it.resSigB)) continue;
-            if (it.winner != address(0) && it.winner != it.m.playerA && it.winner != it.m.playerB) continue;
-            _apply(it.m, it.winner, false);
+            (address winner,, bool complete) = _replay(it.m, it.commits, it.reveals);
+            if (!complete) continue;
+            _apply(it.m, winner, false);
         }
     }
 
@@ -267,7 +269,7 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
     {
         _checkMatch(m, sigA, sigB);
         if (block.timestamp <= m.deadline) revert TooEarly();
-        (address winner, uint32 evidence) = _replay(m, commits, reveals);
+        (address winner, uint32 evidence,) = _replay(m, commits, reveals);
         Claim memory prev = claims[m.id];
         if (prev.claimant != address(0)) {
             if (block.timestamp >= prev.finalizeAt) revert Expired(); // finalize instead
@@ -378,10 +380,12 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
     ///      other did); both committed but one reveal missing → forfeit by the non-revealer;
     ///      both revealed → scored (ties replay as the next round); neither committed or
     ///      neither revealed → match stops, higher score wins, equal score → draw.
+    /// @dev `complete` is true only when the match was decided by score through fully revealed
+    ///         rounds (no forfeit, no abandonment) — the only outcome that may settle instantly.
     function _replay(Match calldata m, SignedCommit[] calldata commits, Reveal[] calldata reveals)
         internal
         view
-        returns (address winner, uint32 evidence)
+        returns (address winner, uint32 evidence, bool complete)
     {
         uint8 need = m.bestOf / 2 + 1;
         uint8 scoreA;
@@ -392,21 +396,21 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
             if (okA) evidence++;
             if (okB) evidence++;
             if (!okA && !okB) break;
-            if (okA != okB) return (okA ? m.playerA : m.playerB, evidence);
+            if (okA != okB) return (okA ? m.playerA : m.playerB, evidence, false);
             uint8 mvA = _findReveal(m, reveals, r, m.playerA, hA);
             uint8 mvB = _findReveal(m, reveals, r, m.playerB, hB);
             if (mvA != 0) evidence++;
             if (mvB != 0) evidence++;
             if (mvA == 0 && mvB == 0) break;
-            if ((mvA == 0) != (mvB == 0)) return (mvA != 0 ? m.playerA : m.playerB, evidence);
+            if ((mvA == 0) != (mvB == 0)) return (mvA != 0 ? m.playerA : m.playerB, evidence, false);
             if (_beats(mvA, mvB)) scoreA++;
             else if (_beats(mvB, mvA)) scoreB++;
-            if (scoreA == need) return (m.playerA, evidence);
-            if (scoreB == need) return (m.playerB, evidence);
+            if (scoreA == need) return (m.playerA, evidence, true);
+            if (scoreB == need) return (m.playerB, evidence, true);
         }
-        if (scoreA > scoreB) return (m.playerA, evidence);
-        if (scoreB > scoreA) return (m.playerB, evidence);
-        return (address(0), evidence);
+        if (scoreA > scoreB) return (m.playerA, evidence, false);
+        if (scoreB > scoreA) return (m.playerB, evidence, false);
+        return (address(0), evidence, false);
     }
 
     function _findCommit(Match calldata m, SignedCommit[] calldata commits, uint8 round, address player)

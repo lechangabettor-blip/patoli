@@ -24,7 +24,6 @@ describe("PatoliArena", () => {
       { name: "deadline", type: "uint64" },
     ],
   };
-  const ResultTypes = { Result: [{ name: "matchId", type: "bytes32" }, { name: "winner", type: "address" }] };
   const CommitTypes = { Commit: [{ name: "matchId", type: "bytes32" }, { name: "round", type: "uint8" }, { name: "hash", type: "bytes32" }] };
   const CommitAckTypes = {
     CommitAck: [
@@ -65,7 +64,6 @@ describe("PatoliArena", () => {
     const sigB = await b.signTypedData(domain, MatchTypes, m);
     return { m, sigA, sigB };
   }
-  const signResult = (s: HardhatEthersSigner, matchId: string, winner: string) => s.signTypedData(domain, ResultTypes, { matchId, winner });
   const salt = () => ethers.hexlify(ethers.randomBytes(32));
   const chash = (matchId: string, round: number, player: string, move: number, s: string) =>
     ethers.solidityPackedKeccak256(["bytes32", "uint8", "address", "uint8", "bytes32"], [matchId, round, player, move, s]);
@@ -77,6 +75,19 @@ describe("PatoliArena", () => {
     const opSig = acked ? await op.signTypedData(domain, CommitAckTypes, { matchId, round, player: s.address, hash }) : "0x";
     const rOpSig = acked ? await op.signTypedData(domain, RevealAckTypes, { matchId, round, player: s.address, move, salt: st }) : "0x";
     return { signed: { round, player: s.address, hash, sig, opSig }, reveal: { round, player: s.address, move, salt: st, opSig: rOpSig } };
+  }
+
+  /** Play whole rounds: [[moveA, moveB], …] → evidence arrays the contract replays. */
+  async function play(matchId: string, rounds: [number, number][]) {
+    const commits: { round: number; player: string; hash: string; sig: string; opSig: string }[] = [];
+    const reveals: { round: number; player: string; move: number; salt: string; opSig: string }[] = [];
+    for (let i = 0; i < rounds.length; i++) {
+      const ca = await commit(a, matchId, i + 1, rounds[i][0]);
+      const cb = await commit(b, matchId, i + 1, rounds[i][1]);
+      commits.push(ca.signed, cb.signed);
+      reveals.push(ca.reveal, cb.reveal);
+    }
+    return { commits, reveals };
   }
 
   beforeEach(async () => {
@@ -100,40 +111,47 @@ describe("PatoliArena", () => {
     expect(await arena.balanceOf(vault.address)).to.equal(0n);
   });
 
-  it("settles the happy path: both sign the result, stake moves loser → winner, anyone may submit", async () => {
+  it("settles a completed match from the moves alone: rock vs paper loses, no result signature, anyone may submit", async () => {
     const { m, sigA, sigB } = await newMatch(USD(1));
-    const rA = await signResult(a, m.id, a.address);
-    const rB = await signResult(b, m.id, a.address);
-    await expect(arena.connect(relayer).settle(m, sigA, sigB, a.address, rA, rB)).to.emit(arena, "Settled");
+    const ev = await play(m.id, [[ROCK, PAPER], [ROCK, PAPER]]); // b wins 2-0
+    await expect(arena.connect(relayer).settle(m, sigA, sigB, ev.commits, ev.reveals)).to.emit(arena, "Settled");
+    expect(await arena.balanceOf(b.address)).to.equal(USD(11));
+    expect(await arena.balanceOf(a.address)).to.equal(USD(9));
+    await expect(arena.settle(m, sigA, sigB, ev.commits, ev.reveals)).to.be.revertedWithCustomError(arena, "AlreadySettled");
+  });
+
+  it("ties replay; 2-1 after a tie settles for the right player", async () => {
+    const { m, sigA, sigB } = await newMatch(USD(1));
+    const ev = await play(m.id, [[ROCK, ROCK], [PAPER, ROCK], [SCISSORS, ROCK], [ROCK, SCISSORS]]); // tie, a, b, a → a 2-1
+    await arena.settle(m, sigA, sigB, ev.commits, ev.reveals);
     expect(await arena.balanceOf(a.address)).to.equal(USD(11));
-    expect(await arena.balanceOf(b.address)).to.equal(USD(9));
-    await expect(arena.settle(m, sigA, sigB, a.address, rA, rB)).to.be.revertedWithCustomError(arena, "AlreadySettled");
   });
 
-  it("rejects a forged result or a forged match", async () => {
-    const { m, sigA, sigB } = await newMatch();
-    const rA = await signResult(a, m.id, a.address);
-    const rRelayer = await signResult(relayer, m.id, a.address);
-    await expect(arena.settle(m, sigA, sigB, a.address, rA, rRelayer)).to.be.revertedWithCustomError(arena, "BadSignature");
-    const forged = { ...m, stake: USD(5) }; // server bumps the stake
-    await expect(arena.settle(forged, sigA, sigB, a.address, rA, rA)).to.be.revertedWithCustomError(arena, "BadSignature");
-    await expect(arena.settle({ ...m, stake: USD(50) }, sigA, sigB, a.address, rA, rA)).to.be.revertedWithCustomError(arena, "StakeOutOfRange");
-  });
-
-  it("draw moves nothing", async () => {
-    const { m, sigA, sigB } = await newMatch();
-    const z = ethers.ZeroAddress;
-    await arena.settle(m, sigA, sigB, z, await signResult(a, m.id, z), await signResult(b, m.id, z));
+  it("an unfinished or forfeited match cannot settle instantly (it must go through claim)", async () => {
+    const { m, sigA, sigB } = await newMatch(USD(1));
+    const one = await play(m.id, [[ROCK, PAPER]]); // only 1-0
+    await expect(arena.settle(m, sigA, sigB, one.commits, one.reveals)).to.be.revertedWithCustomError(arena, "Incomplete");
+    const cA = await commit(a, m.id, 2, ROCK); // round 2: b never committed → forfeit, not complete
+    await expect(arena.settle(m, sigA, sigB, [...one.commits, cA.signed], [...one.reveals, cA.reveal])).to.be.revertedWithCustomError(arena, "Incomplete");
     expect(await arena.balanceOf(a.address)).to.equal(USD(10));
-    expect(await arena.balanceOf(b.address)).to.equal(USD(10));
   });
 
-  it("settleBatch skips bad items and applies good ones", async () => {
+  it("rejects a forged match", async () => {
+    const { m, sigA, sigB } = await newMatch();
+    const ev = await play(m.id, [[ROCK, PAPER], [ROCK, PAPER]]);
+    await expect(arena.settle({ ...m, stake: USD(5) }, sigA, sigB, ev.commits, ev.reveals)).to.be.revertedWithCustomError(arena, "BadSignature");
+    await expect(arena.settle({ ...m, stake: USD(50) }, sigA, sigB, ev.commits, ev.reveals)).to.be.revertedWithCustomError(arena, "StakeOutOfRange");
+  });
+
+  it("settleBatch skips incomplete / unacked items and applies good ones", async () => {
     const g = await newMatch(USD(2));
     const bad = await newMatch(USD(2));
+    const gEv = await play(g.m.id, [[ROCK, PAPER], [ROCK, PAPER]]);
+    const lateA = await commit(a, bad.m.id, 1, ROCK, false); // no operator ack → not counted
+    const okB = await commit(b, bad.m.id, 1, PAPER);
     const items = [
-      { m: g.m, sigA: g.sigA, sigB: g.sigB, winner: b.address, resSigA: await signResult(a, g.m.id, b.address), resSigB: await signResult(b, g.m.id, b.address) },
-      { m: bad.m, sigA: bad.sigA, sigB: bad.sigB, winner: b.address, resSigA: await signResult(a, bad.m.id, b.address), resSigB: await signResult(relayer, bad.m.id, b.address) },
+      { m: g.m, sigA: g.sigA, sigB: g.sigB, commits: gEv.commits, reveals: gEv.reveals },
+      { m: bad.m, sigA: bad.sigA, sigB: bad.sigB, commits: [lateA.signed, okB.signed], reveals: [lateA.reveal, okB.reveal] },
     ];
     await arena.connect(relayer).settleBatch(items);
     expect(await arena.balanceOf(b.address)).to.equal(USD(12));
@@ -144,9 +162,8 @@ describe("PatoliArena", () => {
   it("shortfall: pays what the loser has and emits", async () => {
     const { m, sigA, sigB } = await newMatch(USD(10));
     await arena.connect(b).requestWithdraw(USD(9.5), b.address); // b pulls most funds mid-match
-    await expect(arena.settle(m, sigA, sigB, a.address, await signResult(a, m.id, a.address), await signResult(b, m.id, a.address)))
-      .to.emit(arena, "Shortfall")
-      .withArgs(m.id, b.address, USD(10), USD(0.5));
+    const ev = await play(m.id, [[PAPER, ROCK], [PAPER, ROCK]]); // a wins
+    await expect(arena.settle(m, sigA, sigB, ev.commits, ev.reveals)).to.emit(arena, "Shortfall").withArgs(m.id, b.address, USD(10), USD(0.5));
     expect(await arena.balanceOf(a.address)).to.equal(USD(10.5));
   });
 
@@ -259,7 +276,8 @@ describe("PatoliArena", () => {
       await expect(arena.connect(a).deposit(USD(1), a.address)).to.be.revertedWithCustomError(arena, "Paused");
       await arena.connect(a).requestWithdraw(USD(1), a.address);
       const { m, sigA, sigB } = await newMatch();
-      await arena.settle(m, sigA, sigB, b.address, await signResult(a, m.id, b.address), await signResult(b, m.id, b.address));
+      const ev = await play(m.id, [[ROCK, PAPER], [ROCK, PAPER]]);
+      await arena.settle(m, sigA, sigB, ev.commits, ev.reveals);
       expect(await arena.balanceOf(b.address)).to.equal(USD(11));
     });
   });
