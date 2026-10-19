@@ -7,7 +7,7 @@ import { useMe } from "@/providers/MeProvider";
 import { useWallet } from "@/providers/WalletContext";
 import { isRealtimeConfigured, supabaseBrowser } from "@/lib/supabase/browser";
 import { ARENA_DOMAIN, ARENA_TYPES, commitHash, isArenaConfigured, toUnits, type MatchStruct, type Move } from "@/lib/arena/typed-data";
-import type { MatchRow, RoundRow } from "@/lib/arena/engine";
+import type { MatchPlayers, MatchRow, RoundRow } from "@/lib/arena/engine";
 
 export interface ArenaMe {
   balance: number;
@@ -20,6 +20,7 @@ export interface ArenaMe {
 export interface MatchState {
   match: MatchRow;
   rounds: RoundRow[];
+  players?: MatchPlayers;
 }
 
 /** Local secrets (move + salt per round) so a reload mid-round can still reveal. */

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase/server";
 import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
-import { loadFeed, loadProfile } from "@/lib/social";
+import { loadBattles, loadFeed, loadProfile, mergeFeed } from "@/lib/social";
 import { demoFeed, demoProfile } from "@/lib/demo-feed";
 
 /** GET /api/users/[handle] → { profile, bets } */
@@ -33,6 +33,9 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/users/[handl
     }
   }
   if (!profile) return NextResponse.json({ error: "not found" }, { status: 404 });
-  const bets = await loadFeed({ scope: "profile", profileId: profile.id, limit: 50 });
-  return NextResponse.json({ profile, bets, demo: false }, { headers: { "Cache-Control": "no-store" } });
+  const [bets, battles] = await Promise.all([
+    loadFeed({ scope: "profile", profileId: profile.id, limit: 50 }),
+    loadBattles({ scope: "profile", profileId: profile.id, limit: 50 }),
+  ]);
+  return NextResponse.json({ profile, bets: mergeFeed(bets, battles, 100), demo: false }, { headers: { "Cache-Control": "no-store" } });
 }

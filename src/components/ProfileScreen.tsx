@@ -231,6 +231,7 @@ export default function ProfileScreen() {
               Récord {me.record.w}-{me.record.l}
               {me.record.v ? `-${me.record.v}` : ""} · {me.followers} seguidores · ROI {me.roi >= 0 ? "+" : ""}
               {me.roi.toFixed(1)}%
+              {me.battles && me.battles.w + me.battles.l + me.battles.d > 0 ? ` · ✊ ${me.battles.w}-${me.battles.l}` : ""}
             </div>
           ) : null}
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">

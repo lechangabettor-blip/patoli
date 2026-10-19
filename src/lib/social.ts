@@ -42,8 +42,27 @@ function toProfile(p: ProfileRow, s: StatsRow | undefined): PublicProfile {
     roi: Number(s?.roi_pct ?? 0),
     followers: Number(s?.followers ?? 0),
     following: Number(s?.following ?? 0),
+    battles: { w: 0, l: 0, d: 0, pnl: 0 },
     createdAt: p.created_at,
   };
+}
+
+interface ArenaStatsRow {
+  profile_id: string;
+  wins: number | string;
+  losses: number | string;
+  draws: number | string;
+  pnl: number | string;
+}
+
+async function attachBattleStats(profiles: PublicProfile[]): Promise<void> {
+  if (profiles.length === 0) return;
+  const { data } = await supabaseAdmin().from("arena_stats").select("*").in("profile_id", profiles.map((p) => p.id));
+  const m = new Map((data ?? []).map((r) => [(r as ArenaStatsRow).profile_id, r as ArenaStatsRow]));
+  for (const p of profiles) {
+    const r = m.get(p.id);
+    if (r) p.battles = { w: Number(r.wins), l: Number(r.losses), d: Number(r.draws), pnl: Number(r.pnl) };
+  }
 }
 
 export async function loadProfile(by: { id?: string; handle?: string }, viewerId?: string | null): Promise<PublicProfile | null> {
@@ -53,7 +72,9 @@ export async function loadProfile(by: { id?: string; handle?: string }, viewerId
   const { data: p } = await q.maybeSingle<ProfileRow>();
   if (!p) return null;
   const { data: s } = await db.from("profile_stats").select("*").eq("profile_id", p.id).maybeSingle<StatsRow>();
+  const battleStats = attachBattleStats; // (applied below once the profile object exists)
   const profile = toProfile(p, s ?? undefined);
+  await battleStats([profile]);
   if (viewerId) {
     profile.isMe = viewerId === p.id;
     if (!profile.isMe) {
@@ -73,7 +94,9 @@ export async function searchProfiles(q: string, limit = 20): Promise<PublicProfi
   if (!rows?.length) return [];
   const { data: stats } = await db.from("profile_stats").select("*").in("profile_id", rows.map((r) => r.id));
   const sm = new Map((stats ?? []).map((s) => [s.profile_id as string, s as StatsRow]));
-  return (rows as ProfileRow[]).map((r) => toProfile(r, sm.get(r.id)));
+  const out = (rows as ProfileRow[]).map((r) => toProfile(r, sm.get(r.id)));
+  await attachBattleStats(out);
+  return out;
 }
 
 const MARKET_LABEL: Record<string, FeedItem["market"]> = { moneyline: "ML", spread: "Spread", total: "Total", btts: "BTTS" };
@@ -124,6 +147,99 @@ export async function loadFeed(opts: { scope: "all" | "following" | "profile"; v
   return bets.filter((b) => b.profiles).map((b) => toFeedItem(b, sm.get(b.profile_id!)));
 }
 
+/* ───────────────────────────── Arena battles in the feed ───────────────────────────── */
+
+interface BattleRow {
+  id: string;
+  player_a: string;
+  player_b: string;
+  eoa_a: string;
+  eoa_b: string;
+  stake: number | string;
+  status: string;
+  score_a: number;
+  score_b: number;
+  winner_eoa: string | null;
+  settle_tx: string | null;
+  finished_at: string | null;
+  created_at: string;
+  pa: ProfileRow | null;
+  pb: ProfileRow | null;
+}
+
+const BATTLE_COLS =
+  "id, player_a, player_b, eoa_a, eoa_b, stake, status, score_a, score_b, winner_eoa, settle_tx, finished_at, created_at, pa:profiles!arena_matches_player_a_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at), pb:profiles!arena_matches_player_b_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)";
+
+/**
+ * Finished Arena matches as feed items. Perspective = the winner (draw → player A), or the
+ * given profile on their own page. Both players are shown: PvP is head-to-head by design
+ * (the "no counterparties" rule is for pool-matched sports bets, not for Batalla).
+ */
+export async function loadBattles(opts: { scope: "all" | "following" | "profile"; viewerId?: string | null; profileId?: string; limit?: number; before?: string }): Promise<FeedItem[]> {
+  const db = supabaseAdmin();
+  let q = db
+    .from("arena_matches")
+    .select(BATTLE_COLS)
+    .in("status", ["finished", "ready", "settled", "disputed"])
+    .order("finished_at", { ascending: false })
+    .limit(opts.limit ?? 30);
+  if (opts.before) q = q.lt("finished_at", opts.before);
+  if (opts.scope === "profile" && opts.profileId) q = q.or(`player_a.eq.${opts.profileId},player_b.eq.${opts.profileId}`);
+  if (opts.scope === "following" && opts.viewerId) {
+    const { data: f } = await db.from("follows").select("followee_id").eq("follower_id", opts.viewerId);
+    const ids = (f ?? []).map((x) => x.followee_id as string);
+    if (ids.length === 0) return [];
+    q = q.or(`player_a.in.(${ids.join(",")}),player_b.in.(${ids.join(",")})`);
+  }
+  const { data: rows, error } = await q;
+  if (error) console.error("[patoli] battles query failed", error.message);
+  if (!rows?.length) return [];
+  const battles = rows as unknown as BattleRow[];
+  const pids = [...new Set(battles.flatMap((b) => [b.player_a, b.player_b]))];
+  const { data: stats } = await db.from("profile_stats").select("*").in("profile_id", pids);
+  const sm = new Map((stats ?? []).map((s) => [s.profile_id as string, s as StatsRow]));
+  return battles
+    .filter((b) => b.pa && b.pb)
+    .map((b) => {
+      const winnerIsA = !!b.winner_eoa && b.winner_eoa.toLowerCase() === b.eoa_a.toLowerCase();
+      const winnerIsB = !!b.winner_eoa && b.winner_eoa.toLowerCase() === b.eoa_b.toLowerCase();
+      // perspective
+      let meIsA = winnerIsA || (!winnerIsA && !winnerIsB);
+      if (opts.scope === "profile" && opts.profileId) meIsA = b.player_a === opts.profileId;
+      const me = toProfile((meIsA ? b.pa : b.pb)!, sm.get(meIsA ? b.player_a : b.player_b));
+      const them = toProfile((meIsA ? b.pb : b.pa)!, sm.get(meIsA ? b.player_b : b.player_a));
+      const scoreMe = meIsA ? b.score_a : b.score_b;
+      const scoreThem = meIsA ? b.score_b : b.score_a;
+      const result: "won" | "lost" | "draw" = !b.winner_eoa ? "draw" : (meIsA ? winnerIsA : winnerIsB) ? "won" : "lost";
+      const stake = Number(b.stake);
+      return {
+        id: `battle:${b.id}`,
+        kind: "battle",
+        user: { handle: me.handle, avatar: me.avatar, verified: me.verified, record: me.record, pnl: me.pnl },
+        league: null,
+        event: "Batalla · piedra, papel o tijera",
+        eventSlug: null,
+        selection: `${result === "draw" ? "Empate" : result === "won" ? "Ganó" : "Perdió"} ${scoreMe}-${scoreThem}`,
+        market: "Batalla",
+        odds: 2,
+        stake,
+        payout: stake * 2,
+        status: result === "won" ? "won" : result === "lost" ? "lost" : "void",
+        pnl: result === "won" ? stake : result === "lost" ? -stake : 0,
+        placedAt: b.finished_at ?? b.created_at,
+        kickoff: null,
+        proof: b.settle_tx,
+        fire: 0,
+        battle: { opponent: { handle: them.handle, avatar: them.avatar }, scoreMe, scoreThem, result },
+      } satisfies FeedItem;
+    });
+}
+
+/** Bets + battles, newest first. */
+export function mergeFeed(a: FeedItem[], b: FeedItem[], limit = 40): FeedItem[] {
+  return [...a, ...b].sort((x, y) => y.placedAt.localeCompare(x.placedAt)).slice(0, limit);
+}
+
 function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
   const m = b.markets;
   const kind = m?.kind ?? "other";
@@ -152,5 +268,6 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
     kickoff: m?.game_start ?? null,
     proof: b.tx_hash,
     fire: 0,
+    kind: "bet",
   };
 }

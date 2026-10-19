@@ -18,13 +18,14 @@ const STATUS: Record<FeedItem["status"], { label: string; cls: string }> = {
   void: { label: "Anulada", cls: "text-push border-hairline bg-surface" },
 };
 
-const MARKET_LABEL: Record<FeedItem["market"], string> = { ML: "Ganador", Spread: "Hándicap", Total: "Total", BTTS: "Ambos anotan", Otro: "Mercado" };
+const MARKET_LABEL: Record<FeedItem["market"], string> = { ML: "Ganador", Spread: "Hándicap", Total: "Total", BTTS: "Ambos anotan", Batalla: "Piedra, papel o tijera", Otro: "Mercado" };
 
 export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem; index?: number; onTicket?: (item: FeedItem) => void }) {
   const now = useNow();
   const league = isLeagueId(item.league) ? LEAGUE_BY_ID[item.league] : null;
-  const st = STATUS[item.status];
+  const st = item.kind === "battle" && item.status === "void" ? { label: "Empate", cls: STATUS.void.cls } : STATUS[item.status];
   const { user } = item;
+  const isBattle = item.kind === "battle";
   return (
     <article className="card rise p-4" style={{ animationDelay: `${index * 50}ms` }}>
       <header className="flex items-center gap-3">
@@ -50,14 +51,14 @@ export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem
       <div className="mt-3 flex items-end justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[11px] uppercase tracking-wider text-muted">
-            {league ? `${league.emoji} ${league.label} · ` : ""}
+            {isBattle ? "✊✋✌️ " : league ? `${league.emoji} ${league.label} · ` : ""}
             {item.event}
           </div>
           <div className="mt-0.5 truncate font-display text-xl font-extrabold uppercase leading-none">{item.selection}</div>
-          <div className="mt-1 text-xs text-muted">{MARKET_LABEL[item.market]}</div>
+          <div className="mt-1 truncate text-xs text-muted">{isBattle ? `vs @${item.battle!.opponent.handle} · ${MARKET_LABEL[item.market]}` : MARKET_LABEL[item.market]}</div>
         </div>
         <div className="shrink-0 text-right">
-          <div className="tnum font-display text-2xl font-extrabold text-accent-soft">{formatOdds(item.odds)}</div>
+          <div className="tnum font-display text-2xl font-extrabold text-accent-soft">{isBattle ? `${item.battle!.scoreMe}-${item.battle!.scoreThem}` : formatOdds(item.odds)}</div>
           <div className="tnum text-xs text-muted">
             ${formatUsd(item.stake, 0)} → <span className="text-ink">${formatUsd(item.payout, 0)}</span>
           </div>

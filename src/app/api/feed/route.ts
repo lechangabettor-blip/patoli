@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase/server";
 import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
-import { loadFeed } from "@/lib/social";
+import { loadBattles, loadFeed, mergeFeed } from "@/lib/social";
 import { demoFeed } from "@/lib/demo-feed";
 
 /** GET /api/feed?scope=all|following&before=<iso>  (optional Bearer DID token for "following") */
@@ -20,6 +20,6 @@ export async function GET(req: NextRequest) {
       viewerId = (data?.profile_id as string) ?? null;
     }
   }
-  const items = await loadFeed({ scope, viewerId, before });
-  return NextResponse.json({ items, demo: false }, { headers: { "Cache-Control": "no-store" } });
+  const [bets, battles] = await Promise.all([loadFeed({ scope, viewerId, before }), loadBattles({ scope, viewerId, before })]);
+  return NextResponse.json({ items: mergeFeed(bets, battles), demo: false }, { headers: { "Cache-Control": "no-store" } });
 }

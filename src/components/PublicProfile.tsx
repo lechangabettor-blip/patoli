@@ -93,13 +93,18 @@ export default function PublicProfile({ handle }: { handle: string }) {
                   {p.verified ? <span className="text-accent">✦</span> : null}
                 </div>
                 {p.bio ? <p className="mt-1 text-sm text-muted">{p.bio}</p> : null}
-                <div className="tnum mt-2 flex gap-4 text-xs text-muted">
+                <div className="tnum mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                   <span>
                     <b className="text-ink">{p.followers.toLocaleString("es-MX")}</b> seguidores
                   </span>
                   <span>
                     <b className="text-ink">{p.following}</b> siguiendo
                   </span>
+                  {p.battles.w + p.battles.l + p.battles.d > 0 ? (
+                    <span>
+                      ✊ Batallas <b className="text-ink">{p.battles.w}-{p.battles.l}{p.battles.d ? `-${p.battles.d}` : ""}</b>
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <div className="grid grid-cols-4 border-t border-hairline">

@@ -171,12 +171,25 @@ export async function lobbyStatus(profileId: string): Promise<{ queued: boolean;
 
 /** ------------------------------------------------------------ match */
 
-export async function loadMatch(id: string): Promise<{ match: MatchRow; rounds: RoundRow[] } | null> {
+export interface MatchPlayers {
+  a: { handle: string; avatar: string };
+  b: { handle: string; avatar: string };
+}
+
+export async function loadMatch(id: string): Promise<{ match: MatchRow; rounds: RoundRow[]; players?: MatchPlayers } | null> {
   const db = supabaseAdmin();
   const { data: m } = await db.from("arena_matches").select(MATCH_COLS).eq("id", id).maybeSingle();
   if (!m) return null;
-  const { data: rounds } = await db.from("arena_rounds").select("*").eq("match_id", id).order("round");
-  return { match: m as MatchRow, rounds: (rounds ?? []) as RoundRow[] };
+  const row = m as MatchRow;
+  const [{ data: rounds }, { data: profs }] = await Promise.all([
+    db.from("arena_rounds").select("*").eq("match_id", id).order("round"),
+    db.from("profiles").select("id, handle, avatar").in("id", [row.player_a, row.player_b]),
+  ]);
+  const pick = (pid: string) => {
+    const p = (profs ?? []).find((x) => x.id === pid);
+    return { handle: (p?.handle as string) ?? "?", avatar: ((p?.avatar as string) || (p?.handle as string)) ?? "?" };
+  };
+  return { match: row, rounds: (rounds ?? []) as RoundRow[], players: { a: pick(row.player_a), b: pick(row.player_b) } };
 }
 
 function sideOf(m: MatchRow, me: ArenaIdentity): Side {

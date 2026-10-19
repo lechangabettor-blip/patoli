@@ -20,6 +20,7 @@ export function demoProfile(handle: string): PublicProfile | null {
     roi: u.roi,
     followers: u.followers,
     following: u.following,
+    battles: { w: 0, l: 0, d: 0, pnl: 0 },
     createdAt: new Date(0).toISOString(),
   };
 }

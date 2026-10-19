@@ -60,11 +60,12 @@ export function ticketFromItem(item: FeedItem): TicketData {
   return {
     handle: item.user.handle,
     avatar: item.user.avatar,
-    league: league?.label ?? "Polymarket",
-    leagueEmoji: league?.emoji,
-    matchup: item.event,
-    selection: item.selection,
-    market: item.market === "ML" ? "Ganador" : item.market === "Spread" ? "Hándicap" : item.market === "Total" ? "Total" : item.market === "BTTS" ? "Ambos anotan" : "Pick",
+    league: item.kind === "battle" ? "Batalla" : (league?.label ?? "Polymarket"),
+    leagueEmoji: item.kind === "battle" ? "✊" : league?.emoji,
+    matchup: item.kind === "battle" ? `vs @${item.battle?.opponent.handle ?? "rival"}` : item.event,
+    selection: item.kind === "battle" ? `${item.battle?.result === "won" ? "Ganó" : item.battle?.result === "lost" ? "Perdió" : "Empate"} ${item.battle?.scoreMe}-${item.battle?.scoreThem}` : item.selection,
+    market:
+      item.market === "ML" ? "Ganador" : item.market === "Spread" ? "Hándicap" : item.market === "Total" ? "Total" : item.market === "BTTS" ? "Ambos anotan" : item.market === "Batalla" ? "Piedra, papel o tijera" : "Pick",
     odds: item.odds,
     stake: item.stake,
     payout: item.payout,

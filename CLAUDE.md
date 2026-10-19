@@ -144,6 +144,11 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   settles bets when Gamma marks a market closed (`outcomePrices` 1/0; 50/50 =
   void). Trigger: `POST /api/indexer/run` with `x-indexer-secret`, or Vercel
   Cron with `CRON_SECRET`; open in dev. Idempotent, rebuildable.
+- **Battles in the feed (2026-10-19):** `loadBattles` turns finished Arena matches into
+  `FeedItem`s (`kind: "battle"`, market `Batalla`, both handles shown — PvP is head-to-head;
+  the "never show counterparties" rule applies to pool-matched sports bets only). `/api/feed`
+  and `/api/users/[handle]` merge bets + battles by time (`mergeFeed`). `PublicProfile.battles`
+  comes from the `arena_stats` view. Share card = the same Boleto (league "Batalla").
 - **APIs:** `/api/feed`, `/api/users?q=`, `/api/users/[handle]`, `/api/follow`.
   Without Supabase configured they serve the demo data (`lib/demo-feed.ts`) and
   flag `demo: true`, so the UI works in both modes. Types in `src/types/social.ts`.

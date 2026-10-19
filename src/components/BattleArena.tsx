@@ -6,6 +6,10 @@ import { AnimatePresence, motion } from "motion/react";
 import type { Hex } from "viem";
 import TopBar from "./TopBar";
 import Avatar from "./Avatar";
+import Sheet from "./Sheet";
+import TicketShare from "./TicketShare";
+import type { TicketData } from "./Ticket";
+import { Share2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useWallet } from "@/providers/WalletContext";
 import { useMe } from "@/providers/MeProvider";
@@ -252,6 +256,7 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
   const actions = useArenaActions();
   const [err, setErr] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [share, setShare] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const once = useRef(new Set<string>());
 
@@ -295,7 +300,9 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
     return <div className="skeleton h-64" />;
   }
 
-  const rival = side === "a" ? m.player_b : m.player_a;
+  const meP = state.players ? (side === "a" ? state.players.a : state.players.b) : null;
+  const rivalP = state.players ? (side === "a" ? state.players.b : state.players.a) : null;
+  const rival = rivalP?.handle ?? (side === "a" ? m.player_b : m.player_a);
   const myScore = side === "a" ? m.score_a : m.score_b;
   const theirScore = side === "a" ? m.score_b : m.score_a;
   const myCommit = cur ? (side === "a" ? cur.commit_a : cur.commit_b) : null;
@@ -325,7 +332,7 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
       {/* scoreboard */}
       <div className="card p-4">
         <div className="flex items-center justify-between">
-          <PlayerChip label="Tú" avatar="🫵" score={myScore} />
+          <PlayerChip label={meP ? `@${meP.handle}` : "Tú"} avatar={meP?.avatar ?? "🫵"} score={myScore} />
           <div className="text-center">
             <div className="text-[11px] uppercase tracking-wider text-muted">Mejor de {m.best_of || BEST_OF}</div>
             <div className="tnum font-display text-2xl font-extrabold">
@@ -333,7 +340,7 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
             </div>
             <div className="tnum text-[11px] text-muted">${formatUsd(Number(m.stake))} · ganas ${formatUsd(Number(m.stake) * 2)}</div>
           </div>
-          <PlayerChip label="Rival" avatar={rival.slice(0, 1)} score={theirScore} />
+          <PlayerChip label={rivalP ? `@${rivalP.handle}` : "Rival"} avatar={rivalP?.avatar ?? rival.slice(0, 1)} score={theirScore} />
         </div>
       </div>
 
@@ -403,13 +410,42 @@ function MatchView({ id, myEoa, onExit }: { id: string; myEoa: Hex; onExit: () =
                 </>
               ) : null}
             </p>
-            <button onClick={onExit} className="btn-accent mt-4 w-full py-3 text-sm">
-              Jugar otra
-            </button>
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setShare(true)} className="btn-ghost flex flex-1 items-center justify-center gap-1.5 py-3 text-sm">
+                <Share2 className="h-4 w-4" /> Compartir
+              </button>
+              <button onClick={onExit} className="btn-accent flex-1 py-3 text-sm">
+                Jugar otra
+              </button>
+            </div>
           </Stage>
         ) : null}
       </AnimatePresence>
       {err ? <p className="mt-2 text-xs text-loss">{err}</p> : null}
+      <Sheet open={share} onClose={() => setShare(false)} title="Tu boleto">
+        {share ? (
+          <TicketShare
+            data={
+              {
+                handle: meP?.handle ?? "yo",
+                avatar: meP?.avatar ?? "🫵",
+                league: "Batalla",
+                leagueEmoji: "✊",
+                matchup: `vs @${rival}`,
+                selection: `${draw ? "Empate" : iWon ? "Ganaste" : "Perdiste"} ${myScore}-${theirScore}`,
+                market: "Piedra, papel o tijera",
+                odds: 2,
+                stake: Number(m.stake),
+                payout: Number(m.stake) * 2,
+                placedAt: m.finished_at ?? m.created_at,
+                status: draw ? "void" : iWon ? "won" : "lost",
+                proof: m.settle_tx ?? m.id,
+              } satisfies TicketData
+            }
+            onDone={() => setShare(false)}
+          />
+        ) : null}
+      </Sheet>
     </div>
   );
 }

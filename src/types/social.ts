@@ -16,6 +16,8 @@ export interface PublicProfile {
   roi: number; // %
   followers: number;
   following: number;
+  /** Arena (piedra·papel·tijera) record */
+  battles: { w: number; l: number; d: number; pnl: number };
   createdAt: string;
   /** Only present when a viewer is known */
   isFollowing?: boolean;
@@ -29,7 +31,7 @@ export interface FeedItem {
   event: string; // "Seahawks vs. Broncos"
   eventSlug: string | null;
   selection: string; // "Seahawks -2.5"
-  market: "ML" | "Spread" | "Total" | "BTTS" | "Otro";
+  market: "ML" | "Spread" | "Total" | "BTTS" | "Batalla" | "Otro";
   odds: number; // gross decimal at fill (1/price)
   stake: number; // USDC
   payout: number; // shares = USDC if wins
@@ -39,6 +41,14 @@ export interface FeedItem {
   kickoff: string | null;
   proof: string | null; // tx hash
   fire: number;
+  /** "battle" items come from the Arena; everything else is a Polymarket bet */
+  kind?: "bet" | "battle";
+  battle?: {
+    opponent: { handle: string; avatar: string };
+    scoreMe: number;
+    scoreThem: number;
+    result: "won" | "lost" | "draw";
+  };
 }
 
 export interface MeProfile extends PublicProfile {
