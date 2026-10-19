@@ -202,7 +202,7 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   list"). Plain pUSD `transfer`s are allowed. So funding = transfer to the user's
   `DepositForwarder` (CREATE2, salt = EOA, from `ArenaDepositRouter.forwarderOf`) + operator
   calls `router.sweep(user)` (`POST /api/arena/sweep`), which deploys the forwarder on first
-  use and credits `Arena.deposit(amount, user)`. Router `0x7253021A500C2b7e9f98bd210FAC98a554Bcef28`
+  use and credits `Arena.deposit(amount, user)`. Router v2 `0x6418a4bf4251F66156EFa268384C7AB7aBF92638` (v1 `0x7253…ef28` retired, had `refund` missing)
   (`NEXT_PUBLIC_ARENA_ROUTER_ADDRESS`), stateless, no owner. `/api/arena/me` reports
   `waiting` (pUSD stranded in the forwarder) and the lobby shows "Acreditar" to finish.
 - Live: Arena `0xa2B447C73935Ee0e777F3B41251610ED47C9F612` (owner = LeChanga's MetaMask
