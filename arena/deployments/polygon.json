@@ -8,5 +8,7 @@
   "deployedAt": "2026-10-19T20:59:46.414Z",
   "block": 95825490,
   "minStake": "0.5",
-  "maxStake": "20"
+  "maxStake": "20",
+  "router": "0x7253021A500C2b7e9f98bd210FAC98a554Bcef28",
+  "routerDeployedAt": "2026-10-19T21:44:58.880Z"
 }

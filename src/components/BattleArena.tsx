@@ -73,6 +73,7 @@ export default function BattleArena() {
         ) : (
           <Lobby
             balance={arenaMe.data?.balance ?? 0}
+            stranded={arenaMe.data?.waiting ?? 0}
             loading={arenaMe.isLoading}
             onMatched={(id) => {
               setDismissed(null);
@@ -88,7 +89,7 @@ export default function BattleArena() {
 
 /* ------------------------------------------------------------------ lobby */
 
-function Lobby({ balance, loading, onMatched, onFunded }: { balance: number; loading: boolean; onMatched: (id: string) => void; onFunded: () => void }) {
+function Lobby({ balance, stranded, loading, onMatched, onFunded }: { balance: number; stranded: number; loading: boolean; onMatched: (id: string) => void; onFunded: () => void }) {
   const actions = useArenaActions();
   const { depositArena, isReady } = useTrading();
   const { balance: walletBal, refetch } = useUsdcBalance();
@@ -152,11 +153,26 @@ function Lobby({ balance, loading, onMatched, onFunded }: { balance: number; loa
     }
   }
 
+  // funds that reached the forwarder but were not swept yet (e.g. the page closed mid-way)
+  async function finishSweep() {
+    setErr(null);
+    setBusy("fund");
+    try {
+      await actions.sweep();
+      onFunded();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "No se pudo acreditar");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function fund() {
     setErr(null);
     setBusy("fund");
     try {
-      await depositArena(toUnits(fundAmt));
+      await depositArena(toUnits(fundAmt)); // relayer: plain transfer to your forwarder
+      await actions.sweep(); // operator: forwarder → Arena, credited to you
       await refetch();
       onFunded();
     } catch (e) {
@@ -183,6 +199,11 @@ function Lobby({ balance, loading, onMatched, onFunded }: { balance: number; loa
           </span>
         </div>
 
+        {stranded > 0 ? (
+          <button onClick={finishSweep} disabled={busy !== null} className="btn-accent mt-4 w-full py-3 text-sm">
+            {busy === "fund" ? "Acreditando…" : `Acreditar $${formatUsd(stranded)} a tu arena`}
+          </button>
+        ) : null}
         {queued ? (
           <div className="mt-5">
             <div className="pulse-soft font-display text-sm font-extrabold uppercase text-accent-soft">Buscando rival…</div>

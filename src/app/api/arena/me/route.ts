@@ -15,7 +15,10 @@ async function guard(req: NextRequest) {
   return me;
 }
 
-import { arenaBalance, arenaNonce, arenaPendingWithdraw } from "@/lib/arena/server";
+import { arenaBalance, arenaNonce, arenaPendingWithdraw, forwarderOf } from "@/lib/arena/server";
+import { isRouterConfigured } from "@/lib/arena/typed-data";
+import { erc20Balance } from "@/lib/polymarket/v2";
+import { PUSD_ADDRESS } from "@/lib/polymarket/constants";
 import { openMatchFor } from "@/lib/arena/engine";
 import { fromUnits } from "@/lib/arena/typed-data";
 
@@ -24,9 +27,16 @@ export async function GET(req: NextRequest) {
   await connection();
   try {
     const me = await guard(req);
-    const [bal, pending, nonce, open] = await Promise.all([arenaBalance(me.eoa), arenaPendingWithdraw(me.eoa), arenaNonce(me.eoa), openMatchFor(me.profileId)]);
+    const [bal, pending, nonce, open, waiting] = await Promise.all([
+      arenaBalance(me.eoa),
+      arenaPendingWithdraw(me.eoa),
+      arenaNonce(me.eoa),
+      openMatchFor(me.profileId),
+      isRouterConfigured() ? forwarderOf(me.eoa).then((f) => erc20Balance(PUSD_ADDRESS, f)).catch(() => 0n) : Promise.resolve(0n),
+    ]);
     return NextResponse.json({
       balance: fromUnits(bal),
+      waiting: fromUnits(waiting), // pUSD sitting in the forwarder, not yet swept
       pending: pending.amount > 0n ? { amount: fromUnits(pending.amount), to: pending.to, readyAt: Number(pending.readyAt) } : null,
       nonce: nonce.toString(),
       matchId: open?.id ?? null,

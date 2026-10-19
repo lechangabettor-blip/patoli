@@ -167,16 +167,14 @@ export function buildUnwrapCalls(to: `0x${string}`, amount: bigint): DepositWall
 }
 
 /**
- * Fund the Arena from the deposit wallet: approve pUSD → arena.deposit(amount, eoa).
- * The deposit wallet is msg.sender; the balance is credited to the owner EOA,
- * which is the key that signs matches (Magic).
+ * Fund the Arena from the deposit wallet. Polymarket's relayer blocks `approve` to spenders
+ * outside its allowlist (verified 2026-10-19: "approve spender … is not in the allowed
+ * list"), so we never approve: the wallet does a plain pUSD `transfer` to the user's own
+ * forwarder address, and Patoli's operator then calls `ArenaDepositRouter.sweep(user)`,
+ * which credits the Arena balance of that user (attribution by CREATE2 address math).
  */
-export function buildArenaDepositCalls(arena: `0x${string}`, eoa: `0x${string}`, amount: bigint): DepositWalletCall[] {
-  const depositAbi = parseAbi(["function deposit(uint256 amount, address beneficiary)"]);
-  return [
-    { target: PUSD_ADDRESS, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [arena, amount] }) },
-    { target: arena, value: "0", data: encodeFunctionData({ abi: depositAbi, functionName: "deposit", args: [amount, eoa] }) },
-  ];
+export function buildArenaDepositCalls(forwarder: `0x${string}`, amount: bigint): DepositWalletCall[] {
+  return [{ target: PUSD_ADDRESS, value: "0", data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [forwarder, amount] }) }];
 }
 
 /** Send an ERC-20 out of the deposit wallet (withdrawals, moving funds). */

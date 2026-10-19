@@ -266,6 +266,28 @@ describe("PatoliArena", () => {
     });
   });
 
+  describe("deposit router (relayer-safe funding)", () => {
+    it("transfer to the forwarder + sweep credits the user; sweep is permissionless and idempotent", async () => {
+      const router = await (await ethers.getContractFactory("ArenaDepositRouter")).deploy(await usd.getAddress(), await arena.getAddress());
+      const fwd = await router.forwarderOf(vault.address);
+      await usd.mint(vault.address, USD(7));
+      await usd.connect(vault).transfer(fwd, USD(7)); // what the Polymarket relayer allows: a plain transfer
+      expect(await arena.balanceOf(vault.address)).to.equal(0n);
+      await expect(router.connect(relayer).sweep(vault.address)).to.emit(router, "Swept").withArgs(vault.address, fwd, USD(7));
+      expect(await arena.balanceOf(vault.address)).to.equal(USD(7));
+      await router.connect(relayer).sweep(vault.address); // nothing to sweep → no-op
+      expect(await arena.balanceOf(vault.address)).to.equal(USD(7));
+      // second deposit reuses the deployed forwarder
+      await usd.mint(vault.address, USD(1));
+      await usd.connect(vault).transfer(fwd, USD(1));
+      await router.sweep(vault.address);
+      expect(await arena.balanceOf(vault.address)).to.equal(USD(8));
+      // the forwarder obeys only the router
+      const f = await ethers.getContractAt("DepositForwarder", fwd);
+      await expect(f.connect(relayer).flush(await usd.getAddress())).to.be.revertedWith("router only");
+    });
+  });
+
   describe("admin", () => {
     it("owner cannot touch balances or the escrow token", async () => {
       await expect(arena.rescue(await usd.getAddress(), owner.address, 1n)).to.be.revertedWithCustomError(arena, "EscrowToken");

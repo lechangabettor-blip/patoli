@@ -3,8 +3,8 @@ import { createPublicClient, createWalletClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon, polygonAmoy } from "viem/chains";
 import type { NextRequest } from "next/server";
-import { arenaAbi } from "./abi";
-import { ARENA_ADDRESS, ARENA_CHAIN_ID, ARENA_DOMAIN, ARENA_TYPES, isArenaConfigured, type MatchStruct } from "./typed-data";
+import { arenaAbi, routerAbi } from "./abi";
+import { ARENA_ADDRESS, ARENA_CHAIN_ID, ARENA_DOMAIN, ARENA_TYPES, ARENA_ROUTER_ADDRESS, isArenaConfigured, isRouterConfigured, type MatchStruct } from "./typed-data";
 import { POLYGON_RPC_URL } from "@/lib/polymarket/constants";
 import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
 import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase/server";
@@ -148,6 +148,16 @@ export async function sendFinalize(m: MatchStruct, sigA: Hex, sigB: Hex): Promis
 export async function readClaim(matchId: Hex): Promise<{ claimant: Hex; winner: Hex; evidence: number; finalizeAt: bigint }> {
   const [claimant, winner, evidence, finalizeAt] = await arenaPublic.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "claims", args: [matchId] });
   return { claimant, winner, evidence, finalizeAt };
+}
+
+/** Operator sweeps a user's forwarder into the Arena (permissionless on-chain; we pay gas). */
+export async function sendSweep(user: Hex): Promise<Hex> {
+  if (!isRouterConfigured()) throw new Error("router no configurado");
+  const wallet = operatorWallet();
+  return wallet.writeContract({ address: ARENA_ROUTER_ADDRESS, abi: routerAbi, functionName: "sweep", args: [user] });
+}
+export async function forwarderOf(user: Hex): Promise<Hex> {
+  return arenaPublic.readContract({ address: ARENA_ROUTER_ADDRESS, abi: routerAbi, functionName: "forwarderOf", args: [user] });
 }
 
 export async function waitForTx(hash: Hex) {

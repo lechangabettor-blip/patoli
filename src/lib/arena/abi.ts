@@ -27,3 +27,9 @@ export const arenaAbi = parseAbi([
   "event Withdraw(address indexed player, address indexed to, uint256 amount)",
   "event Settled(bytes32 indexed matchId, address indexed playerA, address indexed playerB, address winner, uint256 stake, bool disputed)",
 ]);
+
+export const routerAbi = parseAbi([
+  "function forwarderOf(address user) view returns (address)",
+  "function sweep(address user) returns (uint256 amount)",
+  "event Swept(address indexed user, address indexed forwarder, uint256 amount)",
+]);

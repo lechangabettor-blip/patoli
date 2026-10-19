@@ -8,6 +8,9 @@ import { encodePacked, keccak256, type Hex } from "viem";
 export const ARENA_ADDRESS = (process.env.NEXT_PUBLIC_ARENA_ADDRESS ?? "") as Hex;
 export const ARENA_CHAIN_ID = Number(process.env.NEXT_PUBLIC_ARENA_CHAIN_ID ?? 137);
 export const isArenaConfigured = () => /^0x[0-9a-fA-F]{40}$/.test(ARENA_ADDRESS);
+/** ArenaDepositRouter: per-user forwarder addresses + permissionless sweep (relayer-safe funding). */
+export const ARENA_ROUTER_ADDRESS = (process.env.NEXT_PUBLIC_ARENA_ROUTER_ADDRESS ?? "") as Hex;
+export const isRouterConfigured = () => /^0x[0-9a-fA-F]{40}$/.test(ARENA_ROUTER_ADDRESS);
 
 export const ARENA_DOMAIN = {
   name: "PatoliArena",

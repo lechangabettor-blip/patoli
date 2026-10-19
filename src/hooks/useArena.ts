@@ -11,6 +11,7 @@ import type { MatchRow, RoundRow } from "@/lib/arena/engine";
 
 export interface ArenaMe {
   balance: number;
+  waiting: number;
   pending: { amount: number; to: string; readyAt: number } | null;
   nonce: string;
   matchId: string | null;
@@ -157,6 +158,11 @@ export function useArenaActions() {
       if (!s) throw new Error("No encontré tu jugada en este dispositivo");
       await call(`/api/arena/match/${matchId}/reveal`, { method: "POST", body: JSON.stringify({ round, move: s.move, salt: s.salt }) });
       refresh(matchId);
+    },
+    sweep: async () => {
+      const r = await call<{ swept: number; tx?: string; balance: number }>("/api/arena/sweep", { method: "POST" });
+      refresh();
+      return r;
     },
     tick: async (matchId: string) => {
       await call(`/api/arena/match/${matchId}/tick`, { method: "POST" });

@@ -32,8 +32,10 @@ import {
   buildErc20TransferCall,
   USDC_NATIVE_ADDRESS,
   buildArenaDepositCalls,
+  publicClient,
 } from "@/lib/polymarket/v2";
-import { ARENA_ADDRESS, isArenaConfigured } from "@/lib/arena/typed-data";
+import { ARENA_ROUTER_ADDRESS, isArenaConfigured, isRouterConfigured } from "@/lib/arena/typed-data";
+import { routerAbi } from "@/lib/arena/abi";
 import {
   SESSION_VERSION,
   clearSession,
@@ -297,13 +299,10 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   const depositArena = useCallback(
     async (amount: bigint) => {
       if (!relayClient || !walletAddress || !eoaAddress) throw new Error("Primero activa tu cuenta");
-      if (!isArenaConfigured()) throw new Error("La arena aún no está activa");
+      if (!isArenaConfigured() || !isRouterConfigured()) throw new Error("La arena aún no está activa");
       if (amount <= 0n) throw new Error("Monto inválido");
-      const resp = await relayClient.executeDepositWalletBatch(
-        buildArenaDepositCalls(ARENA_ADDRESS, eoaAddress as `0x${string}`, amount),
-        walletAddress,
-        batchDeadline(),
-      );
+      const forwarder = await publicClient.readContract({ address: ARENA_ROUTER_ADDRESS, abi: routerAbi, functionName: "forwarderOf", args: [eoaAddress as `0x${string}`] });
+      const resp = await relayClient.executeDepositWalletBatch(buildArenaDepositCalls(forwarder, amount), walletAddress, batchDeadline());
       await resp.wait();
     },
     [relayClient, walletAddress, eoaAddress],
