@@ -25,10 +25,11 @@ contract DepositForwarder {
         ROUTER = router;
     }
 
-    function flush(IERC20 token) external returns (uint256 amount) {
+    /// @dev Router-only. Sends the forwarder's whole balance of `token` to `to`.
+    function flush(IERC20 token, address to) external returns (uint256 amount) {
         require(msg.sender == ROUTER, "router only");
         amount = token.balanceOf(address(this));
-        if (amount > 0) SafeERC20.safeTransfer(token, ROUTER, amount);
+        if (amount > 0) SafeERC20.safeTransfer(token, to, amount);
     }
 }
 
@@ -39,6 +40,7 @@ contract ArenaDepositRouter {
     IArenaDeposit public immutable ARENA;
 
     event Swept(address indexed user, address indexed forwarder, uint256 amount);
+    event Refunded(address indexed user, address indexed token, uint256 amount);
 
     constructor(IERC20 token, IArenaDeposit arena) {
         TOKEN = token;
@@ -58,11 +60,24 @@ contract ArenaDepositRouter {
         if (fwd.code.length == 0) {
             Create2.deploy(0, bytes32(uint256(uint160(user))), _initCode());
         }
-        amount = DepositForwarder(fwd).flush(TOKEN);
+        amount = DepositForwarder(fwd).flush(TOKEN, address(this));
         if (amount > 0) {
             ARENA.deposit(amount, user);
             emit Swept(user, fwd, amount);
         }
+    }
+
+    /// @notice Exit path: the user (the forwarder's salt) can pull any token sitting in
+    ///         their forwarder back to themselves — e.g. while Arena deposits are paused, or
+    ///         a wrong token was sent. Nobody else can trigger it, and it only ever pays `user`.
+    function refund(IERC20 token) external returns (uint256 amount) {
+        address user = msg.sender;
+        address fwd = forwarderOf(user);
+        if (fwd.code.length == 0) {
+            Create2.deploy(0, bytes32(uint256(uint160(user))), _initCode());
+        }
+        amount = DepositForwarder(fwd).flush(token, user);
+        emit Refunded(user, address(token), amount);
     }
 
     function _initCode() internal view returns (bytes memory) {

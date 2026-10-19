@@ -31,5 +31,6 @@ export const arenaAbi = parseAbi([
 export const routerAbi = parseAbi([
   "function forwarderOf(address user) view returns (address)",
   "function sweep(address user) returns (uint256 amount)",
+  "function refund(address token) returns (uint256 amount)",
   "event Swept(address indexed user, address indexed forwarder, uint256 amount)",
 ]);

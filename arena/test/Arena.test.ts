@@ -284,7 +284,21 @@ describe("PatoliArena", () => {
       expect(await arena.balanceOf(vault.address)).to.equal(USD(8));
       // the forwarder obeys only the router
       const f = await ethers.getContractAt("DepositForwarder", fwd);
-      await expect(f.connect(relayer).flush(await usd.getAddress())).to.be.revertedWith("router only");
+      await expect(f.connect(relayer).flush(await usd.getAddress(), relayer.address)).to.be.revertedWith("router only");
+    });
+
+    it("refund: the user can pull their own forwarder balance back (e.g. deposits paused); nobody else can", async () => {
+      const router = await (await ethers.getContractFactory("ArenaDepositRouter")).deploy(await usd.getAddress(), await arena.getAddress());
+      const fwd = await router.forwarderOf(vault.address);
+      await usd.mint(vault.address, USD(3));
+      await usd.connect(vault).transfer(fwd, USD(3));
+      await arena.setDepositsPaused(true);
+      await expect(router.sweep(vault.address)).to.be.revertedWithCustomError(arena, "Paused"); // funds stay in the forwarder
+      expect(await usd.balanceOf(fwd)).to.equal(USD(3));
+      await router.connect(relayer).refund(await usd.getAddress()); // relayer refunds ITS OWN (empty) forwarder, not vault's
+      expect(await usd.balanceOf(fwd)).to.equal(USD(3));
+      await expect(router.connect(vault).refund(await usd.getAddress())).to.emit(router, "Refunded").withArgs(vault.address, await usd.getAddress(), USD(3));
+      expect(await usd.balanceOf(vault.address)).to.equal(USD(3));
     });
   });
 

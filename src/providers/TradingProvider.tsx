@@ -34,8 +34,8 @@ import {
   buildArenaDepositCalls,
   publicClient,
 } from "@/lib/polymarket/v2";
-import { ARENA_ROUTER_ADDRESS, isArenaConfigured, isRouterConfigured } from "@/lib/arena/typed-data";
-import { routerAbi } from "@/lib/arena/abi";
+import { ARENA_ADDRESS, ARENA_ROUTER_ADDRESS, isArenaConfigured, isRouterConfigured } from "@/lib/arena/typed-data";
+import { arenaAbi, routerAbi } from "@/lib/arena/abi";
 import {
   SESSION_VERSION,
   clearSession,
@@ -301,6 +301,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       if (!relayClient || !walletAddress || !eoaAddress) throw new Error("Primero activa tu cuenta");
       if (!isArenaConfigured() || !isRouterConfigured()) throw new Error("La arena aún no está activa");
       if (amount <= 0n) throw new Error("Monto inválido");
+      const paused = await publicClient.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "depositsPaused" });
+      if (paused) throw new Error("La arena no acepta depósitos por ahora. Intenta más tarde.");
       const forwarder = await publicClient.readContract({ address: ARENA_ROUTER_ADDRESS, abi: routerAbi, functionName: "forwarderOf", args: [eoaAddress as `0x${string}`] });
       const resp = await relayClient.executeDepositWalletBatch(buildArenaDepositCalls(forwarder, amount), walletAddress, batchDeadline());
       await resp.wait();

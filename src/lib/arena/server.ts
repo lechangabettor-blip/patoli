@@ -98,6 +98,15 @@ export async function arenaIdentity(req: NextRequest): Promise<ArenaIdentity | n
 
 /** Transactions ------------------------------------------------------------ */
 
+// All operator writes go through one queue: a single EOA sending concurrent txs (sweep +
+// settle cron + withdraw relay) would race on the nonce and drop transactions.
+let opQueue: Promise<unknown> = Promise.resolve();
+export function withOperator<T>(fn: () => Promise<T>): Promise<T> {
+  const run = opQueue.then(fn, fn);
+  opQueue = run.catch(() => undefined);
+  return run;
+}
+
 export interface ClaimCommit { round: number; player: Hex; hash: Hex; sig: Hex; opSig: Hex }
 export interface ClaimReveal { round: number; player: Hex; move: number; salt: Hex; opSig: Hex }
 
@@ -111,19 +120,16 @@ export interface SettleItem {
 }
 
 export async function sendSettleBatch(items: SettleItem[]): Promise<Hex> {
-  const wallet = operatorWallet();
-  const hash = await wallet.writeContract({
+  return withOperator(() => operatorWallet().writeContract({
     address: ARENA_ADDRESS,
     abi: arenaAbi,
     functionName: "settleBatch",
     args: [items.map((it) => ({ m: it.m, sigA: it.sigA, sigB: it.sigB, commits: it.commits, reveals: it.reveals }))],
-  });
-  return hash;
+  }));
 }
 
 export async function sendWithdrawWithSig(player: Hex, to: Hex, amount: bigint, deadline: bigint, sig: Hex): Promise<Hex> {
-  const wallet = operatorWallet();
-  return wallet.writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "withdrawWithSig", args: [player, to, amount, deadline, sig] });
+  return withOperator(() => operatorWallet().writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "withdrawWithSig", args: [player, to, amount, deadline, sig] }));
 }
 
 /** Operator acknowledgements: "this move reached Patoli inside its window". Required by the contract's replay. */
@@ -138,12 +144,10 @@ export function signRevealAck(matchId: Hex, round: number, player: Hex, move: nu
 
 /** Operator files a dispute claim with every signed artifact we hold (the chain replays the game). */
 export async function sendClaim(m: MatchStruct, sigA: Hex, sigB: Hex, commits: ClaimCommit[], reveals: ClaimReveal[]): Promise<Hex> {
-  const wallet = operatorWallet();
-  return wallet.writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "claim", args: [m, sigA, sigB, commits, reveals] });
+  return withOperator(() => operatorWallet().writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "claim", args: [m, sigA, sigB, commits, reveals] }));
 }
 export async function sendFinalize(m: MatchStruct, sigA: Hex, sigB: Hex): Promise<Hex> {
-  const wallet = operatorWallet();
-  return wallet.writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "finalize", args: [m, sigA, sigB] });
+  return withOperator(() => operatorWallet().writeContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "finalize", args: [m, sigA, sigB] }));
 }
 export async function readClaim(matchId: Hex): Promise<{ claimant: Hex; winner: Hex; evidence: number; finalizeAt: bigint }> {
   const [claimant, winner, evidence, finalizeAt] = await arenaPublic.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "claims", args: [matchId] });
@@ -153,8 +157,7 @@ export async function readClaim(matchId: Hex): Promise<{ claimant: Hex; winner: 
 /** Operator sweeps a user's forwarder into the Arena (permissionless on-chain; we pay gas). */
 export async function sendSweep(user: Hex): Promise<Hex> {
   if (!isRouterConfigured()) throw new Error("router no configurado");
-  const wallet = operatorWallet();
-  return wallet.writeContract({ address: ARENA_ROUTER_ADDRESS, abi: routerAbi, functionName: "sweep", args: [user] });
+  return withOperator(() => operatorWallet().writeContract({ address: ARENA_ROUTER_ADDRESS, abi: routerAbi, functionName: "sweep", args: [user] }));
 }
 export async function forwarderOf(user: Hex): Promise<Hex> {
   return arenaPublic.readContract({ address: ARENA_ROUTER_ADDRESS, abi: routerAbi, functionName: "forwarderOf", args: [user] });
