@@ -135,6 +135,35 @@ export async function openMatchFor(profileId: string): Promise<MatchRow | null> 
   return (data as MatchRow | null) ?? null;
 }
 
+/** Stakes a player will still lose on-chain from matches that are decided but not yet settled. */
+export async function unsettledOwed(eoa: string, excludeId?: string): Promise<bigint> {
+  const db = supabaseAdmin();
+  const e = eoa.toLowerCase();
+  let q = db.from("arena_matches").select("id, stake, eoa_a, eoa_b, winner_eoa").in("status", ["finished", "ready", "disputed"]).or(`eoa_a.eq.${e},eoa_b.eq.${e}`);
+  if (excludeId) q = q.neq("id", excludeId);
+  const { data } = await q;
+  let owed = 0n;
+  for (const r of data ?? []) {
+    const w = (r.winner_eoa as string | null)?.toLowerCase();
+    if (w && w !== e) owed += toUnits(Number(r.stake));
+  }
+  return owed;
+}
+
+/** Any open match for this profile other than `excludeId`. */
+export async function otherOpenMatch(profileId: string, excludeId: string): Promise<MatchRow | null> {
+  const db = supabaseAdmin();
+  const { data } = await db
+    .from("arena_matches")
+    .select(MATCH_COLS)
+    .or(`player_a.eq.${profileId},player_b.eq.${profileId}`)
+    .in("status", [...OPEN_STATUSES])
+    .neq("id", excludeId)
+    .limit(1)
+    .maybeSingle();
+  return (data as MatchRow | null) ?? null;
+}
+
 export async function joinLobby(me: ArenaIdentity, stakeUsd: number): Promise<{ matchId: string | null; queued: boolean }> {
   const db = supabaseAdmin();
   const open = await openMatchFor(me.profileId);
@@ -228,7 +257,8 @@ export async function applyMatchSig(id: string, me: ArenaIdentity, sig: Hex) {
       arenaPendingWithdraw(f.eoa_b as Hex),
     ]);
     const need = toUnits(Number(f.stake));
-    if (balA < need || balB < need || pendA.amount > 0n || pendB.amount > 0n) {
+    const [owedA, owedB] = await Promise.all([unsettledOwed(f.eoa_a, f.id), unsettledOwed(f.eoa_b, f.id)]);
+    if (balA < need + owedA || balB < need + owedB || pendA.amount > 0n || pendB.amount > 0n) {
       await db.from("arena_matches").update({ status: "cancelled", settle_error: "stake no disponible al iniciar" }).eq("id", id).eq("status", "signing");
       return (await loadMatch(id))!.match;
     }
@@ -453,15 +483,15 @@ export async function proposeRematch(id: string, me: ArenaIdentity): Promise<Mat
   let next = prev * 2n;
   if (next > limits.max) next = limits.max;
   const [balA, balB, pendA, pendB] = await Promise.all([arenaBalance(f.eoa_a as Hex), arenaBalance(f.eoa_b as Hex), arenaPendingWithdraw(f.eoa_a as Hex), arenaPendingWithdraw(f.eoa_b as Hex)]);
-  // if the previous match is not settled yet, the loser still owes its stake on-chain
-  const unsettled = f.status !== "settled";
-  const owesA = unsettled && f.winner_eoa && f.winner_eoa.toLowerCase() === f.eoa_b.toLowerCase() ? prev : 0n;
-  const owesB = unsettled && f.winner_eoa && f.winner_eoa.toLowerCase() === f.eoa_a.toLowerCase() ? prev : 0n;
+  // everything either player still owes from decided-but-unsettled matches (this one included)
+  const [owesA, owesB, otherA, otherB] = await Promise.all([unsettledOwed(f.eoa_a), unsettledOwed(f.eoa_b), otherOpenMatch(f.player_a, id), otherOpenMatch(f.player_b, id)]);
+  if (otherA || otherB) throw new ArenaError("Alguien ya está en otra partida.", 409);
   if (pendA.amount > 0n || pendB.amount > 0n) throw new ArenaError("Hay un retiro en curso.", 409);
   if (balA < next + owesA || balB < next + owesB) throw new ArenaError(`Alguien no tiene $${fromUnits(next)} en su arena.`, 402);
 
   const newId = newMatchId();
   const deadline = new Date(Date.now() + MATCH_TTL_MINUTES * 60_000).toISOString();
+  await db.from("arena_lobby").delete().in("profile_id", [f.player_a, f.player_b]); // a rematch is a commitment; nobody stays queued
   const { data: claimed } = await db.from("arena_matches").update({ rematch_id: newId }).eq("id", id).is("rematch_id", null).select("id");
   if (!claimed?.length) return (await loadMatch(id))!.match; // the other request won the race
   const { error } = await db.from("arena_matches").insert({
