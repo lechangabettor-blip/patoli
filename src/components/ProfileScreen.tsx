@@ -22,6 +22,7 @@ import { POLYMARKET_PROFILE_URL } from "@/lib/polymarket/constants";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { cn } from "@/lib/cn";
 import FeedCard from "./FeedCard";
+import HistoryTabs from "./HistoryTabs";
 import { ticketFromItem, useSyncBets, useUser } from "@/hooks/useSocial";
 import { useArenaActions, useArenaMe } from "@/hooks/useArena";
 import { isArenaConfigured } from "@/lib/arena/typed-data";
@@ -422,14 +423,7 @@ export default function ProfileScreen() {
         {/* Settled bets — the public, verifiable record */}
         {me ? (
           <>
-            <h2 className="mt-6 text-lg">Historial</h2>
-            <div className="mt-2 space-y-3">
-              {mine.isLoading ? <div className="skeleton h-24" /> : null}
-              {history.map((b, i) => (
-                <FeedCard key={b.id} item={b} index={i} onTicket={(it) => setTicket(ticketFromItem(it))} />
-              ))}
-              {!mine.isLoading && history.length === 0 ? <p className="card p-4 text-center text-sm text-muted">Tus apuestas resueltas aparecen aquí.</p> : null}
-            </div>
+            <HistoryTabs items={history} loading={mine.isLoading} onTicket={(it) => setTicket(ticketFromItem(it))} />
           </>
         ) : null}
 

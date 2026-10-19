@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import Avatar from "./Avatar";
-import FeedCard from "./FeedCard";
+import HistoryTabs from "./HistoryTabs";
 import BottomNav from "./BottomNav";
 import Sheet from "./Sheet";
 import TicketShare from "./TicketShare";
@@ -115,13 +115,7 @@ export default function PublicProfile({ handle }: { handle: string }) {
               </div>
             </section>
 
-            <h2 className="mt-6 text-lg">Historial</h2>
-            <div className="mt-2 space-y-3">
-              {bets.map((b, i) => (
-                <FeedCard key={b.id} item={b} index={i} onTicket={(it) => setTicket(ticketFromItem(it))} />
-              ))}
-              {bets.length === 0 ? <p className="card p-4 text-center text-sm text-muted">Sin apuestas todavía.</p> : null}
-            </div>
+            <HistoryTabs items={bets} onTicket={(it) => setTicket(ticketFromItem(it))} />
             {!q.data?.demo ? (
               <a href={POLYMARKET_PROFILE_URL(p.wallet)} target="_blank" rel="noreferrer" className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted">
                 Verificar historial on-chain <ExternalLink className="h-3.5 w-3.5" />
