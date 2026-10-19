@@ -515,7 +515,7 @@ function MatchView({ id, myEoa, onExit, onRematch }: { id: string; myEoa: Hex; o
                   ? "Resultado definido por las jugadas. Liquidando en la blockchain…"
                   : m.status === "disputed"
                     ? "Registrado en la blockchain. Se paga en 24 h."
-                    : "Rival ausente. Registrando en la blockchain…"}
+                    : "Partida sin terminar. Registrando en la blockchain…"}
               {m.settle_tx ? (
                 <>
                   {" "}

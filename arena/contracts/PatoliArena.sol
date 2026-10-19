@@ -377,11 +377,12 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
         emit Settled(m.id, m.playerA, m.playerB, winner, m.stake, disputed);
     }
 
-    /// @dev Replays a match from signed commits and plain reveals.
-    ///      Per round: missing commit → forfeit by the player who did not commit (if the
-    ///      other did); both committed but one reveal missing → forfeit by the non-revealer;
-    ///      both revealed → scored (ties replay as the next round); neither committed or
-    ///      neither revealed → match stops, higher score wins, equal score → draw.
+    /// @dev Replays a match from operator-acked commits and reveals.
+    ///      Per round: a player with no acked commit, or no acked reveal, simply LOSES THAT
+    ///      ROUND (point to the other); a round where neither played, or neither revealed,
+    ///      is a tie; both revealed → scored. Ties replay as the next round. The first to
+    ///      `need` points wins and the match is `complete` (settles instantly). If the cap
+    ///      of MAX_ROUNDS is reached, the higher score wins (not complete → claim path).
     /// @dev `complete` is true only when the match was decided by score through fully revealed
     ///         rounds (no forfeit, no abandonment) — the only outcome that may settle instantly.
     function _replay(Match calldata m, SignedCommit[] calldata commits, Reveal[] calldata reveals)
@@ -397,16 +398,26 @@ contract PatoliArena is EIP712, Ownable2Step, ReentrancyGuard {
             (bool okB, bytes32 hB) = _findCommit(m, commits, r, m.playerB);
             if (okA) evidence++;
             if (okB) evidence++;
-            if (!okA && !okB) break;
-            if (okA != okB) return (okA ? m.playerA : m.playerB, evidence, false);
-            uint8 mvA = _findReveal(m, reveals, r, m.playerA, hA);
-            uint8 mvB = _findReveal(m, reveals, r, m.playerB, hB);
-            if (mvA != 0) evidence++;
-            if (mvB != 0) evidence++;
-            if (mvA == 0 && mvB == 0) break;
-            if ((mvA == 0) != (mvB == 0)) return (mvA != 0 ? m.playerA : m.playerB, evidence, false);
-            if (_beats(mvA, mvB)) scoreA++;
-            else if (_beats(mvB, mvA)) scoreB++;
+            if (okA != okB) {
+                // one player never played the round → point to the one who did
+                if (okA) scoreA++;
+                else scoreB++;
+            } else if (okA) {
+                uint8 mvA = _findReveal(m, reveals, r, m.playerA, hA);
+                uint8 mvB = _findReveal(m, reveals, r, m.playerB, hB);
+                if (mvA != 0) evidence++;
+                if (mvB != 0) evidence++;
+                if ((mvA == 0) != (mvB == 0)) {
+                    // one player never revealed → point to the one who did
+                    if (mvA != 0) scoreA++;
+                    else scoreB++;
+                } else if (mvA != 0) {
+                    if (_beats(mvA, mvB)) scoreA++;
+                    else if (_beats(mvB, mvA)) scoreB++;
+                }
+                // neither revealed → tie round
+            }
+            // neither committed → tie round
             if (scoreA == need) return (m.playerA, evidence, true);
             if (scoreB == need) return (m.playerB, evidence, true);
         }

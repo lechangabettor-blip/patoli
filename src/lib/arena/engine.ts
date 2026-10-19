@@ -45,8 +45,8 @@ import {
  * The engine applies EXACTLY the contract's `_replay` rules, so the outcome both
  * players are asked to sign is the same one the chain would compute from the
  * signed artifacts: a missed commit or reveal (when the other side delivered)
- * forfeits the match; a round where nobody commits/reveals ends the match on
- * score (tie → draw). Nobody signs a result: a match completed by score becomes
+ * loses that ROUND; a round where nobody commits/reveals is a tie and play goes
+ * on; the first to the needed points wins (instant settlement). Nobody signs a result: a match completed by score becomes
  * `ready` and the cron settles it on-chain from the moves themselves; forfeits and
  * abandoned matches go through the on-chain claim (24h window) filed by the operator.
  */
@@ -405,22 +405,6 @@ async function settleRound(id: string, round: number, outcome: "a" | "b" | "tie"
   }
 }
 
-/** Ends a match now. winnerSide null = decide on score (tie → draw). */
-async function finishMatch(id: string, winnerSide: Side | null, reason: string) {
-  const db = supabaseAdmin();
-  const { data: mrow } = await db.from("arena_matches").select(MATCH_COLS).eq("id", id).single();
-  const m = mrow as MatchRow;
-  if (m.status !== "playing") return;
-  const winner = winnerSide === "a" ? m.eoa_a : winnerSide === "b" ? m.eoa_b : m.score_a > m.score_b ? m.eoa_a : m.score_b > m.score_a ? m.eoa_b : null;
-  await db
-    .from("arena_matches")
-    .update({ status: "finished", winner_eoa: winner, finished_at: nowIso(), settle_error: reason })
-    .eq("id", id)
-    .eq("status", "playing");
-  // close the open round for the record
-  await db.from("arena_rounds").update({ outcome: winnerSide ?? "tie", resolved_at: nowIso() }).eq("match_id", id).eq("round", m.round).is("outcome", null);
-}
-
 /** Timeouts — the contract's replay rules, applied live. Called by clients when a timer hits zero and by the cron sweep. */
 export async function tick(id: string) {
   const db = supabaseAdmin();
@@ -444,19 +428,18 @@ export async function tick(id: string) {
       const b = secrets?.find((s) => s.side === "b");
       if (a && b) await resolveIfBothRevealed(id, m.round);
       else if (a || b) {
-        // one revealed, the other did not → non-revealer forfeits the match (contract rule)
+        // one revealed, the other did not → the revealer takes the ROUND (contract rule)
         const reveals: Partial<RoundRow> = a
           ? { move_a: a.move, salt_a: a.salt, reveal_ack_a: a.ack }
           : { move_b: b!.move, salt_b: b!.salt, reveal_ack_b: b!.ack };
-        await db.from("arena_rounds").update(reveals).eq("match_id", id).eq("round", m.round);
-        await finishMatch(id, a ? "a" : "b", "rival no reveló");
+        await settleRound(id, m.round, a ? "a" : "b", reveals);
       } else {
-        await finishMatch(id, null, "nadie reveló"); // neither revealed → match ends on score
+        await settleRound(id, m.round, "tie"); // neither revealed → tie round, play on
       }
     }
   } else if (past(r.commit_deadline)) {
-    if (r.commit_a || r.commit_b) await finishMatch(id, r.commit_a ? "a" : "b", "rival no jugó"); // missing commit → forfeit
-    else await finishMatch(id, null, "nadie jugó"); // nobody committed → ends on score
+    // missing commit → the player who played takes the round; nobody played → tie round
+    await settleRound(id, m.round, r.commit_a ? "a" : r.commit_b ? "b" : "tie");
   }
   return loadMatch(id);
 }

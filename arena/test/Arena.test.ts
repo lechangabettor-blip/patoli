@@ -127,13 +127,22 @@ describe("PatoliArena", () => {
     expect(await arena.balanceOf(a.address)).to.equal(USD(11));
   });
 
-  it("an unfinished or forfeited match cannot settle instantly (it must go through claim)", async () => {
+  it("an unfinished match cannot settle instantly; a missed round is just a lost round", async () => {
     const { m, sigA, sigB } = await newMatch(USD(1));
-    const one = await play(m.id, [[ROCK, PAPER]]); // only 1-0
+    const one = await play(m.id, [[PAPER, ROCK]]); // a 1-0
     await expect(arena.settle(m, sigA, sigB, one.commits, one.reveals)).to.be.revertedWithCustomError(arena, "Incomplete");
-    const cA = await commit(a, m.id, 2, ROCK); // round 2: b never committed → forfeit, not complete
-    await expect(arena.settle(m, sigA, sigB, [...one.commits, cA.signed], [...one.reveals, cA.reveal])).to.be.revertedWithCustomError(arena, "Incomplete");
-    expect(await arena.balanceOf(a.address)).to.equal(USD(10));
+    // round 2: b never committed → point to a → 2-0 → complete, settles from the moves
+    const cA = await commit(a, m.id, 2, ROCK);
+    await arena.settle(m, sigA, sigB, [...one.commits, cA.signed], [...one.reveals, cA.reveal]);
+    expect(await arena.balanceOf(a.address)).to.equal(USD(11));
+  });
+
+  it("a missed reveal is a lost round; a round nobody played is a tie", async () => {
+    const { m, sigA, sigB } = await newMatch(USD(1));
+    const r1a = await commit(a, m.id, 1, ROCK), r1b = await commit(b, m.id, 1, PAPER); // both commit, only b reveals → b +1
+    const r3a = await commit(a, m.id, 3, ROCK), r3b = await commit(b, m.id, 3, PAPER); // round 2 nobody; round 3 b wins → 2-0
+    await arena.settle(m, sigA, sigB, [r1a.signed, r1b.signed, r3a.signed, r3b.signed], [r1b.reveal, r3a.reveal, r3b.reveal]);
+    expect(await arena.balanceOf(b.address)).to.equal(USD(11));
   });
 
   it("rejects a forged match", async () => {
@@ -194,7 +203,7 @@ describe("PatoliArena", () => {
   });
 
   describe("dispute path", () => {
-    it("opponent vanished after both committed: the revealer wins after the window", async () => {
+    it("opponent vanished after both committed: the revealer leads 1-0 and wins the claim after the window", async () => {
       const { m, sigA, sigB } = await newMatch(USD(1), 3, 60);
       const cA = await commit(a, m.id, 1, ROCK);
       const cB = await commit(b, m.id, 1, SCISSORS);

@@ -1,0 +1,14 @@
+{
+  "network": "polygon",
+  "chainId": 137,
+  "arena": "0xa2B447C73935Ee0e777F3B41251610ED47C9F612",
+  "token": "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
+  "owner": "0xC16B03A7d4121A5Ef434c23a1b53cb76C3022296",
+  "operator": "0xC16B03A7d4121A5Ef434c23a1b53cb76C3022296",
+  "deployedAt": "2026-10-19T20:59:46.414Z",
+  "block": 95825490,
+  "minStake": "0.5",
+  "maxStake": "20",
+  "router": "0x6418a4bf4251F66156EFa268384C7AB7aBF92638",
+  "routerDeployedAt": "2026-10-19T21:56:03.397Z"
+}
