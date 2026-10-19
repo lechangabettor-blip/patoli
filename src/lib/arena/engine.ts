@@ -52,8 +52,14 @@ import {
  */
 
 export type Side = "a" | "b";
-/** Statuses that keep a player's stake committed (no new match, no relayed withdrawal). */
-export const OPEN_STATUSES = ["signing", "playing", "finished", "ready", "disputed"] as const;
+/**
+ * A match is ACTIVE while it is being played. Decided matches that are still settling
+ * (ready) or in the on-chain claim path (finished/disputed, up to 24h) are NOT active:
+ * they must not trap the player in the Batalla tab or block new games. What they still
+ * owe is tracked as exposure by `unsettledOwed` and subtracted from the free balance.
+ */
+export const OPEN_STATUSES = ["signing", "playing"] as const;
+export const UNSETTLED_STATUSES = ["finished", "ready", "disputed"] as const;
 
 export interface MatchRow {
   id: string;
@@ -173,7 +179,8 @@ export async function joinLobby(me: ArenaIdentity, stakeUsd: number): Promise<{ 
   // Free stake on-chain? (balance minus anything already pending withdrawal is already deducted)
   const [bal, pending] = await Promise.all([arenaBalance(me.eoa), arenaPendingWithdraw(me.eoa)]);
   if (pending.amount > 0n) throw new ArenaError("Tienes un retiro en curso. Cancélalo para jugar.", 409);
-  if (bal < toUnits(stakeUsd)) throw new ArenaError("Fondea tu arena primero.", 402);
+  const owed = await unsettledOwed(me.eoa);
+  if (bal - owed < toUnits(stakeUsd)) throw new ArenaError(owed > 0n ? "Tu saldo libre no alcanza: hay una partida por liquidar." : "Fondea tu arena primero.", 402);
   const limits = await arenaLimits();
   if (toUnits(stakeUsd) < limits.min || toUnits(stakeUsd) > limits.max) throw new ArenaError("Monto fuera de los límites de la arena.");
 

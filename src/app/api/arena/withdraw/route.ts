@@ -16,7 +16,7 @@ async function guard(req: NextRequest) {
 }
 
 import { arenaBalance, arenaNonce, sendWithdrawWithSig, verifyWithdrawSig, waitForTx } from "@/lib/arena/server";
-import { leaveLobby, lobbyStatus, openMatchFor } from "@/lib/arena/engine";
+import { leaveLobby, lobbyStatus, openMatchFor, unsettledOwed } from "@/lib/arena/engine";
 import { toUnits } from "@/lib/arena/typed-data";
 import type { Hex } from "viem";
 
@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
       await leaveLobby(me.profileId); // can't be matched while withdrawing
       throw new ArenaError("Te sacamos del lobby. Intenta retirar de nuevo.", 409);
     }
-    const [bal, nonce] = await Promise.all([arenaBalance(me.eoa), arenaNonce(me.eoa)]);
-    if (bal < units) throw new ArenaError("Saldo insuficiente en la arena");
+    const [bal, nonce, owed] = await Promise.all([arenaBalance(me.eoa), arenaNonce(me.eoa), unsettledOwed(me.eoa)]);
+    if (bal - owed < units) throw new ArenaError(owed > 0n ? "Parte de tu saldo está comprometido en una partida por liquidar." : "Saldo insuficiente en la arena");
     const msg = { player: me.eoa, to: me.wallet, amount: units, nonce, deadline: BigInt(deadline) };
     if (!(await verifyWithdrawSig(msg, sig))) throw new ArenaError("Firma inválida");
     const tx = await sendWithdrawWithSig(me.eoa, me.wallet, units, BigInt(deadline), sig);

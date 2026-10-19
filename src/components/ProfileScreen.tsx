@@ -62,7 +62,7 @@ export default function ProfileScreen() {
     setArenaErr(null);
     setArenaBusy(true);
     try {
-      await arena.withdraw(a.balance, a.nonce, walletAddress as `0x${string}`);
+      await arena.withdraw(a.free ?? a.balance, a.nonce, walletAddress as `0x${string}`);
       await refetch();
       await arenaMe.refetch();
     } catch (e) {

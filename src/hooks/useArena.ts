@@ -11,6 +11,7 @@ import type { MatchPlayers, MatchRow, RoundRow } from "@/lib/arena/engine";
 
 export interface ArenaMe {
   balance: number;
+  free: number;
   waiting: number;
   pending: { amount: number; to: string; readyAt: number } | null;
   nonce: string;
