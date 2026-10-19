@@ -367,6 +367,11 @@ function MatchView({ id, myEoa, onExit, onRematch }: { id: string; myEoa: Hex; o
   const rematchExpired = rematchExpires != null && now >= rematchExpires && !m.rematch_id;
   const rematchLeft = rematchExpires != null ? Math.max(0, rematchExpires - now) : 0;
   const nextStake = Number(m.stake); // doble o nada = same stake again
+  const myBal = state.balances ? (side === "a" ? state.balances.a : state.balances.b) : null;
+  const theirBal = state.balances ? (side === "a" ? state.balances.b : state.balances.a) : null;
+  const iCantAfford = myBal != null && myBal < nextStake;
+  const theyCantAfford = theirBal != null && theirBal < nextStake;
+  const rematchError = m.rematch_error ? m.rematch_error.replace("El jugador A", side === "a" ? "Tú" : `@${rival}`).replace("El jugador B", side === "b" ? "Tú" : `@${rival}`).replace("Tú no tiene", "No tienes") : null;
 
   async function doubleOrNothing() {
     setErr(null);
@@ -523,6 +528,12 @@ function MatchView({ id, myEoa, onExit, onRematch }: { id: string; myEoa: Hex; o
             {/* Doble o nada */}
             {m.rematch_id ? (
               <p className="pulse-soft mt-4 text-sm text-accent-soft">Va la revancha…</p>
+            ) : rematchError ? (
+              <p className="mt-4 text-xs text-loss">{rematchError}</p>
+            ) : iCantAfford ? (
+              <p className="mt-4 text-xs text-muted">Te falta saldo en la arena para la revancha. Sal al lobby y fondea.</p>
+            ) : theyCantAfford ? (
+              <p className="mt-4 text-xs text-muted">@{rival} no tiene saldo en la arena para la revancha.</p>
             ) : rematchExpired ? (
               <p className="mt-4 text-xs text-muted">Se acabó el tiempo para la revancha.</p>
             ) : theirRematch && !myRematch ? (
@@ -545,7 +556,7 @@ function MatchView({ id, myEoa, onExit, onRematch }: { id: string; myEoa: Hex; o
               <button onClick={() => setShare(true)} className="btn-ghost flex items-center justify-center gap-1.5 px-4 py-3 text-sm" aria-label="Compartir">
                 <Share2 className="h-4 w-4" />
               </button>
-              {!myRematch && !rematchExpired && !m.rematch_id ? (
+              {!myRematch && !rematchExpired && !m.rematch_id && !rematchError && !iCantAfford && !theyCantAfford ? (
                 <button onClick={doubleOrNothing} disabled={rematchBusy} className="btn-accent flex-1 py-3 text-sm">
                   {rematchBusy ? "…" : `Doble o nada · $${formatUsd(nextStake)}`}
                 </button>

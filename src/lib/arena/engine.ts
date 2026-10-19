@@ -77,6 +77,7 @@ export interface MatchRow {
   rematch_b_at: string | null;
   rematch_expires_at: string | null;
   rematch_id: string | null;
+  rematch_error: string | null;
   parent_id: string | null;
   created_at: string;
   started_at: string | null;
@@ -113,7 +114,7 @@ export class ArenaError extends Error {
   }
 }
 
-const MATCH_COLS = "id, player_a, player_b, eoa_a, eoa_b, stake, best_of, deadline, status, sig_a, sig_b, round, score_a, score_b, winner_eoa, settle_tx, claim_tx, rematch_a_at, rematch_b_at, rematch_expires_at, rematch_id, parent_id, created_at, started_at, finished_at";
+const MATCH_COLS = "id, player_a, player_b, eoa_a, eoa_b, stake, best_of, deadline, status, sig_a, sig_b, round, score_a, score_b, winner_eoa, settle_tx, claim_tx, rematch_a_at, rematch_b_at, rematch_expires_at, rematch_id, rematch_error, parent_id, created_at, started_at, finished_at";
 const nowIso = () => new Date().toISOString();
 const plus = (sec: number) => new Date(Date.now() + sec * 1000).toISOString();
 const past = (iso: string | null) => !!iso && new Date(iso).getTime() <= Date.now();
@@ -211,7 +212,7 @@ export interface MatchPlayers {
   b: { handle: string; avatar: string };
 }
 
-export async function loadMatch(id: string): Promise<{ match: MatchRow; rounds: RoundRow[]; players?: MatchPlayers } | null> {
+export async function loadMatch(id: string): Promise<{ match: MatchRow; rounds: RoundRow[]; players?: MatchPlayers; balances?: { a: number; b: number } } | null> {
   const db = supabaseAdmin();
   const { data: m } = await db.from("arena_matches").select(MATCH_COLS).eq("id", id).maybeSingle();
   if (!m) return null;
@@ -224,7 +225,16 @@ export async function loadMatch(id: string): Promise<{ match: MatchRow; rounds: 
     const p = (profs ?? []).find((x) => x.id === pid);
     return { handle: (p?.handle as string) ?? "?", avatar: ((p?.avatar as string) || (p?.handle as string)) ?? "?" };
   };
-  return { match: row, rounds: (rounds ?? []) as RoundRow[], players: { a: pick(row.player_a), b: pick(row.player_b) } };
+  let balances: { a: number; b: number } | undefined;
+  if (["finished", "ready", "settled", "disputed"].includes(row.status)) {
+    try {
+      const [ba, bb] = await Promise.all([arenaBalance(row.eoa_a as Hex), arenaBalance(row.eoa_b as Hex)]);
+      balances = { a: fromUnits(ba), b: fromUnits(bb) };
+    } catch {
+      /* RPC hiccup: UI just won't gate on it */
+    }
+  }
+  return { match: row, rounds: (rounds ?? []) as RoundRow[], players: { a: pick(row.player_a), b: pick(row.player_b) }, balances };
 }
 
 function sideOf(m: MatchRow, me: ArenaIdentity): Side {
@@ -496,15 +506,24 @@ export async function proposeRematch(id: string, me: ArenaIdentity): Promise<Mat
   const [balA, balB, pendA, pendB] = await Promise.all([arenaBalance(f.eoa_a as Hex), arenaBalance(f.eoa_b as Hex), arenaPendingWithdraw(f.eoa_a as Hex), arenaPendingWithdraw(f.eoa_b as Hex)]);
   // everything either player still owes from decided-but-unsettled matches (this one included)
   const [owesA, owesB, otherA, otherB] = await Promise.all([unsettledOwed(f.eoa_a), unsettledOwed(f.eoa_b), otherOpenMatch(f.player_a, id), otherOpenMatch(f.player_b, id)]);
-  if (otherA || otherB) throw new ArenaError("Alguien ya está en otra partida.", 409);
-  if (pendA.amount > 0n || pendB.amount > 0n) throw new ArenaError("Hay un retiro en curso.", 409);
-  if (balA < next + owesA || balB < next + owesB) throw new ArenaError(`Alguien no tiene $${fromUnits(next)} en su arena.`, 402);
+  const failWith = async (msg: string, status = 409): Promise<never> => {
+    await db.from("arena_matches").update({ rematch_error: msg }).eq("id", id).is("rematch_id", null);
+    throw new ArenaError(msg, status);
+  };
+  if (otherA || otherB) await failWith("Alguien ya está en otra partida.");
+  if (pendA.amount > 0n || pendB.amount > 0n) await failWith("Hay un retiro en curso.");
+  const shortA = balA < next + owesA;
+  const shortB = balB < next + owesB;
+  if (shortA || shortB) {
+    const who = shortA && shortB ? "Ninguno tiene" : `${shortA ? "El jugador A" : "El jugador B"} no tiene`;
+    await failWith(`${who} $${fromUnits(next)} en la arena para la revancha.`, 402);
+  }
 
   const newId = newMatchId();
   const deadline = new Date(Date.now() + MATCH_TTL_MINUTES * 60_000).toISOString();
   await db.from("arena_lobby").delete().in("profile_id", [f.player_a, f.player_b]); // a rematch is a commitment; nobody stays queued
-  const { data: claimed } = await db.from("arena_matches").update({ rematch_id: newId }).eq("id", id).is("rematch_id", null).select("id");
-  if (!claimed?.length) return (await loadMatch(id))!.match; // the other request won the race
+  // Insert the child FIRST (rematch_id has a foreign key to it), then link the parent.
+  // The unique index on parent_id makes a simultaneous second tap fail cleanly.
   const { error } = await db.from("arena_matches").insert({
     id: newId,
     player_a: f.player_a,
@@ -517,10 +536,17 @@ export async function proposeRematch(id: string, me: ArenaIdentity): Promise<Mat
     parent_id: id,
   });
   if (error) {
+    if (error.code === "23505") {
+      // the other player's request created it a moment ago → link if needed and return
+      const { data: child } = await db.from("arena_matches").select("id").eq("parent_id", id).maybeSingle();
+      if (child) await db.from("arena_matches").update({ rematch_id: child.id as string }).eq("id", id).is("rematch_id", null);
+      return (await loadMatch(id))!.match;
+    }
     console.error("[arena] rematch insert", error.message);
-    await db.from("arena_matches").update({ rematch_id: null }).eq("id", id);
-    throw new ArenaError("No se pudo crear la revancha", 500);
+    await failWith("No se pudo crear la revancha", 500);
   }
+  const { error: linkErr } = await db.from("arena_matches").update({ rematch_id: newId }).eq("id", id).is("rematch_id", null);
+  if (linkErr) console.error("[arena] rematch link", linkErr.message);
   return (await loadMatch(id))!.match;
 }
 

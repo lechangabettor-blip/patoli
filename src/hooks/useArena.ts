@@ -21,6 +21,7 @@ export interface MatchState {
   match: MatchRow;
   rounds: RoundRow[];
   players?: MatchPlayers;
+  balances?: { a: number; b: number };
 }
 
 /** Local secrets (move + salt per round) so a reload mid-round can still reveal. */
