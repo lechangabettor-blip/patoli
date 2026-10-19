@@ -115,8 +115,10 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
 
 - **Polygon RPC must be on Magic's CSP allowlist** (Magic's iframe blocks other
   hosts): `*.alchemy.com`, `*.infura.io`, `*.rpc.thirdweb.com`, `polygon-rpc.com`
-  (dead since Oct 2026, returns 401). Default is thirdweb keyless; use an Alchemy
-  key in prod. publicnode/drpc work for us but NOT inside Magic.
+  (dead since Oct 2026, returns 401). Since 2026-10-19 the RPC is LeChanga's **Alchemy**
+  app (Polygon Mainnet, key in `.env.local` `NEXT_PUBLIC_POLYGON_RPC_URL` and `arena/.env`);
+  thirdweb keyless is the fallback if the key is missing. publicnode/drpc work for us but NOT
+  inside Magic.
 - Without `POLYMARKET_BUILDER_*` env vars, `/api/polymarket/sign` returns 503 and
   the relayer answers 401 → Safe deploy fails. The UI reads `GET /api/polymarket/sign`
   and disables "Activar" with a plain message. Login itself works without them.
