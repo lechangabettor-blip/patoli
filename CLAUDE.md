@@ -212,7 +212,7 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   use and credits `Arena.deposit(amount, user)`. Router v2 `0x6418a4bf4251F66156EFa268384C7AB7aBF92638` (v1 `0x7253…ef28` retired, had `refund` missing)
   (`NEXT_PUBLIC_ARENA_ROUTER_ADDRESS`), stateless, no owner. `/api/arena/me` reports
   `waiting` (pUSD stranded in the forwarder) and the lobby shows "Acreditar" to finish.
-- Live: Arena `0xa2B447C73935Ee0e777F3B41251610ED47C9F612` (owner = LeChanga's MetaMask
+- Live (v2, 2026-10-20): Arena `0xaE66Ab4c09FaefE9D8DF2f3e8C863dD476C69A30` + router `0xB808194D9e6b95457992Af9a5F73DDE766333d96`. v1 `0xa2B4…F612` retired (a $1 forfeit stake left inside by choice). Rule change in v2: a missed commit/reveal loses the ROUND, nobody-played = tie; first to the needed points wins and settles instantly. (owner = LeChanga's MetaMask
   `0x22F9…b5Ea`, operator = server key `0xC16B…2296`). Owner console: `/arena/owner`.
 - Still unverified on a real run: Magic signs `eth_signTypedData_v4` silently; Realtime
   publication includes the tables.
