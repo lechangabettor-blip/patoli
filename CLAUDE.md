@@ -2,8 +2,8 @@
 
 LeChanga's own social betting platform, built solo with Claude Code. Business
 context: `Desktop\LeChangaHQ\CLAUDE.md`; the product plan is
-`Desktop\LeChangaHQ\5-lechanga-bet\MVP-PLAN.md` (read §2 scope and §10
-decisions before adding features). Partner-era research: `Desktop\Patolli\`.
+`Desktop\LeChangaHQ\5-lechanga-bet\PLAN.md` v2.0 (read §2 product and §5 roadmap
+before adding features); decision history in `MVP-PLAN.md` next to it.
 
 ## What this is (v1 scope — the contract)
 
