@@ -219,6 +219,23 @@ src/components/            screens + UI primitives
 - Still unverified on a real run: Magic signs `eth_signTypedData_v4` silently; Realtime
   publication includes the tables.
 
+## Deployment (2026-10-20)
+
+- **Vercel** project `patoli` (team `lechangabettor-gmailcoms-projects`, Hobby plan), linked
+  from this folder (`.vercel/` ignored). Production: https://patoli.vercel.app → custom
+  domain `patoli.bet` + `www` attached; DNS at Wix must point A `@` → `216.198.79.1` and
+  `64.29.17.1`, CNAME `www` → `13e4e9175fae5c3d.vercel-dns-017.com`. Deploy = push to
+  `main` (Git integration) or `npx vercel --prod`. Env vars pushed from `.env.local` with
+  `vercel env add` (strip `\r`; `NEXT_PUBLIC_MAGIC_API_KEY` / `…SUPABASE_ANON_KEY` need
+  `--type config`). `CRON_SECRET` set.
+- **Crons:** Hobby allows only daily → `vercel.json` runs indexer 06:00 / arena 07:00 UTC.
+  `.github/workflows/cron.yml` pings both endpoints every 5 min (needs repo secrets
+  `APP_URL`, `CRON_SECRET`). Instant settlement at match end does not depend on crons.
+  On Pro, restore `*/5` and `* * * * *` in `vercel.json`.
+- **Magic:** allowed origin must be `https://patoli.bet` (free plan = one origin; localhost
+  then stops working for login). Google social login configured (Google Cloud project
+  "Patoli", redirect `https://auth.magic.link/v1/oauth2/google/callback`).
+
 ## Status log
 
 - 2026-10-14 — Phase 0 scaffold: brand, nav, 5 tabs, Deportes live from
