@@ -1,0 +1,17 @@
+name: cron
+# Vercel's Hobby plan only runs crons once a day. Until Patoli is on Pro, GitHub Actions
+# pings the two maintenance endpoints every 5 minutes (GitHub may delay a few minutes).
+# Requires repository secrets: APP_URL (e.g. https://patoli.bet) and CRON_SECRET (same value as on Vercel).
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: arena settle / claims / finalize
+        run: curl -fsS -m 170 -X POST "${{ secrets.APP_URL }}/api/arena/settle" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" || true
+      - name: bets indexer
+        run: curl -fsS -m 170 -X POST "${{ secrets.APP_URL }}/api/indexer/run" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" || true
