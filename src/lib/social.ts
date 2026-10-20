@@ -252,7 +252,7 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
   // Soccer 1X2: each side is its own yes/no market ("Will CD Guadalajara win on 2026-10-20?")
   if (kind === "moneyline" && /^(yes|no)$/i.test(b.outcome) && m?.question) {
     const q = m.question;
-    const team = /end in a draw/i.test(q) ? "Empate" : shortTeam((q.match(/^Will (.+?) win/i)?.[1] ?? q).trim());
+    const team = /end in a draw/i.test(q) ? "Empate" : shortTeam((q.match(/^Will (.+?) win/i)?.[1] ?? q).trim());
     selection = /^yes$/i.test(b.outcome) ? team : `No ${team}`;
   }
   if (kind === "btts") selection = /^yes$/i.test(b.outcome) ? "Ambos anotan · Sí" : "Ambos anotan · No";
