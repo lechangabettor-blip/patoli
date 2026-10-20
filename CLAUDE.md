@@ -85,6 +85,9 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   from polymarket.com → Settings → Builders; public; embedded in the order).
   Verify attribution: `GET clob.polymarket.com/builder/trades?builder_code=…`.
 - **Collateral is pUSD** (`0xC011…2DFB`), not USDC.e. USDC.e → pUSD via
+  Neg-risk markets (soccer 1X2) spend via the NegRiskAdapter `0xd91E…5296`: it needs a pUSD
+  allowance + CTF operator approval too (the CLOB rejects with "spender 0xd91E… allowance: 0"
+  otherwise). `ensureApprovals()` tops up missing permissions before every order.
   CollateralOnramp `wrap(USDC.e, to, amount)` (approve the onramp first); we do it
   as a gasless batch from the deposit wallet (`buildWrapCalls`). Native USDC is a
   different token and is NOT handled yet.

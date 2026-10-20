@@ -26,7 +26,7 @@ export type PlaceBetResult =
  * Patoli's builder code rides inside the signed order. We never touch money.
  */
 export function usePlaceBet() {
-  const { clobClient } = useTrading();
+  const { clobClient, ensureApprovals } = useTrading();
   const qc = useQueryClient();
   const syncBets = useSyncBets();
   const [isPlacing, setPlacing] = useState(false);
@@ -39,6 +39,14 @@ export function usePlaceBet() {
       }
       setPlacing(true);
       try {
+        // Permissions can grow over time (neg-risk adapter was added after the first wallets
+        // were activated): top them up silently before the order if anything is missing.
+        try {
+          const added = await ensureApprovals();
+          if (added) await new Promise((r) => setTimeout(r, 1500)); // let the CLOB see the new allowance
+        } catch (e) {
+          console.warn("[patoli] ensureApprovals failed", e);
+        }
         // The CLOB caches each wallet's collateral balance/allowance. A fresh
         // Safe (or a fresh deposit) must be re-synced or orders get rejected
         // with "not enough balance / allowance" even though the chain is fine.
@@ -79,7 +87,7 @@ export function usePlaceBet() {
         setPlacing(false);
       }
     },
-    [clobClient, qc, syncBets],
+    [clobClient, qc, syncBets, ensureApprovals],
   );
 
   return { placeBet, isPlacing };

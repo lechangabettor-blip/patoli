@@ -6,6 +6,7 @@ import {
   COLLATERAL_ONRAMP_ADDRESS,
   CTF_ADDRESS,
   CTF_COLLATERAL_ADAPTER_ADDRESS,
+  NEG_RISK_ADAPTER_ADDRESS,
   NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS,
   V2_ROUTER_ADDRESS,
   POLYGON_RPC_URL,
@@ -48,10 +49,12 @@ const onrampAbi = parseAbi(["function wrap(address _asset, address _to, uint256 
 const offrampAbi = parseAbi(["function unwrap(address _asset, address _to, uint256 _amount)"]);
 
 // pUSD spenders (ERC-20 approve)
-const PUSD_SPENDERS = [V2_PROTOCOL_EXCHANGE_ADDRESS, V2_STANDARD_EXCHANGE_ADDRESS, V2_NEG_RISK_EXCHANGE_ADDRESS] as const;
+// Neg-risk markets (multi-outcome events, e.g. soccer 1X2) also spend through the
+// NegRiskAdapter — the CLOB checks ITS allowance ("spender 0xd91E… allowance: 0").
+const PUSD_SPENDERS = [V2_PROTOCOL_EXCHANGE_ADDRESS, V2_STANDARD_EXCHANGE_ADDRESS, V2_NEG_RISK_EXCHANGE_ADDRESS, NEG_RISK_ADAPTER_ADDRESS] as const;
 // Conditional tokens operators (ERC-1155 setApprovalForAll): the exchanges
 // (trading) and the collateral adapters (redeeming winnings).
-const CTF_OPERATORS = [V2_STANDARD_EXCHANGE_ADDRESS, V2_NEG_RISK_EXCHANGE_ADDRESS, CTF_COLLATERAL_ADAPTER_ADDRESS, NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS] as const;
+const CTF_OPERATORS = [V2_STANDARD_EXCHANGE_ADDRESS, V2_NEG_RISK_EXCHANGE_ADDRESS, NEG_RISK_ADAPTER_ADDRESS, CTF_COLLATERAL_ADAPTER_ADDRESS, NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS] as const;
 // PositionManager operators: the Protocol V2 exchange (trading) and the Router (redeeming)
 const PM_OPERATORS = [V2_PROTOCOL_EXCHANGE_ADDRESS, V2_ROUTER_ADDRESS] as const;
 

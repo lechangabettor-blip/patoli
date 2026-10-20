@@ -74,6 +74,8 @@ interface TradingContextType {
   setupTrading: () => Promise<void>;
   /** Wrap USDC.e sitting in the deposit wallet into pUSD (gasless). */
   wrapUsdc: (amount: bigint) => Promise<void>;
+  /** Re-run the approval batch if any permission is missing (e.g. a newly required spender). Returns true if it had to. */
+  ensureApprovals: () => Promise<boolean>;
   /** Native USDC sent by mistake → pUSD (direct wrap if allowed, else via Polymarket's bridge). Returns the path used. */
   rescueNativeUsdc: (amount: bigint) => Promise<"wrap" | "bridge">;
   /** Move USDC.e parked in the v1 Safe into the deposit wallet (gasless). */
@@ -225,6 +227,14 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     }
   }, [eoaAddress, ethersSigner, relayClient, storedCreds, legacySafeAddress]);
 
+  const ensureApprovals = useCallback(async () => {
+    if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
+    if (await checkV2Approvals(walletAddress)) return false;
+    const resp = await relayClient.executeDepositWalletBatch(buildV2ApprovalCalls(), walletAddress, batchDeadline());
+    await resp.wait();
+    return true;
+  }, [relayClient, walletAddress]);
+
   const wrapUsdc = useCallback(
     async (amount: bigint) => {
       if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
@@ -361,6 +371,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       relayClient,
       setupTrading,
       wrapUsdc,
+      ensureApprovals,
       rescueNativeUsdc,
       migrateFromSafe,
       withdraw,
@@ -368,7 +379,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       redeem,
       resetTrading,
     }),
-    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, rescueNativeUsdc, migrateFromSafe, withdraw, depositArena, redeem, resetTrading],
+    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, ensureApprovals, rescueNativeUsdc, migrateFromSafe, withdraw, depositArena, redeem, resetTrading],
   );
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>;
