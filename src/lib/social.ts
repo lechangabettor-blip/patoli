@@ -1,5 +1,6 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { shortTeam } from "@/lib/polymarket/gamma";
 import type { FeedItem, PublicProfile } from "@/types/social";
 
 /** Read models for profiles and the feed. Server-only. */
@@ -248,6 +249,12 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
   if (kind === "spread" && m?.line != null) selection = `${b.outcome} ${fmtLine(b.outcome_index === 0 ? m.line : -m.line)}`;
   if (kind === "total" && m?.line != null) selection = `${/over/i.test(b.outcome) ? "Más" : /under/i.test(b.outcome) ? "Menos" : b.outcome} ${m.line}`;
   if (kind === "moneyline" && /^draw$/i.test(b.outcome)) selection = "Empate";
+  // Soccer 1X2: each side is its own yes/no market ("Will CD Guadalajara win on 2026-10-20?")
+  if (kind === "moneyline" && /^(yes|no)$/i.test(b.outcome) && m?.question) {
+    const q = m.question;
+    const team = /end in a draw/i.test(q) ? "Empate" : shortTeam((q.match(/^Will (.+?) win/i)?.[1] ?? q).trim());
+    selection = /^yes$/i.test(b.outcome) ? team : `No ${team}`;
+  }
   if (kind === "btts") selection = /^yes$/i.test(b.outcome) ? "Ambos anotan · Sí" : "Ambos anotan · No";
   const p = b.profiles!;
   const prof = toProfile(p, s);
