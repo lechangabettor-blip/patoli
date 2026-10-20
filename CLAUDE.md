@@ -232,8 +232,10 @@ src/components/            screens + UI primitives
   `.github/workflows/cron.yml` pings both endpoints every 5 min (needs repo secrets
   `APP_URL`, `CRON_SECRET`). Instant settlement at match end does not depend on crons.
   On Pro, restore `*/5` and `* * * * *` in `vercel.json`.
-- **Magic:** allowed origin must be `https://patoli.bet` (free plan = one origin; localhost
-  then stops working for login). Google social login configured (Google Cloud project
+- **Magic:** allowed origins set (the free plan accepted several): `https://patoli.bet`,
+  `https://www.patoli.bet`, `https://patoli.vercel.app`, `http://localhost`.
+- **GitHub secrets** `APP_URL` + `CRON_SECRET` set; the cron workflow ran green (manual run #3).
+  DNS at Wix was edited 2026-10-20 (A ×2 + CNAME); Vercel verified, certs issued. Google social login configured (Google Cloud project
   "Patoli", redirect `https://auth.magic.link/v1/oauth2/google/callback`).
 
 ## Status log
