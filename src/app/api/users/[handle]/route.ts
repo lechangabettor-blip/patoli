@@ -2,17 +2,12 @@ import { NextRequest, NextResponse, connection } from "next/server";
 import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase/server";
 import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
 import { loadBattles, loadFeed, loadProfile, mergeFeed } from "@/lib/social";
-import { demoFeed, demoProfile } from "@/lib/demo-feed";
 
 /** GET /api/users/[handle] → { profile, bets } */
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/users/[handle]">) {
   await connection();
   const { handle } = await ctx.params;
-  if (!isSupabaseConfigured()) {
-    const profile = demoProfile(handle);
-    if (!profile) return NextResponse.json({ error: "not found" }, { status: 404 });
-    return NextResponse.json({ profile, bets: demoFeed("profile", handle), demo: true });
-  }
+  if (!isSupabaseConfigured()) return NextResponse.json({ error: "backend no configurado" }, { status: 503 });
   let viewerId: string | null = null;
   if (isMagicAdminConfigured()) {
     const id = await verifyDidToken(bearer(req));

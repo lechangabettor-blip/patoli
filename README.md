@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Patoli
 
-## Getting Started
+Social betting for the banda: sports bets routed to Polymarket, a public verifiable record,
+and player-vs-player piedra·papel·tijera settled on Polygon with no house and no rake.
 
-First, run the development server:
+Mobile-first Next.js 16 PWA. Full context for working on this repo lives in `CLAUDE.md`.
+
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # fill in the keys (see .env.example comments)
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Phone testing on the LAN (production build, all interfaces):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build && npm run start -- --port 3000 -H 0.0.0.0
+powershell -File scripts/local-cron.ps1   # stand-in for the Vercel crons while running locally
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Layout
 
-## Learn More
+| Path | What |
+|---|---|
+| `src/app/(tabs)` | the five tabs: Inicio · Deportes · Batalla · Buscar · Perfil |
+| `src/app/api` | route handlers (games/prices, social, indexer, arena, polymarket helpers) |
+| `src/lib/polymarket` | Gamma/CLOB normalizers, V2 deposit-wallet plumbing, fee math |
+| `src/lib/arena` | PvP engine (DB state machine), chain calls, EIP-712 types |
+| `src/lib/indexer` | builder-trades → `bets`, market metadata, settlement |
+| `src/providers`, `src/hooks` | wallet (Magic), trading session, profile, data hooks |
+| `supabase/migrations` | Postgres schema, applied in order via the SQL editor |
+| `arena/` | Hardhat project: `PatoliArena.sol`, `ArenaDepositRouter.sol`, tests, deploy scripts |
 
-To learn more about Next.js, take a look at the following resources:
+## Contracts (Polygon)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Addresses and owners are recorded in `arena/deployments/polygon.json`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+cd arena && npm install && npm test
+```

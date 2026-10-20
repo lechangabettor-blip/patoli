@@ -48,8 +48,8 @@ interface Position {
 export default function ProfileScreen() {
   const { status, email, eoaAddress, logout, isDemo } = useWallet();
   const { me } = useMe();
-  const { walletAddress, legacySafeAddress, isReady, step, setupTrading, error, wrapUsdc, rescueNativeUsdc, migrateFromSafe, redeem } = useTrading();
-  const { balance, pendingUsdc, pendingUsdcRaw, legacyUsdc, legacyUsdcRaw, nativeUsdc, nativeUsdcRaw, refetch } = useUsdcBalance();
+  const { walletAddress, isReady, step, setupTrading, error, wrapUsdc, rescueNativeUsdc, redeem } = useTrading();
+  const { balance, pendingUsdc, pendingUsdcRaw, nativeUsdc, nativeUsdcRaw, refetch } = useUsdcBalance();
   const [rescueNote, setRescueNote] = useState<string | null>(null);
   const arenaMe = useArenaMe();
   const arena = useArenaActions();
@@ -74,7 +74,7 @@ export default function ProfileScreen() {
   const qc = useQueryClient();
   const [copied, setCopied] = useState<"idle" | "ok" | "fail">("idle");
   const [showFullAddress, setShowFullAddress] = useState(false);
-  const [busy, setBusy] = useState<"wrap" | "migrate" | "redeem" | "rescue" | null>(null);
+  const [busy, setBusy] = useState<"wrap" | "redeem" | "rescue" | null>(null);
   const [opError, setOpError] = useState<string | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -131,7 +131,7 @@ export default function ProfileScreen() {
     }
   }
 
-  async function run(kind: "wrap" | "migrate" | "redeem" | "rescue") {
+  async function run(kind: "wrap" | "redeem" | "rescue") {
     setOpError(null);
     setBusy(kind);
     try {
@@ -143,8 +143,7 @@ export default function ProfileScreen() {
             ? "Listo. Tus USDC ya son pUSD."
             : "Enviado al puente de Polymarket. En unos minutos aparece en tu saldo como pUSD.",
         );
-      } else if (kind === "migrate") await migrateFromSafe(legacyUsdcRaw);
-      else {
+      } else {
         const targets = redeemables.map((p) => ({ conditionId: p.conditionId as `0x${string}`, negRisk: !!p.negativeRisk }));
         // one call per market even if several outcomes are held
         const seen = new Set<string>();
@@ -346,18 +345,6 @@ export default function ProfileScreen() {
           </div>
         ) : null}
 
-        {/* Funds parked in the v1 Safe (early testers only) */}
-        {isReady && legacyUsdc > 0 && legacySafeAddress ? (
-          <div className="card mt-3 p-4">
-            <div className="font-display text-sm font-extrabold uppercase">Saldo en tu bóveda anterior</div>
-            <p className="mt-1 text-xs text-muted">
-              Tienes ${formatUsd(legacyUsdc)} USDC en {shortAddress(legacySafeAddress)}. Muévelos a tu bóveda nueva en un toque.
-            </p>
-            <button onClick={() => run("migrate")} disabled={busy !== null} className="btn-ghost mt-3 w-full py-2.5 font-display text-xs font-bold uppercase">
-              {busy === "migrate" ? "Moviendo…" : "Mover a la bóveda nueva"}
-            </button>
-          </div>
-        ) : null}
         {opError ? <p className="mt-2 text-xs text-loss">{opError}</p> : null}
 
         {/* Deposit / withdraw */}

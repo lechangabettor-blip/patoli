@@ -14,14 +14,14 @@ import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase/server";
 const chain = ARENA_CHAIN_ID === 80002 ? polygonAmoy : polygon;
 const rpc = ARENA_CHAIN_ID === 80002 ? (process.env.AMOY_RPC_URL ?? "https://rpc-amoy.polygon.technology") : POLYGON_RPC_URL;
 
-export const arenaPublic = createPublicClient({ chain, transport: http(rpc) });
+const arenaPublic = createPublicClient({ chain, transport: http(rpc) });
 
 export function isOperatorConfigured(): boolean {
   return isArenaConfigured() && /^0x[0-9a-fA-F]{64}$/.test(process.env.ARENA_OPERATOR_KEY ?? "");
 }
 
 /** Patoli's operator EOA: pays gas for settlements and relayed withdrawals. Holds no user funds. */
-export function operatorWallet() {
+function operatorWallet() {
   if (!isOperatorConfigured()) throw new Error("Arena operator no configurado");
   const account = privateKeyToAccount(process.env.ARENA_OPERATOR_KEY as Hex);
   return createWalletClient({ account, chain, transport: http(rpc) });
@@ -55,7 +55,7 @@ const SECP256K1_N_HALF = BigInt("0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A45
  * low-s, v ∈ {27, 28}. Anything else is rejected here so a signature that verifies
  * off-chain can never be one the contract later refuses (or vice versa).
  */
-export function isCanonicalSig(sig: string): sig is Hex {
+function isCanonicalSig(sig: string): sig is Hex {
   if (!/^0x[0-9a-fA-F]{130}$/.test(sig)) return false;
   const s = BigInt("0x" + sig.slice(66, 130));
   const v = parseInt(sig.slice(130, 132), 16);
@@ -113,7 +113,7 @@ export async function arenaIdentity(req: NextRequest): Promise<ArenaIdentity | n
 // All operator writes go through one queue: a single EOA sending concurrent txs (sweep +
 // settle cron + withdraw relay) would race on the nonce and drop transactions.
 let opQueue: Promise<unknown> = Promise.resolve();
-export function withOperator<T>(fn: () => Promise<T>): Promise<T> {
+function withOperator<T>(fn: () => Promise<T>): Promise<T> {
   const run = opQueue.then(fn, fn);
   opQueue = run.catch(() => undefined);
   return run;

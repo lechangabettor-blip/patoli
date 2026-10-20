@@ -27,7 +27,7 @@ export interface MatchState {
 
 /** Local secrets (move + salt per round) so a reload mid-round can still reveal. */
 const secretKey = (matchId: string, round: number) => `arena:${matchId}:${round}`;
-export function saveSecret(matchId: string, round: number, move: Move, salt: Hex) {
+function saveSecret(matchId: string, round: number, move: Move, salt: Hex) {
   try {
     localStorage.setItem(secretKey(matchId, round), JSON.stringify({ move, salt }));
   } catch {

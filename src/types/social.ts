@@ -1,6 +1,6 @@
 /** Shapes shared between API routes and the UI. */
 
-export type BetStatus = "open" | "won" | "lost" | "void";
+type BetStatus = "open" | "won" | "lost" | "void";
 
 export interface PublicProfile {
   id: string;

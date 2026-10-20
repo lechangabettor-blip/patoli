@@ -11,11 +11,10 @@
   "dependencies": {
     "@magic-ext/oauth2": "^15.14.0",
     "@magic-sdk/admin": "^2.8.2",
+    "@noble/hashes": "^1.8.0",
     "@polymarket/builder-relayer-client": "^0.0.10",
     "@polymarket/builder-signing-sdk": "^1.0.0",
-    "@polymarket/clob-client": "^5.8.1",
     "@polymarket/clob-client-v2": "^1.2.0",
-    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
     "@tanstack/react-query": "^5.104.2",
     "clsx": "^2.1.1",

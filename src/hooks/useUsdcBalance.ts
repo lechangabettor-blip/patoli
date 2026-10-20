@@ -11,24 +11,22 @@ import { erc20Balance } from "@/lib/polymarket/v2";
  * The user's money, as the app presents it ("Saldo"):
  *  - balance:      pUSD in the deposit wallet (what can be bet right now)
  *  - pendingUsdc:  USDC.e in the deposit wallet (needs a gasless wrap → pUSD)
- *  - legacyUsdc:   USDC.e still parked in the v1 Safe (needs a move + wrap)
  *  - nativeUsdc:   native USDC sent by mistake (rescued via wrap or bridge)
  */
 export function useUsdcBalance() {
   const { status } = useWallet();
-  const { walletAddress, legacySafeAddress } = useTrading();
+  const { walletAddress } = useTrading();
   const q = useQuery({
-    queryKey: ["balances", walletAddress, legacySafeAddress],
+    queryKey: ["balances", walletAddress],
     enabled: status === "connected" && !!walletAddress,
     refetchInterval: 15_000,
     queryFn: async () => {
-      const [pusd, usdc, legacy, native] = await Promise.all([
+      const [pusd, usdc, native] = await Promise.all([
         erc20Balance(PUSD_ADDRESS, walletAddress!),
         erc20Balance(USDC_E_ADDRESS, walletAddress!),
-        legacySafeAddress ? erc20Balance(USDC_E_ADDRESS, legacySafeAddress).catch(() => 0n) : Promise.resolve(0n),
         erc20Balance(USDC_NATIVE_ADDRESS, walletAddress!).catch(() => 0n),
       ]);
-      return { pusd, usdc, legacy, native };
+      return { pusd, usdc, native };
     },
   });
   const toNum = (v: bigint | undefined, d: number) => (v === undefined ? 0 : parseFloat(formatUnits(v, d)));
@@ -36,8 +34,6 @@ export function useUsdcBalance() {
     balance: toNum(q.data?.pusd, PUSD_DECIMALS),
     pendingUsdc: toNum(q.data?.usdc, USDC_E_DECIMALS),
     pendingUsdcRaw: q.data?.usdc ?? 0n,
-    legacyUsdc: toNum(q.data?.legacy, USDC_E_DECIMALS),
-    legacyUsdcRaw: q.data?.legacy ?? 0n,
     nativeUsdc: toNum(q.data?.native, USDC_E_DECIMALS),
     nativeUsdcRaw: q.data?.native ?? 0n,
     isLoading: q.isLoading && status === "connected",

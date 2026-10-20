@@ -2,16 +2,13 @@ import { NextRequest, NextResponse, connection } from "next/server";
 import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase/server";
 import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
 import { loadBattles, loadFeed, mergeFeed } from "@/lib/social";
-import { demoFeed } from "@/lib/demo-feed";
 
 /** GET /api/feed?scope=all|following&before=<iso>  (optional Bearer DID token for "following") */
 export async function GET(req: NextRequest) {
   await connection();
   const scope = req.nextUrl.searchParams.get("scope") === "following" ? "following" : "all";
   const before = req.nextUrl.searchParams.get("before") ?? undefined;
-  if (!isSupabaseConfigured()) {
-    return NextResponse.json({ items: demoFeed(scope), demo: true });
-  }
+  if (!isSupabaseConfigured()) return NextResponse.json({ items: [], demo: false }, { status: 503 });
   let viewerId: string | null = null;
   if (scope === "following" && isMagicAdminConfigured()) {
     const id = await verifyDidToken(bearer(req));

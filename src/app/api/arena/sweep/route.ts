@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { ArenaError } from "@/lib/arena/engine";
-import { arenaIdentity, arenaBalance, arenaLimits, forwarderOf, sendSweep, waitForTx } from "@/lib/arena/server";
-import { isArenaConfigured, isRouterConfigured, fromUnits } from "@/lib/arena/typed-data";
+import { arenaBalance, arenaLimits, forwarderOf, sendSweep, waitForTx } from "@/lib/arena/server";
+import { isRouterConfigured, fromUnits } from "@/lib/arena/typed-data";
 import { erc20Balance } from "@/lib/polymarket/v2";
 import { PUSD_ADDRESS } from "@/lib/polymarket/constants";
+import { fail, guard } from "@/lib/arena/http";
 
-function fail(e: unknown) {
-  if (e instanceof ArenaError) return NextResponse.json({ error: e.message }, { status: e.status });
-  console.error("[arena]", e);
-  return NextResponse.json({ error: "Algo falló de nuestro lado. Intenta de nuevo." }, { status: 500 });
-}
 
 // one sweep in flight per user (a tapping user must not cost the operator N transactions)
 const inflight = new Set<string>();
@@ -18,9 +14,8 @@ const inflight = new Set<string>();
 export async function POST(req: NextRequest) {
   await connection();
   try {
-    if (!isArenaConfigured() || !isRouterConfigured()) throw new ArenaError("La arena aún no está activa", 503);
-    const me = await arenaIdentity(req);
-    if (!me) throw new ArenaError("sesión inválida", 401);
+    const me = await guard(req);
+    if (!isRouterConfigured()) throw new ArenaError("La arena aún no está activa", 503);
     const fwd = await forwarderOf(me.eoa);
     const [waiting, limits] = await Promise.all([erc20Balance(PUSD_ADDRESS, fwd), arenaLimits()]);
     if (waiting === 0n) return NextResponse.json({ swept: 0, balance: fromUnits(await arenaBalance(me.eoa)) });

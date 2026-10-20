@@ -1,19 +1,5 @@
 import { NextRequest, NextResponse, connection } from "next/server";
-import { ArenaError } from "@/lib/arena/engine";
-import { arenaIdentity } from "@/lib/arena/server";
-import { isArenaConfigured } from "@/lib/arena/typed-data";
 
-function fail(e: unknown) {
-  if (e instanceof ArenaError) return NextResponse.json({ error: e.message }, { status: e.status });
-  console.error("[arena]", e);
-  return NextResponse.json({ error: "Algo falló de nuestro lado. Intenta de nuevo." }, { status: 500 });
-}
-async function guard(req: NextRequest) {
-  if (!isArenaConfigured()) throw new ArenaError("La arena aún no está activa", 503);
-  const me = await arenaIdentity(req);
-  if (!me) throw new ArenaError("sesión inválida", 401);
-  return me;
-}
 
 import { arenaBalance, arenaNonce, arenaPendingWithdraw, forwarderOf } from "@/lib/arena/server";
 import { unsettledOwed } from "@/lib/arena/engine";
@@ -22,6 +8,7 @@ import { erc20Balance } from "@/lib/polymarket/v2";
 import { PUSD_ADDRESS } from "@/lib/polymarket/constants";
 import { openMatchFor } from "@/lib/arena/engine";
 import { fromUnits } from "@/lib/arena/typed-data";
+import { fail, guard } from "@/lib/arena/http";
 
 /** GET → arena balance, pending withdraw, nonce, open match */
 export async function GET(req: NextRequest) {

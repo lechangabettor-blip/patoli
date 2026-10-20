@@ -8,7 +8,6 @@ export const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 export const DATA_API_URL = "https://data-api.polymarket.com";
 export const BRIDGE_API_URL = "https://bridge.polymarket.com";
 export const RELAYER_URL = "https://relayer-v2.polymarket.com/";
-export const GEOBLOCK_API_URL = "https://polymarket.com/api/geoblock";
 
 // Magic's iframe enforces a CSP allowlist of RPC hosts (alchemy, infura,
 // thirdweb, …). polygon-rpc.com is on it but returns 401 since Oct 2026;
@@ -23,7 +22,7 @@ export const REMOTE_SIGNING_URL = () =>
     : "/api/polymarket/sign";
 
 // ── Tokens / contracts (Polygon mainnet) ─────────────────────────────
-// V1 (legacy Safe/Proxy era): collateral USDC.e, exchanges below.
+// USDC.e (bridged) — what exchanges send and what pUSD wraps.
 export const USDC_E_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174" as const;
 export const USDC_E_DECIMALS = 6;
 // Native (Circle) USDC on Polygon. pUSD's CollateralToken accepts it as a valid
@@ -31,8 +30,6 @@ export const USDC_E_DECIMALS = 6;
 // native deposits are rescued via Polymarket's bridge instead (see v2.ts).
 export const USDC_NATIVE_ADDRESS = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359" as const;
 export const CTF_ADDRESS = "0x4d97dcd97ec945f40cf65f87097ace5ea0476045" as const;
-export const CTF_EXCHANGE_ADDRESS = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E" as const;
-export const NEG_RISK_CTF_EXCHANGE_ADDRESS = "0xC5d563A36AE78145C45a50134d48A1215220f80a" as const;
 export const NEG_RISK_ADAPTER_ADDRESS = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296" as const;
 
 // V2 (CLOB V2, deposit wallets, since 2026): collateral is pUSD, a 1:1 wrapper

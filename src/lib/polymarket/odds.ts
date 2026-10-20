@@ -47,17 +47,6 @@ export function breakdown(
   };
 }
 
-/** Shares you receive for a given stake (USDC) at a given price. */
-export function sharesForStake(stake: number, price: number): number {
-  const b = breakdown(price);
-  return stake / b.costPerShare;
-}
-
-/** Payout if the outcome wins (each share pays $1). */
-export function payoutForStake(stake: number, price: number): number {
-  return sharesForStake(stake, price);
-}
-
 export function formatOdds(decimal: number): string {
   if (!isFinite(decimal) || decimal <= 1) return "—";
   return decimal >= 100 ? decimal.toFixed(0) : decimal.toFixed(2);
@@ -65,10 +54,6 @@ export function formatOdds(decimal: number): string {
 
 export function formatUsd(n: number, digits = 2): string {
   return n.toLocaleString("es-MX", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-}
-
-export function pct(p: number): string {
-  return `${Math.round(p * 100)}%`;
 }
 
 function clamp(v: number, lo: number, hi: number) {

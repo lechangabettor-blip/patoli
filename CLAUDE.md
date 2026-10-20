@@ -54,7 +54,6 @@ src/providers/             WalletProvider (Magic→ethers signer), TradingProvid
 src/lib/polymarket/        constants, leagues (tag ids), gamma (normalize),
                            odds (fee math), approvals, session
 src/components/            screens + UI primitives
-src/data/demo.ts           DEMO content (handles end in _demo) until indexer
 ```
 
 ## Rules
@@ -155,8 +154,8 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   and `/api/users/[handle]` merge bets + battles by time (`mergeFeed`). `PublicProfile.battles`
   comes from the `arena_stats` view. Share card = the same Boleto (league "Batalla").
 - **APIs:** `/api/feed`, `/api/users?q=`, `/api/users/[handle]`, `/api/follow`.
-  Without Supabase configured they serve the demo data (`lib/demo-feed.ts`) and
-  flag `demo: true`, so the UI works in both modes. Types in `src/types/social.ts`.
+  Without Supabase configured they answer 503 / empty (no demo data since 2026-10-20) and
+  the UI shows empty states. Types in `src/types/social.ts`.
 - **Client:** `MeProvider` syncs the profile after login; `useSocial` hooks;
   `FeedCard`/`HomeFeed`/`PublicProfile`/`SearchScreen` consume the APIs.
 
@@ -203,7 +202,7 @@ src/data/demo.ts           DEMO content (handles end in _demo) until indexer
   in a match; signatures must be canonical 65-byte low-s (`isCanonicalSig`) so off-chain
   and on-chain verification can't diverge; `settle_error` holds generic codes only.
 - **Client:** `useArena` hooks (realtime via Supabase browser client — the ONE place the
-  browser talks to Supabase, read-only), `BattleArena` (real) vs `BattleLobbyDemo` (when
+  browser talks to Supabase, read-only), `BattleArena` (shows "Muy pronto" when
   `NEXT_PUBLIC_ARENA_ADDRESS` is unset). Perfil shows the Arena balance + "Regresar todo a
   mi saldo" (withdrawWithSig to the deposit wallet). Local secrets in localStorage
   `arena:<matchId>:<round>` so a reload can still reveal.

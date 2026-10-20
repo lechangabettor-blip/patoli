@@ -4,9 +4,6 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { Chain as ClobChain, ClobClient, SignatureTypeV2 } from "@polymarket/clob-client-v2";
 import { BuilderConfig } from "@polymarket/builder-signing-sdk";
 import { RelayClient, RelayerTransactionState } from "@polymarket/builder-relayer-client";
-import { deriveSafe } from "@polymarket/builder-relayer-client/dist/builder/derive";
-import { getContractConfig } from "@polymarket/builder-relayer-client/dist/config";
-import { encodeFunctionData, erc20Abi } from "viem";
 import { useWallet } from "./WalletContext";
 import {
   CLOB_API_URL,
@@ -14,7 +11,6 @@ import {
   POLYGON_CHAIN_ID,
   RELAYER_URL,
   REMOTE_SIGNING_URL,
-  USDC_E_ADDRESS,
   isBuilderCodeValid,
 } from "@/lib/polymarket/constants";
 import {
@@ -25,7 +21,6 @@ import {
   buildWrapCalls,
   type RedeemTarget,
   checkV2Approvals,
-  erc20Balance,
   isDeployed,
   polygonChain,
   isWrapPaused,
@@ -68,7 +63,6 @@ interface TradingContextType {
   isReady: boolean;
   /** Deposit wallet = where the user's money lives and the maker of orders */
   walletAddress: `0x${string}` | undefined;
-  legacySafeAddress: `0x${string}` | undefined;
   clobClient: ClobClient | null;
   relayClient: RelayClient | null;
   setupTrading: () => Promise<void>;
@@ -79,7 +73,6 @@ interface TradingContextType {
   /** Native USDC sent by mistake → pUSD (direct wrap if allowed, else via Polymarket's bridge). Returns the path used. */
   rescueNativeUsdc: (amount: bigint) => Promise<"wrap" | "bridge">;
   /** Move USDC.e parked in the v1 Safe into the deposit wallet (gasless). */
-  migrateFromSafe: (amount: bigint) => Promise<void>;
   /** Withdraw: pUSD → USDC.e sent to `to` on Polygon (gasless). Returns tx hash if known. */
   withdraw: (to: `0x${string}`, amount: bigint) => Promise<string | undefined>;
   /** Move pUSD from the deposit wallet into the Arena escrow (gasless batch; credited to the EOA). */
@@ -153,17 +146,6 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     (session?.walletAddress as `0x${string}` | undefined) ||
     (derivedWallet && derivedWallet.eoa === eoaAddress ? derivedWallet.address : undefined);
 
-  const legacySafeAddress = useMemo<`0x${string}` | undefined>(() => {
-    if (session?.legacySafeAddress) return session.legacySafeAddress as `0x${string}`;
-    if (!eoaAddress) return undefined;
-    try {
-      const cfg = getContractConfig(POLYGON_CHAIN_ID);
-      return deriveSafe(eoaAddress, cfg.SafeContracts.SafeFactory) as `0x${string}`;
-    } catch {
-      return undefined;
-    }
-  }, [eoaAddress, session?.legacySafeAddress]);
-
   const storedCreds = session?.apiCredentials;
 
   const setupTrading = useCallback(async () => {
@@ -210,7 +192,6 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         version: SESSION_VERSION,
         eoaAddress,
         walletAddress: wallet,
-        legacySafeAddress,
         isDeployed: true,
         hasApprovals: approved,
         apiCredentials: creds,
@@ -225,7 +206,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       setStep("idle");
       throw err;
     }
-  }, [eoaAddress, ethersSigner, relayClient, storedCreds, legacySafeAddress]);
+  }, [eoaAddress, ethersSigner, relayClient, storedCreds]);
 
   const ensureApprovals = useCallback(async () => {
     if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
@@ -271,28 +252,6 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       return "bridge";
     },
     [relayClient, walletAddress],
-  );
-
-  const migrateFromSafe = useCallback(
-    async (amount: bigint) => {
-      if (!relayClient || !walletAddress || !legacySafeAddress) throw new Error("Nada que mover");
-      const bal = await erc20Balance(USDC_E_ADDRESS, legacySafeAddress);
-      const amt = amount > bal ? bal : amount;
-      if (amt <= 0n) return;
-      // Safe transaction (v1 relayer path still works for existing Safes)
-      const resp = await relayClient.execute(
-        [
-          {
-            to: USDC_E_ADDRESS,
-            data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [walletAddress, amt] }),
-            value: "0",
-          },
-        ],
-        "Patoli: mover USDC.e a la bóveda nueva",
-      );
-      await resp.wait();
-    },
-    [relayClient, walletAddress, legacySafeAddress],
   );
 
   const withdraw = useCallback(
@@ -366,20 +325,18 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       error,
       isReady,
       walletAddress,
-      legacySafeAddress,
       clobClient,
       relayClient,
       setupTrading,
       wrapUsdc,
       ensureApprovals,
       rescueNativeUsdc,
-      migrateFromSafe,
       withdraw,
       depositArena,
       redeem,
       resetTrading,
     }),
-    [session, step, error, isReady, walletAddress, legacySafeAddress, clobClient, relayClient, setupTrading, wrapUsdc, ensureApprovals, rescueNativeUsdc, migrateFromSafe, withdraw, depositArena, redeem, resetTrading],
+    [session, step, error, isReady, walletAddress, clobClient, relayClient, setupTrading, wrapUsdc, ensureApprovals, rescueNativeUsdc, withdraw, depositArena, redeem, resetTrading],
   );
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>;

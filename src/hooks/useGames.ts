@@ -17,19 +17,6 @@ export function useGames(league: LeagueId) {
   });
 }
 
-export function useGame(slug: string | null) {
-  return useQuery({
-    queryKey: ["game", slug],
-    enabled: !!slug,
-    queryFn: async (): Promise<Game> => {
-      const r = await fetch(`/api/games/${slug}`);
-      if (!r.ok) throw new Error("Partido no encontrado");
-      return r.json();
-    },
-    staleTime: 15_000,
-  });
-}
-
 export type PriceMap = Record<string, { bid: number | null; ask: number | null; mid: number | null }>;
 
 export function usePrices(tokenIds: string[]) {

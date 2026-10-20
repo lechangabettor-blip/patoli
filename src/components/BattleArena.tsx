@@ -17,7 +17,7 @@ import { useMe } from "@/providers/MeProvider";
 import { useTrading } from "@/providers/TradingProvider";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { loadSecret, useArenaActions, useArenaMatch, useArenaMe } from "@/hooks/useArena";
-import { BEST_OF, COMMIT_SECONDS, LOBBY_STAKE_USD, MOVE_LABEL, toMatchStruct, toUnits, type Move } from "@/lib/arena/typed-data";
+import { BEST_OF, COMMIT_SECONDS, LOBBY_STAKE_USD, MOVE_LABEL, isArenaConfigured, toMatchStruct, toUnits, type Move } from "@/lib/arena/typed-data";
 import { formatUsd } from "@/lib/polymarket/odds";
 
 /**
@@ -40,6 +40,19 @@ export default function BattleArena() {
 
   const openId = arenaMe.data?.matchId ?? null;
   const activeId = matchId ?? (openId && openId !== dismissed ? openId : null);
+
+  if (!isArenaConfigured()) {
+    return (
+      <>
+        <TopBar title="Batalla" />
+        <section className="px-4 pt-8 text-center">
+          <div className="text-6xl">✊✋✌️</div>
+          <h1 className="mt-4 text-3xl">Muy pronto</h1>
+          <p className="mx-auto mt-2 max-w-[30ch] text-sm text-muted">La arena aún no está activa en este entorno.</p>
+        </section>
+      </>
+    );
+  }
 
   // Session restoring / profile loading → neutral skeleton, never the logged-out screen
   if (status === "loading" || (status === "connected" && !me && meStatus !== "unavailable")) {

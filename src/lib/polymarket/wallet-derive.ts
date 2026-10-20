@@ -10,7 +10,7 @@ const DEPOSIT_WALLET_BEACON = "0x7A18EDfe055488A3128f01F563e5B479D92ffc3a";
  * UUPS = pre-June-2026). Used server-side to verify a client's wallet claim
  * without needing a signer.
  */
-export function candidateDepositWallets(eoa: string): string[] {
+function candidateDepositWallets(eoa: string): string[] {
   const cfg = getContractConfig(POLYGON_CHAIN_ID).DepositWalletContracts;
   const beacon = deriveBeaconDepositWallet(eoa, cfg.DepositWalletFactory, DEPOSIT_WALLET_BEACON);
   const uups = deriveUupsDepositWallet(eoa, cfg.DepositWalletFactory, cfg.DepositWalletImplementation);

@@ -23,7 +23,6 @@ import {
   type SettleItem,
 } from "./server";
 import {
-  BEST_OF,
   COMMIT_SECONDS,
   fromUnits,
   MATCH_TTL_MINUTES,
@@ -58,8 +57,7 @@ export type Side = "a" | "b";
  * they must not trap the player in the Batalla tab or block new games. What they still
  * owe is tracked as exposure by `unsettledOwed` and subtracted from the free balance.
  */
-export const OPEN_STATUSES = ["signing", "playing"] as const;
-export const UNSETTLED_STATUSES = ["finished", "ready", "disputed"] as const;
+const OPEN_STATUSES = ["signing", "playing"] as const;
 
 export interface MatchRow {
   id: string;
@@ -125,7 +123,7 @@ const nowIso = () => new Date().toISOString();
 const plus = (sec: number) => new Date(Date.now() + sec * 1000).toISOString();
 const past = (iso: string | null) => !!iso && new Date(iso).getTime() <= Date.now();
 
-export const newMatchId = (): Hex => `0x${randomBytes(32).toString("hex")}`;
+const newMatchId = (): Hex => `0x${randomBytes(32).toString("hex")}`;
 
 /** ------------------------------------------------------------ lobby */
 
@@ -158,7 +156,7 @@ export async function unsettledOwed(eoa: string, excludeId?: string): Promise<bi
 }
 
 /** Any open match for this profile other than `excludeId`. */
-export async function otherOpenMatch(profileId: string, excludeId: string): Promise<MatchRow | null> {
+async function otherOpenMatch(profileId: string, excludeId: string): Promise<MatchRow | null> {
   const db = supabaseAdmin();
   const { data } = await db
     .from("arena_matches")
@@ -446,7 +444,7 @@ export async function tick(id: string) {
 
 /** ------------------------------------------------------------ doble o nada */
 
-export const REMATCH_WINDOW_SECONDS = 10;
+const REMATCH_WINDOW_SECONDS = 10;
 const REMATCH_GRACE_MS = 3 * 60_000; // how long after a match ends a rematch may be opened
 
 /**
@@ -542,7 +540,7 @@ export async function proposeRematch(id: string, me: ArenaIdentity): Promise<Mat
 
 /** ------------------------------------------------------------ settlement */
 
-export async function settleReady(limit = 25): Promise<{ sent: number; tx: string | null; error?: string }> {
+async function settleReady(limit = 25): Promise<{ sent: number; tx: string | null; error?: string }> {
   const db = supabaseAdmin();
   const { data: rows } = await db.from("arena_matches").select(MATCH_COLS).eq("status", "ready").order("finished_at").limit(limit);
   const ready = (rows ?? []) as MatchRow[];
@@ -676,4 +674,3 @@ async function finalizeClaims(limit = 5) {
   }
 }
 
-export { BEST_OF };
