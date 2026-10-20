@@ -17,7 +17,7 @@ import { useMe } from "@/providers/MeProvider";
 import { useTrading } from "@/providers/TradingProvider";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { loadSecret, useArenaActions, useArenaMatch, useArenaMe } from "@/hooks/useArena";
-import { BEST_OF, LOBBY_STAKE_USD, MOVE_LABEL, toMatchStruct, toUnits, type Move } from "@/lib/arena/typed-data";
+import { BEST_OF, COMMIT_SECONDS, LOBBY_STAKE_USD, MOVE_LABEL, toMatchStruct, toUnits, type Move } from "@/lib/arena/typed-data";
 import { formatUsd } from "@/lib/polymarket/odds";
 
 /**
@@ -442,11 +442,12 @@ function MatchView({ id, myEoa, onExit, onRematch }: { id: string; myEoa: Hex; o
           <motion.div key={`r${cur.round}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="card mt-3 p-4">
             <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-muted">
               <span>Ronda {cur.round}</span>
-              <span className={cn("tnum", secondsLeft != null && secondsLeft <= 5 && "text-loss")}>{secondsLeft != null ? `${secondsLeft}s` : ""}</span>
+              <span className={cn("tnum", secondsLeft != null && secondsLeft <= 5 && "text-loss")}>{!sealed && secondsLeft != null ? `${secondsLeft}s` : ""}</span>
             </div>
             {!sealed ? (
               <>
                 <div className="mt-2 font-display text-lg font-extrabold uppercase">Elige tu jugada</div>
+                <TimeBar msLeft={deadline ? Math.max(0, new Date(deadline).getTime() - now) : 0} total={COMMIT_SECONDS * 1000} />
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {MOVES.map((mv) => (
                     <motion.button
