@@ -33,13 +33,25 @@ const MOVES: Move[] = [1, 2, 3];
 
 export default function BattleArena() {
   const { status, eoaAddress } = useWallet();
-  const { me } = useMe();
+  const { me, status: meStatus } = useMe();
   const arenaMe = useArenaMe();
   const [matchId, setMatchId] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
 
   const openId = arenaMe.data?.matchId ?? null;
   const activeId = matchId ?? (openId && openId !== dismissed ? openId : null);
+
+  // Session restoring / profile loading → neutral skeleton, never the logged-out screen
+  if (status === "loading" || (status === "connected" && !me && meStatus !== "unavailable")) {
+    return (
+      <>
+        <TopBar title="Batalla" />
+        <div className="space-y-3 px-4 pt-4">
+          <div className="skeleton h-72" />
+        </div>
+      </>
+    );
+  }
 
   if (status !== "connected" || !me) {
     return (
@@ -106,9 +118,11 @@ function Lobby({ balance, stranded, loading, onMatched, onFunded }: { balance: n
   const [waiting, setWaiting] = useState(0);
   const [busy, setBusy] = useState<"join" | "fund" | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [fundAmt, setFundAmt] = useState(5);
+  const [fundAmt, setFundAmt] = useState<number | null>(null);
   const stake = LOBBY_STAKE_USD;
   const canPlay = balance >= stake;
+  const chips = [2, 5, 10, 20];
+  const amt = fundAmt ?? chips.filter((c) => c <= walletBal).pop() ?? 2; // largest chip the wallet can cover
 
   // while queued, poll the lobby until a rival shows up
   useEffect(() => {
@@ -180,7 +194,7 @@ function Lobby({ balance, stranded, loading, onMatched, onFunded }: { balance: n
     setErr(null);
     setBusy("fund");
     try {
-      await depositArena(toUnits(fundAmt)); // relayer: plain transfer to your forwarder
+      await depositArena(toUnits(amt)); // relayer: plain transfer to your forwarder
       await actions.sweep(); // operator: forwarder → Arena, credited to you
       await refetch();
       onFunded();
@@ -221,6 +235,8 @@ function Lobby({ balance, stranded, loading, onMatched, onFunded }: { balance: n
               Salir del lobby
             </button>
           </div>
+        ) : loading ? (
+          <div className="skeleton mt-5 h-12" />
         ) : canPlay ? (
           <button onClick={join} disabled={busy !== null} className="btn-accent mt-5 w-full py-3.5 text-sm">
             {busy === "join" ? "Entrando…" : `Buscar rival · $${stake}`}
@@ -230,18 +246,18 @@ function Lobby({ balance, stranded, loading, onMatched, onFunded }: { balance: n
             <div className="font-display text-sm font-extrabold uppercase">Fondea tu arena</div>
             <p className="mt-1 text-xs text-muted">Mueve pUSD de tu saldo a la arena. Una firma, sin gas. Lo sacas cuando quieras.</p>
             <div className="mt-3 flex gap-2">
-              {[2, 5, 10, 20].map((a) => (
+              {chips.map((a) => (
                 <button
                   key={a}
                   onClick={() => setFundAmt(a)}
-                  className={cn("tnum flex-1 rounded-xl border py-2 text-sm font-semibold", fundAmt === a ? "border-accent bg-[rgba(255,61,23,.12)] text-accent-soft" : "border-hairline bg-surface")}
+                  className={cn("tnum flex-1 rounded-xl border py-2 text-sm font-semibold", amt === a ? "border-accent bg-[rgba(255,61,23,.12)] text-accent-soft" : "border-hairline bg-surface")}
                 >
                   ${a}
                 </button>
               ))}
             </div>
-            <button onClick={fund} disabled={busy !== null || !isReady || walletBal < fundAmt} className="btn-accent mt-3 w-full py-3 text-sm">
-              {busy === "fund" ? "Fondeando…" : !isReady ? "Activa tu cuenta en Perfil" : walletBal < fundAmt ? "Saldo insuficiente" : `Fondear $${fundAmt}`}
+            <button onClick={fund} disabled={busy !== null || !isReady || walletBal < amt} className="btn-accent mt-3 w-full py-3 text-sm">
+              {busy === "fund" ? "Fondeando…" : !isReady ? "Activa tu cuenta en Perfil" : walletBal < amt ? "Saldo insuficiente" : `Fondear ${amt}`}
             </button>
           </div>
         )}
