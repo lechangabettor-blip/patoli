@@ -17,8 +17,10 @@ Phone testing on the LAN (production build, all interfaces):
 
 ```bash
 npm run build && npm run start -- --port 3000 -H 0.0.0.0
-powershell -File scripts/local-cron.ps1   # stand-in for the Vercel crons while running locally
 ```
+
+Do not run a local server against the production database while patoli.bet is live: it becomes a second
+settler for the Arena. Use the deployed site for real matches.
 
 ## Layout
 

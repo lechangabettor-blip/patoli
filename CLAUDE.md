@@ -171,7 +171,8 @@ src/components/            screens + UI primitives
 > and block the real one. Event scans use `polygon-bor-rpc.publicnode.com` (`ARENA_LOGS_RPC_URL`
 > to override) in 10k-block windows from the finish block (Alchemy free tier caps getLogs at 10
 > blocks). **Contract v3 TODO:** key `matchStatus`/`claims` by the full match digest, not `m.id`.
-> Also: never run `scripts/local-cron.ps1` against the production DB — it is a second settler.
+> Also: never run a local server/cron against the production DB — it becomes a second settler
+> (`scripts/local-cron.ps1` and the `/arena/preview` dev page were deleted 2026-10-21).
 
 - **Contract** `arena/contracts/PatoliArena.sol` (Hardhat 2, Solidity 0.8.28, cancun, viaIR;
   OpenZeppelin 5). Escrow token = pUSD. `deposit(amount, beneficiary)` is called by the
