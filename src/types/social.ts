@@ -41,6 +41,10 @@ export interface FeedItem {
   pnl: number | null;
   placedAt: string; // ISO
   kickoff: string | null;
+  /** Outcome token (sports bets) — lets the server attach a live price */
+  tokenId?: string;
+  /** Current market price of the pick (0–1) while open and the game has started */
+  livePrice?: number;
   proof: string | null; // tx hash
   fire: number;
   /** The viewer already reacted (only when a viewer is known) */

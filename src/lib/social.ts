@@ -1,6 +1,7 @@
 import "server-only";
 import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
 import type { NextRequest } from "next/server";
+import { CLOB_API_URL } from "@/lib/polymarket/constants";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { shortTeam } from "@/lib/polymarket/gamma";
 import type { FeedItem, PublicProfile } from "@/types/social";
@@ -119,6 +120,7 @@ interface BetRow {
   pnl: number | null;
   tx_hash: string | null;
   matched_at: string;
+  token_id: string;
   markets: { question: string; event_title: string | null; event_slug: string | null; league: string | null; kind: string | null; line: number | null; game_start: string | null } | null;
   profiles: ProfileRow | null;
 }
@@ -128,7 +130,7 @@ export async function loadFeed(opts: { scope: "all" | "following" | "profile"; v
   let q = db
     .from("bets")
     .select(
-      "id, profile_id, outcome, outcome_index, side, size, price, usdc, status, pnl, tx_hash, matched_at, markets!bets_condition_id_fkey(question, event_title, event_slug, league, kind, line, game_start), profiles!bets_profile_id_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
+      "id, profile_id, outcome, outcome_index, side, size, price, usdc, status, pnl, tx_hash, matched_at, token_id, markets!bets_condition_id_fkey(question, event_title, event_slug, league, kind, line, game_start), profiles!bets_profile_id_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
     )
     .eq("side", "BUY")
     .not("profile_id", "is", null)
@@ -254,6 +256,34 @@ export async function resolveViewer(req: NextRequest): Promise<string | null> {
   return (data?.profile_id as string) ?? null;
 }
 
+/**
+ * Live price for open picks whose game has started: the market moves to ~1 or ~0 the moment
+ * a game ends, hours before Polymarket resolves — so the card can say "va ganando" right away.
+ * One CLOB call per response; failures just leave the cards without a price.
+ */
+export async function attachLive(items: FeedItem[]): Promise<FeedItem[]> {
+  const now = Date.now();
+  const live = items.filter((i) => i.kind !== "battle" && i.status === "open" && i.tokenId && i.kickoff && Date.parse(i.kickoff) <= now);
+  if (live.length === 0) return items;
+  try {
+    const r = await fetch(`${CLOB_API_URL}/midpoints`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify([...new Set(live.map((i) => i.tokenId))].map((token_id) => ({ token_id }))),
+      cache: "no-store",
+    });
+    if (!r.ok) return items;
+    const mids = (await r.json()) as Record<string, string>;
+    for (const it of live) {
+      const p = Number(mids[it.tokenId!]);
+      if (Number.isFinite(p)) it.livePrice = p;
+    }
+  } catch {
+    /* best effort */
+  }
+  return items;
+}
+
 /** 🔥 counts per item, plus whether the viewer is among them. Mutates and returns `items`. */
 export async function attachFire(items: FeedItem[], viewerId: string | null): Promise<FeedItem[]> {
   if (items.length === 0) return items;
@@ -303,6 +333,7 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
     pnl: b.pnl == null ? null : Number(b.pnl),
     placedAt: b.matched_at,
     kickoff: m?.game_start ?? null,
+    tokenId: b.token_id,
     proof: b.tx_hash,
     fire: 0,
     kind: "bet",

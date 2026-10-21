@@ -27,7 +27,17 @@ const MARKET_LABEL: Record<FeedItem["market"], string> = { ML: "Ganador", Spread
 export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem; index?: number; onTicket?: (item: FeedItem) => void }) {
   const now = useNow();
   const league = isLeagueId(item.league) ? LEAGUE_BY_ID[item.league] : null;
-  const st = item.kind === "battle" && item.status === "void" ? { label: "Empate", cls: STATUS.void.cls } : STATUS[item.status];
+  const started = item.status === "open" && item.kind !== "battle" && !!item.kickoff && !!now && Date.parse(item.kickoff) <= now.getTime();
+  const st =
+    item.kind === "battle" && item.status === "void"
+      ? { label: "Empate", cls: STATUS.void.cls }
+      : started
+        ? item.livePrice != null && item.livePrice >= 0.9
+          ? { label: "Va ganando", cls: STATUS.won.cls }
+          : item.livePrice != null && item.livePrice <= 0.1
+            ? { label: "Va perdiendo", cls: STATUS.lost.cls }
+            : { label: "En juego", cls: STATUS.open.cls }
+        : STATUS[item.status];
   const { user } = item;
   const isBattle = item.kind === "battle";
 
