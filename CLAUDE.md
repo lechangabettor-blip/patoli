@@ -161,6 +161,18 @@ src/components/            screens + UI primitives
 
 ## Arena — PvP piedra·papel·tijera (built 2026-10-17, NOT deployed yet)
 
+> **2026-10-21 — settlement reconcile.** Instant settle and the cron sweep can run the same
+> batch twice; the second run sees no `Settled` event and used to demote the match to
+> `finished` ("omitida") — which froze a real user's $1 as "owed" (Ernesto, match
+> `0x181fbe9d…`). Now `reconcileSettled` (engine.ts) asks the chain before demoting or claiming:
+> a match is marked `settled` ONLY when its on-chain `Settled` event carries the row's players
+> and stake (`arenaSettledEvent` in server.ts). `matchStatus[id]` alone proves nothing: ids are
+> client-chosen, so a loser could pre-settle a forged match (his two wallets) under the same id
+> and block the real one. Event scans use `polygon-bor-rpc.publicnode.com` (`ARENA_LOGS_RPC_URL`
+> to override) in 10k-block windows from the finish block (Alchemy free tier caps getLogs at 10
+> blocks). **Contract v3 TODO:** key `matchStatus`/`claims` by the full match digest, not `m.id`.
+> Also: never run `scripts/local-cron.ps1` against the production DB — it is a second settler.
+
 - **Contract** `arena/contracts/PatoliArena.sol` (Hardhat 2, Solidity 0.8.28, cancun, viaIR;
   OpenZeppelin 5). Escrow token = pUSD. `deposit(amount, beneficiary)` is called by the
   Polymarket deposit wallet with beneficiary = owner EOA (the Magic key that signs). Balances
