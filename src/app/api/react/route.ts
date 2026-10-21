@@ -13,13 +13,14 @@ export async function POST(req: NextRequest) {
   const viewerId = await resolveViewer(req);
   if (!viewerId) return NextResponse.json({ error: "sesión inválida" }, { status: 401 });
   const body = (await req.json().catch(() => ({}))) as { id?: string; on?: boolean };
-  const id = (body.id ?? "").trim();
+  // Canonical form = exactly what the feed emits (lowercase), so "0xAB…" and "0xab…" are one key.
+  const id = (body.id ?? "").trim().toLowerCase();
   if (!BET_ID.test(id) && !BATTLE_ID.test(id)) return NextResponse.json({ error: "id inválido" }, { status: 400 });
   const db = supabaseAdmin();
 
   // Only react to things that exist (keeps the table honest).
   const exists = BATTLE_ID.test(id)
-    ? (await db.from("arena_matches").select("id").eq("id", id.slice("battle:".length).toLowerCase()).maybeSingle()).data
+    ? (await db.from("arena_matches").select("id").eq("id", id.slice("battle:".length)).maybeSingle()).data
     : (await db.from("bets").select("id").eq("id", id).maybeSingle()).data;
   if (!exists) return NextResponse.json({ error: "no existe" }, { status: 404 });
 
