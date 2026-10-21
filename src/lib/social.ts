@@ -26,6 +26,7 @@ interface StatsRow {
   pnl: number;
   staked: number;
   roi_pct: number;
+  units: number;
   followers: number;
   following: number;
 }
@@ -43,6 +44,7 @@ function toProfile(p: ProfileRow, s: StatsRow | undefined): PublicProfile {
     pnl: Number(s?.pnl ?? 0),
     staked: Number(s?.staked ?? 0),
     roi: Number(s?.roi_pct ?? 0),
+    units: Number(s?.units ?? 0),
     followers: Number(s?.followers ?? 0),
     following: Number(s?.following ?? 0),
     battles: { w: 0, l: 0, d: 0, pnl: 0 },

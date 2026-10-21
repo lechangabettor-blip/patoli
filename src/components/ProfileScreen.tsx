@@ -211,7 +211,7 @@ export default function ProfileScreen() {
           {me ? (
             <div className="tnum mt-3 text-xs text-muted">
               Récord {me.record.w}-{me.record.l}
-              {me.record.v ? `-${me.record.v}` : ""} · {me.followers} seguidores · ROI {me.roi >= 0 ? "+" : ""}
+              {me.record.v ? `-${me.record.v}` : ""} · <span className={me.units > 0 ? "text-win" : me.units < 0 ? "text-loss" : ""}>{me.units >= 0 ? "+" : ""}{me.units.toFixed(1)}u</span> · {me.followers} seguidores · ROI {me.roi >= 0 ? "+" : ""}
               {me.roi.toFixed(1)}%
               {me.battles && me.battles.w + me.battles.l + me.battles.d > 0 ? ` · ✊ ${me.battles.w}-${me.battles.l}` : ""}
             </div>

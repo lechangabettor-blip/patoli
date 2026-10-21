@@ -14,6 +14,8 @@ export interface PublicProfile {
   pnl: number;
   staked: number;
   roi: number; // %
+  /** Unidades: Σ won (odds−1) − lost, stake-independent (Challenge rule) */
+  units: number;
   followers: number;
   following: number;
   /** Arena (piedra·papel·tijera) record */

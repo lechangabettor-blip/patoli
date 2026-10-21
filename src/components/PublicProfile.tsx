@@ -40,8 +40,6 @@ export default function PublicProfile({ handle }: { handle: string }) {
 
   const p = q.data?.profile;
   const bets = q.data?.bets ?? [];
-  const total = p ? p.record.w + p.record.l : 0;
-  const winPct = p && total ? Math.round((p.record.w / total) * 100) : 0;
   const isMe = !!p && (p.isMe || me?.handle === p.handle);
 
   return (
@@ -109,7 +107,7 @@ export default function PublicProfile({ handle }: { handle: string }) {
               </div>
               <div className="grid grid-cols-4 border-t border-hairline">
                 <Stat k="Récord" v={`${p.record.w}-${p.record.l}`} />
-                <Stat k="Acierto" v={`${winPct}%`} />
+                <Stat k="Unidades" v={`${p.units >= 0 ? "+" : ""}${p.units.toFixed(1)}u`} cls={p.units > 0 ? "text-win" : p.units < 0 ? "text-loss" : ""} />
                 <Stat k="P&L" v={`${p.pnl >= 0 ? "+" : "-"}$${formatUsd(Math.abs(p.pnl), 0)}`} cls={p.pnl > 0 ? "text-win" : p.pnl < 0 ? "text-loss" : ""} />
                 <Stat k="ROI" v={`${p.roi >= 0 ? "+" : ""}${p.roi.toFixed(1)}%`} cls={p.roi > 0 ? "text-win" : p.roi < 0 ? "text-loss" : ""} />
               </div>
