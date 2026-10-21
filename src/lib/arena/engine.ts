@@ -7,7 +7,7 @@ import { arenaAbi } from "./abi";
 import {
   arenaBalance,
   arenaLimits,
-  arenaMatchStatus,
+  arenaSettledEvent,
   arenaPendingWithdraw,
   readClaim,
   sendClaim,
@@ -571,11 +571,9 @@ async function settleReady(limit = 25): Promise<{ sent: number; tx: string | nul
     if (done.length) await db.from("arena_matches").update({ status: "settled", settle_tx: tx, settled_at: nowIso() }).in("id", done).eq("status", "ready");
     // A skipped item usually means ANOTHER run settled it a moment earlier (instant settle +
     // cron overlap). Ask the chain; only a truly unsettled match goes back to the claim path.
-    for (const id of skipped) {
-      if (await isSettledOnChain(id as Hex)) {
-        await db.from("arena_matches").update({ status: "settled", settled_at: nowIso(), settle_error: null }).eq("id", id).in("status", ["ready", "finished"]);
-      } else {
-        await db.from("arena_matches").update({ settle_error: "omitida on-chain, va por reclamo", status: "finished" }).eq("id", id).eq("status", "ready");
+    for (const row of ready.filter((r) => skipped.includes(r.id))) {
+      if ((await reconcileSettled(row)) === "open") {
+        await db.from("arena_matches").update({ settle_error: "omitida on-chain, va por reclamo", status: "finished" }).eq("id", row.id).eq("status", "ready");
       }
     }
     return { sent: done.length, tx, error: skipped.length ? `${skipped.length} omitidas` : undefined };
@@ -615,10 +613,7 @@ async function fileClaims(limit = 5) {
     .limit(limit);
   for (const row of (rows ?? []) as MatchRow[]) {
     try {
-      if (await isSettledOnChain(row.id as Hex)) {
-        await db.from("arena_matches").update({ status: "settled", settled_at: nowIso(), settle_error: null }).eq("id", row.id).eq("status", "finished");
-        continue;
-      }
+      if ((await reconcileSettled(row)) !== "open") continue;
       const { commits, reveals } = await evidenceFor(row);
       const tx = await sendClaim(toMatchStruct(row), row.sig_a as Hex, row.sig_b as Hex, commits, reveals);
       const receipt = await waitForTx(tx);
@@ -630,13 +625,28 @@ async function fileClaims(limit = 5) {
   }
 }
 
-/** The contract's own word: 1 = settled. */
-async function isSettledOnChain(id: Hex): Promise<boolean> {
+/**
+ * Reconcile a match the chain says is settled but our DB does not. "settled" only when the Settled
+ * event carries this row's players and stake (ids are client-chosen, so matchStatus alone proves
+ * nothing); a mismatch is held with an error for manual review.
+ */
+async function reconcileSettled(row: Pick<MatchRow, "id" | "eoa_a" | "eoa_b" | "stake" | "status" | "finished_at" | "created_at">): Promise<"settled" | "mismatch" | "open"> {
+  const db = supabaseAdmin();
+  let ev: Awaited<ReturnType<typeof arenaSettledEvent>>;
   try {
-    return (await arenaMatchStatus(id)) === 1;
+    ev = await arenaSettledEvent(row.id as Hex, new Date(row.finished_at ?? row.created_at));
   } catch {
-    return false;
+    return "open";
   }
+  if (!ev) return "open";
+  const same = (x: string, y: string) => x.toLowerCase() === y.toLowerCase();
+  const ours = same(ev.playerA, row.eoa_a) && same(ev.playerB, row.eoa_b) && ev.stake === toUnits(Number(row.stake));
+  if (ours) {
+    await db.from("arena_matches").update({ status: "settled", settle_tx: ev.tx, settled_at: nowIso(), settle_error: null }).eq("id", row.id).in("status", ["ready", "finished"]);
+    return "settled";
+  }
+  await db.from("arena_matches").update({ settle_error: "liquidación on-chain con otros jugadores/monto — revisar" }).eq("id", row.id);
+  return "mismatch";
 }
 
 /** Every player-signed, operator-acked artifact we hold for a match — what the chain replays. */

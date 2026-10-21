@@ -5,6 +5,8 @@ import { encodePacked, keccak256, type Hex } from "viem";
  * (verification + settlement). Must match contracts/PatoliArena.sol exactly.
  */
 
+/** Block the live Arena was deployed at (arena/deployments/polygon.json) — lower bound for event scans. */
+export const ARENA_DEPLOY_BLOCK = 95832577n;
 export const ARENA_ADDRESS = (process.env.NEXT_PUBLIC_ARENA_ADDRESS ?? "") as Hex;
 export const ARENA_CHAIN_ID = Number(process.env.NEXT_PUBLIC_ARENA_CHAIN_ID ?? 137);
 export const isArenaConfigured = () => /^0x[0-9a-fA-F]{40}$/.test(ARENA_ADDRESS);

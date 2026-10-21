@@ -1,10 +1,11 @@
 import "server-only";
-import { createPublicClient, createWalletClient, http, verifyTypedData, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, verifyTypedData, type Hex, getAbiItem } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon, polygonAmoy } from "viem/chains";
 import type { NextRequest } from "next/server";
 import { arenaAbi, routerAbi } from "./abi";
-import { ARENA_ADDRESS, ARENA_CHAIN_ID, ARENA_DOMAIN, ARENA_TYPES, ARENA_ROUTER_ADDRESS, isArenaConfigured, isRouterConfigured, type MatchStruct } from "./typed-data";
+import { ARENA_ADDRESS,
+  ARENA_DEPLOY_BLOCK, ARENA_CHAIN_ID, ARENA_DOMAIN, ARENA_TYPES, ARENA_ROUTER_ADDRESS, isArenaConfigured, isRouterConfigured, type MatchStruct } from "./typed-data";
 import { POLYGON_RPC_URL } from "@/lib/polymarket/constants";
 import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
 import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase/server";
@@ -15,6 +16,8 @@ const chain = ARENA_CHAIN_ID === 80002 ? polygonAmoy : polygon;
 const rpc = ARENA_CHAIN_ID === 80002 ? (process.env.AMOY_RPC_URL ?? "https://rpc-amoy.polygon.technology") : POLYGON_RPC_URL;
 
 const arenaPublic = createPublicClient({ chain, transport: http(rpc) });
+/** Log scans only (Alchemy's free tier limits eth_getLogs to 10 blocks; this public node allows 10k). */
+const logsPublic = createPublicClient({ chain, transport: http(process.env.ARENA_LOGS_RPC_URL || "https://polygon-bor-rpc.publicnode.com") });
 
 export function isOperatorConfigured(): boolean {
   return isArenaConfigured() && /^0x[0-9a-fA-F]{64}$/.test(process.env.ARENA_OPERATOR_KEY ?? "");
@@ -39,8 +42,33 @@ export async function arenaPendingWithdraw(eoa: Hex): Promise<{ amount: bigint; 
   const [amount, to, readyAt] = await arenaPublic.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "pendingWithdraw", args: [eoa] });
   return { amount, to, readyAt };
 }
-export async function arenaMatchStatus(matchId: Hex): Promise<number> {
-  return arenaPublic.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "matchStatus", args: [matchId] });
+/**
+ * The on-chain Settled event for a match id, if any. matchStatus alone is not proof: the contract keys
+ * it by the client-chosen id, so a settlement is only ours if the event's players and stake match.
+ * Public RPCs cap eth_getLogs at 10k blocks, so we scan forward in windows from the block at
+ * `since` (the match's finish time; settlement can only come after it), up to ~3 days.
+ */
+export async function arenaSettledEvent(matchId: Hex, since: Date): Promise<{ playerA: Hex; playerB: Hex; winner: Hex; stake: bigint; tx: Hex } | null> {
+  if ((await arenaPublic.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "matchStatus", args: [matchId] })) !== 1) return null;
+  const latest = await logsPublic.getBlock();
+  const target = BigInt(Math.floor(since.getTime() / 1000)) - 120n;
+  // Last block at or before `target` by binary search on timestamps (block times drift too much to estimate).
+  let lo = ARENA_DEPLOY_BLOCK, hi = latest.number;
+  while (lo < hi) {
+    const mid = (lo + hi + 1n) / 2n;
+    const b = await logsPublic.getBlock({ blockNumber: mid });
+    if (b.timestamp <= target) lo = mid;
+    else hi = mid - 1n;
+  }
+  let from = lo;
+  const WINDOW = 9_999n;
+  for (let i = 0; i < 13 && from <= latest.number; i++, from += WINDOW + 1n) {
+    const to = from + WINDOW > latest.number ? latest.number : from + WINDOW;
+    const logs = await logsPublic.getLogs({ address: ARENA_ADDRESS, event: getAbiItem({ abi: arenaAbi, name: "Settled" }), args: { matchId }, fromBlock: from, toBlock: to });
+    const l = logs[0];
+    if (l) return { playerA: l.args.playerA as Hex, playerB: l.args.playerB as Hex, winner: l.args.winner as Hex, stake: l.args.stake as bigint, tx: l.transactionHash };
+  }
+  return null;
 }
 export async function arenaLimits(): Promise<{ min: bigint; max: bigint }> {
   const [min, max] = await Promise.all([
