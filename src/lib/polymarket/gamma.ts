@@ -101,7 +101,7 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
     const moneyline = cfg.threeWay ? mergeThreeWay(b.ml, { home, away, homeRaw, awayRaw }) : twoWay(b.ml[0]);
     if (moneyline) markets.push(moneyline);
     if (b.alt) {
-      const m = cfg.threeWay ? bttsMarket(b.alt) : spreadMarket(b.alt);
+      const m = cfg.threeWay ? bttsMarket(b.alt) : spreadMarket(b.alt, moneyline?.outcomes.map((o) => o.label) ?? []);
       if (m) markets.push(m);
     }
     if (b.total) {
@@ -267,20 +267,24 @@ function mergeThreeWay(
   return { ...base(first, "moneyline", null), negRisk: picks.some((x) => x.m.negRisk) || first.negRisk === true, outcomes };
 }
 
-function spreadMarket(m: GammaMarket): GameMarket | null {
+/**
+ * Spread. Polymarket lists the favorite first; we show the two teams in the same
+ * left/right order as the moneyline row so a card reads as one game (LeChanga, 2026-10-21).
+ */
+function spreadMarket(m: GammaMarket, teamOrder: string[]): GameMarket | null {
   const p = parsed(m);
   if (!p || p.outcomes.length !== 2) return null;
   const line = m.line == null ? null : Number(m.line);
   const fmt = (n: number) => (n > 0 ? `+${n}` : `${n}`);
   const a = shortTeam(p.outcomes[0]);
   const b = shortTeam(p.outcomes[1]);
-  return {
-    ...base(m, "spread", line),
-    outcomes: [
-      { label: line == null ? a : `${a} ${fmt(line)}`, tokenId: p.tokens[0], price: p.prices[0] ?? 0 },
-      { label: line == null ? b : `${b} ${fmt(-line)}`, tokenId: p.tokens[1], price: p.prices[1] ?? 0 },
-    ],
-  };
+  const outcomes = [
+    { label: line == null ? a : `${a} ${fmt(line)}`, tokenId: p.tokens[0], price: p.prices[0] ?? 0 },
+    { label: line == null ? b : `${b} ${fmt(-line)}`, tokenId: p.tokens[1], price: p.prices[1] ?? 0 },
+  ];
+  const first = teamOrder[0];
+  if (first && !sameTeam(p.outcomes[0], first) && sameTeam(p.outcomes[1], first)) outcomes.reverse();
+  return { ...base(m, "spread", line), outcomes };
 }
 
 /** Soccer "Both Teams to Score": Yes/No → "Ambos anotan · Sí / No". */

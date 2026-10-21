@@ -1,5 +1,6 @@
 // Leagues offered in v1. Tag ids verified live against
-// https://gamma-api.polymarket.com/tags/slug/<slug> on 2026-10-14.
+// https://gamma-api.polymarket.com/tags/slug/<slug> on 2026-10-14; UCL re-verified 2026-10-21
+// (tag 1234 "Champions League" only carries futures — game markets live under 100977 "UCL").
 
 export type LeagueId = "ligamx" | "nfl" | "nba" | "ucl" | "epl" | "laliga";
 
@@ -23,7 +24,7 @@ export const LEAGUES: League[] = [
   { id: "ligamx", label: "Liga MX", name: "Liga MX", tagId: "102448", slugPrefix: "mex", sport: "soccer", threeWay: true, emoji: "🇲🇽" },
   { id: "nfl", label: "NFL", name: "NFL", tagId: "450", slugPrefix: "nfl", sport: "football", threeWay: false, emoji: "🏈" },
   { id: "nba", label: "NBA", name: "NBA", tagId: "745", slugPrefix: "nba", sport: "basketball", threeWay: false, emoji: "🏀" },
-  { id: "ucl", label: "Champions", name: "UEFA Champions League", tagId: "1234", slugPrefix: "ucl", sport: "soccer", threeWay: true, emoji: "🏆" },
+  { id: "ucl", label: "Champions", name: "UEFA Champions League", tagId: "100977", slugPrefix: "ucl", sport: "soccer", threeWay: true, emoji: "🏆" },
   { id: "epl", label: "Premier", name: "Premier League", tagId: "82", slugPrefix: "epl", sport: "soccer", threeWay: true, emoji: "🏴󠁧󠁢󠁥󠁮󠁧󠁿" },
   { id: "laliga", label: "La Liga", name: "La Liga", tagId: "780", slugPrefix: "lal", sport: "soccer", threeWay: true, emoji: "🇪🇸" },
 ];
