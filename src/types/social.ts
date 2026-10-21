@@ -41,6 +41,8 @@ export interface FeedItem {
   kickoff: string | null;
   proof: string | null; // tx hash
   fire: number;
+  /** The viewer already reacted (only when a viewer is known) */
+  fired?: boolean;
   /** "battle" items come from the Arena; everything else is a Polymarket bet */
   kind?: "bet" | "battle";
   battle?: {

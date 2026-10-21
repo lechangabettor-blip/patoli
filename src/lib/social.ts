@@ -1,4 +1,6 @@
 import "server-only";
+import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
+import type { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { shortTeam } from "@/lib/polymarket/gamma";
 import type { FeedItem, PublicProfile } from "@/types/social";
@@ -239,6 +241,32 @@ export async function loadBattles(opts: { scope: "all" | "following" | "profile"
 /** Bets + battles, newest first. */
 export function mergeFeed(a: FeedItem[], b: FeedItem[], limit = 40): FeedItem[] {
   return [...a, ...b].sort((x, y) => y.placedAt.localeCompare(x.placedAt)).slice(0, limit);
+}
+
+/** The profile id behind a request's Bearer DID token, or null when anonymous/invalid. */
+export async function resolveViewer(req: NextRequest): Promise<string | null> {
+  if (!isMagicAdminConfigured()) return null;
+  const id = await verifyDidToken(bearer(req));
+  if (!id) return null;
+  const { data } = await supabaseAdmin().from("profile_private").select("profile_id").eq("issuer", id.issuer).maybeSingle();
+  return (data?.profile_id as string) ?? null;
+}
+
+/** 🔥 counts per item, plus whether the viewer is among them. Mutates and returns `items`. */
+export async function attachFire(items: FeedItem[], viewerId: string | null): Promise<FeedItem[]> {
+  if (items.length === 0) return items;
+  const { data } = await supabaseAdmin().from("reactions").select("bet_id, profile_id").eq("kind", "fire").in("bet_id", items.map((i) => i.id));
+  const count = new Map<string, number>();
+  const mine = new Set<string>();
+  for (const r of data ?? []) {
+    count.set(r.bet_id as string, (count.get(r.bet_id as string) ?? 0) + 1);
+    if (viewerId && r.profile_id === viewerId) mine.add(r.bet_id as string);
+  }
+  for (const it of items) {
+    it.fire = count.get(it.id) ?? 0;
+    if (viewerId) it.fired = mine.has(it.id);
+  }
+  return items;
 }
 
 function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {

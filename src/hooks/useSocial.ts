@@ -13,11 +13,10 @@ export function useFeed(scope: "all" | "following") {
     queryKey: ["feed", scope],
     refetchInterval: 30_000,
     queryFn: async (): Promise<{ items: FeedItem[]; demo: boolean }> => {
+      // The token is optional: it unlocks "following" and marks which picks the viewer already 🔥'd.
       const headers: Record<string, string> = {};
-      if (scope === "following") {
-        const t = await getToken();
-        if (t) headers.authorization = `Bearer ${t}`;
-      }
+      const t = await getToken();
+      if (t) headers.authorization = `Bearer ${t}`;
       const r = await fetch(`/api/feed?scope=${scope}`, { headers });
       if (!r.ok) throw new Error("feed");
       return r.json();
@@ -52,6 +51,20 @@ export function useUser(handle: string | null) {
       return r.json();
     },
   });
+}
+
+/** 🔥 a feed item (or take it back). Resolves to the fresh count, or null when the call failed. */
+export function useReact() {
+  const { getToken } = useMe();
+  return useCallback(
+    async (id: string, on: boolean): Promise<{ fire: number; fired: boolean } | null> => {
+      const t = await getToken();
+      if (!t) return null;
+      const r = await fetch("/api/react", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${t}` }, body: JSON.stringify({ id, on }) });
+      return r.ok ? r.json() : null;
+    },
+    [getToken],
+  );
 }
 
 /** Feed item → shareable ticket. */

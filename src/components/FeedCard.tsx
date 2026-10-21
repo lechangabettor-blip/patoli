@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ExternalLink, Flame, Ticket as TicketIcon } from "lucide-react";
 import Avatar from "./Avatar";
 import { cn } from "@/lib/cn";
@@ -10,6 +12,8 @@ import { LEAGUE_BY_ID, isLeagueId } from "@/lib/polymarket/leagues";
 import { POLYGONSCAN_TX_URL } from "@/lib/polymarket/constants";
 import { formatOdds, formatUsd } from "@/lib/polymarket/odds";
 import type { FeedItem } from "@/types/social";
+import { useMe } from "@/providers/MeProvider";
+import { useReact } from "@/hooks/useSocial";
 
 const STATUS: Record<FeedItem["status"], { label: string; cls: string }> = {
   open: { label: "Abierta", cls: "text-accent-soft border-line bg-[rgba(255,61,23,.08)]" },
@@ -26,6 +30,26 @@ export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem
   const st = item.kind === "battle" && item.status === "void" ? { label: "Empate", cls: STATUS.void.cls } : STATUS[item.status];
   const { user } = item;
   const isBattle = item.kind === "battle";
+
+  // 🔥 — optimistic: flip on tap, then trust the server; a refetch that changes the item resets us.
+  const router = useRouter();
+  const { me } = useMe();
+  const react = useReact();
+  const seed = `${item.fire}:${item.fired ? 1 : 0}`;
+  const [local, setLocal] = useState<{ seed: string; fire: number; fired: boolean } | null>(null);
+  const fire = local?.seed === seed ? local.fire : item.fire;
+  const fired = local?.seed === seed ? local.fired : !!item.fired;
+  async function toggleFire() {
+    if (!me) {
+      router.push("/entrar");
+      return;
+    }
+    const next = !fired;
+    navigator.vibrate?.(8);
+    setLocal({ seed, fire: Math.max(0, fire + (next ? 1 : -1)), fired: next });
+    const r = await react(item.id, next);
+    setLocal(r ? { seed, fire: r.fire, fired: r.fired } : null);
+  }
   return (
     <article className="card rise p-4" style={{ animationDelay: `${index * 50}ms` }}>
       <header className="flex items-center gap-3">
@@ -67,8 +91,13 @@ export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem
 
       <footer className="mt-3 flex items-center justify-between border-t border-hairline pt-3">
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-1.5 text-sm text-muted transition-colors active:text-accent" aria-label="Reaccionar">
-            <Flame className="h-4 w-4" /> <span className="tnum">{item.fire}</span>
+          <button
+            onClick={toggleFire}
+            aria-pressed={fired}
+            aria-label={fired ? "Quitar fuego" : "Dar fuego"}
+            className={cn("flex items-center gap-1.5 text-sm transition-colors active:text-accent", fired ? "text-accent" : "text-muted")}
+          >
+            <Flame className={cn("h-4 w-4", fired && "fill-current")} /> <span className="tnum">{fire}</span>
           </button>
           {item.proof ? (
             <a href={POLYGONSCAN_TX_URL(item.proof)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[11px] text-muted-2" title="Ver en Polygon">
