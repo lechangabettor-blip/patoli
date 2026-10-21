@@ -1,4 +1,5 @@
 import BottomNav from "@/components/BottomNav";
+import AutoSettle from "@/components/AutoSettle";
 
 export default function TabsLayout({ children }: LayoutProps<"/">) {
   return (
@@ -7,6 +8,7 @@ export default function TabsLayout({ children }: LayoutProps<"/">) {
         {children}
       </main>
       <BottomNav />
+      <AutoSettle />
     </>
   );
 }

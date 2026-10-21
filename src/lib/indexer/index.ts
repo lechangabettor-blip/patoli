@@ -2,6 +2,9 @@ import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { CLOB_API_URL, GAMMA_API_URL, PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { LEAGUES } from "@/lib/polymarket/leagues";
+import { parseAbi, type Hex } from "viem";
+import { publicClient } from "@/lib/polymarket/v2";
+import { CTF_ADDRESS } from "@/lib/polymarket/constants";
 
 /**
  * The indexer: turns Polymarket's public builder-trades feed (every fill that
@@ -212,23 +215,65 @@ function resolveFromPrices(m: GammaMarket, prices: number[]): number | null {
   return null;
 }
 
+const ctfAbi = parseAbi([
+  "function payoutDenominator(bytes32 conditionId) view returns (uint256)",
+  "function payoutNumerators(bytes32 conditionId, uint256 index) view returns (uint256)",
+]);
+
+/**
+ * Resolution straight from the Conditional Tokens contract: the oracle writes the payout
+ * vector the moment a market resolves — the same instant Polymarket lets the user redeem —
+ * so bets flip to won/lost without waiting for Gamma to catch up. null = not resolved yet.
+ */
+async function resolveOnChain(conditionId: string, outcomeCount: number): Promise<number | null> {
+  const id = conditionId as Hex;
+  const den = await publicClient.readContract({ address: CTF_ADDRESS, abi: ctfAbi, functionName: "payoutDenominator", args: [id] });
+  if (den === 0n) return null;
+  const nums = await Promise.all(
+    Array.from({ length: outcomeCount }, (_, i) => publicClient.readContract({ address: CTF_ADDRESS, abi: ctfAbi, functionName: "payoutNumerators", args: [id, BigInt(i)] })),
+  );
+  const win = nums.findIndex((n) => n === den);
+  if (win >= 0) return win;
+  if (nums.every((n) => n === nums[0])) return -1; // split payout = void
+  return null; // partial payouts (not a sports outcome) — leave to Gamma
+}
+
 async function settleResolvedMarkets(errors: string[]): Promise<number> {
   const db = supabaseAdmin();
-  const cutoff = new Date(Date.now() - 2 * 3600_000).toISOString();
+  // Games run 1.5–3.5 h; nothing resolves before 90 min after kickoff.
+  const cutoff = new Date(Date.now() - 90 * 60_000).toISOString();
   const { data: due } = await db
     .from("markets")
-    .select("condition_id")
+    .select("condition_id, outcomes")
     .is("winning_index", null)
     .lt("game_start", cutoff)
+    .order("game_start")
     .limit(50);
   if (!due?.length) return 0;
-  const rows = await fetchMarkets(due.map((d) => d.condition_id as string));
-  const resolved = rows.filter((r) => r.winning_index != null);
+
+  // 1. Chain first (instant). 2. Gamma for whatever the chain could not decide.
+  const resolved: { condition_id: string; winning_index: number; resolved_at: string }[] = [];
+  const pending: string[] = [];
+  for (const d of due) {
+    const cid = d.condition_id as string;
+    const n = Array.isArray(d.outcomes) ? (d.outcomes as unknown[]).length : 2;
+    try {
+      const w = await resolveOnChain(cid, n || 2);
+      if (w != null) resolved.push({ condition_id: cid, winning_index: w, resolved_at: new Date().toISOString() });
+      else pending.push(cid);
+    } catch {
+      pending.push(cid);
+    }
+  }
+  if (pending.length) {
+    for (const r of await fetchMarkets(pending)) {
+      if (r.winning_index != null) resolved.push({ condition_id: r.condition_id, winning_index: r.winning_index, resolved_at: r.resolved_at! });
+    }
+  }
   if (!resolved.length) return 0;
-  const { error } = await db.from("markets").upsert(resolved, { onConflict: "condition_id" });
-  if (error) {
-    errors.push(`markets resolve: ${error.message}`);
-    return 0;
+  for (const r of resolved) {
+    const { error } = await db.from("markets").update({ winning_index: r.winning_index, closed: true, resolved_at: r.resolved_at }).eq("condition_id", r.condition_id);
+    if (error) errors.push(`markets resolve: ${error.message}`);
   }
   let n = 0;
   for (const r of resolved) {

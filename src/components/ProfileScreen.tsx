@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePositions } from "@/hooks/usePositions";
+import { useNow } from "@/hooks/useNow";
+import type { AutoRedeemNote } from "@/components/AutoSettle";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownToLine, ArrowUpFromLine, Copy, ExternalLink, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 import TopBar from "./TopBar";
@@ -28,22 +31,6 @@ import { useArenaActions, useArenaMe } from "@/hooks/useArena";
 import { isArenaConfigured } from "@/lib/arena/typed-data";
 import { copyText } from "@/lib/clipboard";
 
-interface Position {
-  conditionId: string;
-  title: string;
-  outcome: string;
-  size: number;
-  avgPrice: number;
-  curPrice: number;
-  initialValue?: number;
-  currentValue?: number;
-  cashPnl: number;
-  realizedPnl: number;
-  redeemable: boolean;
-  negativeRisk?: boolean;
-  endDate?: string;
-  slug?: string;
-}
 
 export default function ProfileScreen() {
   const { status, email, eoaAddress, logout, isDemo } = useWallet();
@@ -100,16 +87,11 @@ export default function ProfileScreen() {
   const syncBets = useSyncBets();
   const [syncing, setSyncing] = useState(false);
 
-  const positions = useQuery({
-    // on-chain truth from Polymarket's Data API: used for Cobrar and as a lag detector
-    queryKey: ["positions", walletAddress],
-    enabled: status === "connected" && !!walletAddress,
-    refetchInterval: 20_000,
-    queryFn: async (): Promise<Position[]> => {
-      const r = await fetch(`/api/positions?user=${walletAddress}`);
-      return r.ok ? r.json() : [];
-    },
-  });
+  // on-chain truth from Polymarket's Data API: used for Cobrar and as a lag detector
+  const positions = usePositions();
+  const autoNote = useQuery<AutoRedeemNote | null>({ queryKey: ["autoRedeem"], queryFn: () => null, staleTime: Infinity });
+  const nowMs = useNow()?.getTime() ?? 0;
+  const justCollected = autoNote.data && nowMs - autoNote.data.at < 60_000 ? autoNote.data : null;
 
   // Indexer behind? (Polymarket shows more live positions than our DB has open bets.)
   const livePositions = (positions.data ?? []).filter((p) => !p.redeemable && p.size > 0).length;
@@ -241,6 +223,11 @@ export default function ProfileScreen() {
           </div>
         </div>
 
+        {justCollected && redeemables.length === 0 ? (
+          <div className="card mt-3 p-3 text-xs text-win">
+            {justCollected.usd > 0 ? `Cobrado: ${formatUsd(justCollected.usd)} ya están en tu saldo.` : "Tus apuestas resueltas ya se cerraron."}
+          </div>
+        ) : null}
         {/* Winnings ready to collect — shown first, one tap */}
         {isReady && redeemables.length > 0 ? (
           <div className="card-hot card mt-3 p-4">
@@ -248,7 +235,7 @@ export default function ProfileScreen() {
               {redeemableUsd > 0 ? `Tienes $${formatUsd(redeemableUsd)} listos` : "Apuestas por cerrar"}
             </div>
             <p className="mt-1 text-xs text-muted">
-              {redeemables.length} {redeemables.length === 1 ? "apuesta resuelta" : "apuestas resueltas"}. Cóbralas a tu saldo con una firma, sin gas.
+              {redeemables.length} {redeemables.length === 1 ? "apuesta resuelta" : "apuestas resueltas"}. Se cobran solas en unos segundos; si no, toca Cobrar.
             </p>
             <button onClick={() => run("redeem")} disabled={busy !== null} className="btn-accent mt-3 w-full py-2.5 text-xs">
               {busy === "redeem" ? "Cobrando…" : "Cobrar"}
