@@ -242,7 +242,7 @@ src/components/            screens + UI primitives
   `vercel env add` (strip `\r`; `NEXT_PUBLIC_MAGIC_API_KEY` / `…SUPABASE_ANON_KEY` need
   `--type config`). `CRON_SECRET` set.
 - **Crons:** Hobby allows only daily → `vercel.json` runs indexer 06:00 / arena 07:00 UTC.
-  `.github/workflows/cron.yml` pings both endpoints every 5 min (needs repo secrets
+  `.github/workflows/cron.yml` (backup clock; PRIMARY clock since 2026-10-21 = cron-job.org, LeChanga's account: two jobs every 5 min, GET `/api/arena/settle` + `/api/indexer/run` with `Authorization: Bearer <CRON_SECRET>`) pings both endpoints every 5 min (needs repo secrets
   `APP_URL`, `CRON_SECRET`). Instant settlement at match end does not depend on crons.
   On Pro, restore `*/5` and `* * * * *` in `vercel.json`.
 - **Magic:** allowed origins set (the free plan accepted several): `https://patoli.bet`,
