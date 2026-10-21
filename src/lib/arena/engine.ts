@@ -7,6 +7,7 @@ import { arenaAbi } from "./abi";
 import {
   arenaBalance,
   arenaLimits,
+  arenaMatchStatus,
   arenaPendingWithdraw,
   readClaim,
   sendClaim,
@@ -568,8 +569,15 @@ async function settleReady(limit = 25): Promise<{ sent: number; tx: string | nul
     const done = ids.filter((i) => settledIds.has(i.toLowerCase()));
     const skipped = ids.filter((i) => !settledIds.has(i.toLowerCase()));
     if (done.length) await db.from("arena_matches").update({ status: "settled", settle_tx: tx, settled_at: nowIso() }).in("id", done).eq("status", "ready");
-    // skipped on-chain (bad sig / already settled) → back to 'finished' so the claim path picks it up after the deadline
-    if (skipped.length) await db.from("arena_matches").update({ settle_error: "omitida on-chain, va por reclamo", status: "finished" }).in("id", skipped).eq("status", "ready");
+    // A skipped item usually means ANOTHER run settled it a moment earlier (instant settle +
+    // cron overlap). Ask the chain; only a truly unsettled match goes back to the claim path.
+    for (const id of skipped) {
+      if (await isSettledOnChain(id as Hex)) {
+        await db.from("arena_matches").update({ status: "settled", settled_at: nowIso(), settle_error: null }).eq("id", id).in("status", ["ready", "finished"]);
+      } else {
+        await db.from("arena_matches").update({ settle_error: "omitida on-chain, va por reclamo", status: "finished" }).eq("id", id).eq("status", "ready");
+      }
+    }
     return { sent: done.length, tx, error: skipped.length ? `${skipped.length} omitidas` : undefined };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -607,6 +615,10 @@ async function fileClaims(limit = 5) {
     .limit(limit);
   for (const row of (rows ?? []) as MatchRow[]) {
     try {
+      if (await isSettledOnChain(row.id as Hex)) {
+        await db.from("arena_matches").update({ status: "settled", settled_at: nowIso(), settle_error: null }).eq("id", row.id).eq("status", "finished");
+        continue;
+      }
       const { commits, reveals } = await evidenceFor(row);
       const tx = await sendClaim(toMatchStruct(row), row.sig_a as Hex, row.sig_b as Hex, commits, reveals);
       const receipt = await waitForTx(tx);
@@ -615,6 +627,15 @@ async function fileClaims(limit = 5) {
     } catch (e) {
       console.error("[arena] claim failed", row.id, e instanceof Error ? e.message : e);
     }
+  }
+}
+
+/** The contract's own word: 1 = settled. */
+async function isSettledOnChain(id: Hex): Promise<boolean> {
+  try {
+    return (await arenaMatchStatus(id)) === 1;
+  } catch {
+    return false;
   }
 }
 

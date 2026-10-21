@@ -39,6 +39,9 @@ export async function arenaPendingWithdraw(eoa: Hex): Promise<{ amount: bigint; 
   const [amount, to, readyAt] = await arenaPublic.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "pendingWithdraw", args: [eoa] });
   return { amount, to, readyAt };
 }
+export async function arenaMatchStatus(matchId: Hex): Promise<number> {
+  return arenaPublic.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "matchStatus", args: [matchId] });
+}
 export async function arenaLimits(): Promise<{ min: bigint; max: bigint }> {
   const [min, max] = await Promise.all([
     arenaPublic.readContract({ address: ARENA_ADDRESS, abi: arenaAbi, functionName: "minStake" }),
