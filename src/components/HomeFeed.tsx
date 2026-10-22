@@ -45,7 +45,8 @@ export default function HomeFeed() {
       <section className="no-scrollbar flex gap-3 overflow-x-auto px-4 pt-4">
         {(people.data?.items ?? []).slice(0, 8).map((u, i) => (
           <Link key={u.handle} href={`/u/${u.handle}`} className="rise flex w-16 shrink-0 flex-col items-center gap-1.5" style={{ animationDelay: `${i * 40}ms` }}>
-            <span className={cn("rounded-full p-[2px]", u.roi > 10 ? "bg-[conic-gradient(var(--accent),var(--accent-soft),var(--accent))]" : "bg-hairline")}>
+            {/* Ring = this person has a pick riding right now (open or not yet settled). LeChanga, 2026-10-22. */}
+            <span className={cn("rounded-full p-[2px]", u.record.open > 0 ? "bg-[conic-gradient(var(--accent),var(--accent-soft),var(--accent))]" : "bg-hairline")}>
               <span className="flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-bg bg-surface-2 text-2xl">
                 {/\p{Extended_Pictographic}/u.test(u.avatar) ? u.avatar : <span className="font-display text-lg font-extrabold uppercase">{u.handle[0]}</span>}
               </span>
