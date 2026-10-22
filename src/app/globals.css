@@ -21,6 +21,10 @@
   --card-hover: rgba(255, 61, 23, 0.09);
   --win: #4ade80;
   --loss: #e24b4a;
+  /* Third brand color (2026-10-22): electric violet. Too dark for text/thin lines on --bg; use as glow,
+     fill or thick ring. --violet-soft is its tint for lines and text. Not applied anywhere yet. */
+  --violet: #4b0082;
+  --violet-soft: #9d7bff;
   --push: #b9b9c7;
   --nav-h: 64px;
   --top-h: 56px;
@@ -42,6 +46,8 @@
   --color-hairline: var(--hairline);
   --color-win: var(--win);
   --color-loss: var(--loss);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
   --color-push: var(--push);
   --font-display: var(--font-archivo), "Archivo", sans-serif;
   --font-sans: var(--font-outfit), "Outfit", sans-serif;
