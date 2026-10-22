@@ -1,6 +1,7 @@
 "use client";
 
 import type { Game, GameMarket, GameOutcome } from "@/lib/polymarket/gamma";
+import type { LiveScore } from "@/lib/scores";
 import type { PriceMap } from "@/hooks/useGames";
 import { breakdown, formatOdds } from "@/lib/polymarket/odds";
 import { isLive, kickoffLabel } from "@/lib/format";
@@ -18,11 +19,13 @@ export interface Selection {
 export default function GameCard({
   game,
   prices,
+  score,
   onPick,
   index = 0,
 }: {
   game: Game;
   prices: PriceMap | undefined;
+  score?: LiveScore;
   onPick: (s: Selection) => void;
   index?: number;
 }) {
@@ -65,7 +68,8 @@ export default function GameCard({
         <div className="flex items-center gap-2 text-[11px] text-muted">
           {live ? (
             <span className="flex items-center gap-1.5 rounded-full bg-[rgba(226,75,74,.15)] px-2 py-0.5 font-display text-[10px] font-extrabold uppercase tracking-wide text-loss">
-              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-loss" /> En vivo
+              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-loss" /> {score?.state === "post" ? "Final" : "En vivo"}
+              {score && score.state !== "post" && score.period ? <span className="tnum font-sans font-semibold normal-case tracking-normal text-ink">{score.period}{score.clock ? ` ${score.clock}` : ""}</span> : null}
             </span>
           ) : (
             <span className="rounded-full bg-surface px-2 py-0.5">{kickoffLabel(game.startTime, now)}</span>
@@ -74,7 +78,9 @@ export default function GameCard({
         </div>
         <h3 className="mt-1.5 font-display text-[17px] font-extrabold uppercase leading-tight tracking-tight">
           {game.home}
+          {score ? <span className="tnum px-1.5 text-accent-soft">{score.first}</span> : null}
           <span className="px-1.5 text-muted">vs</span>
+          {score ? <span className="tnum pr-1.5 text-accent-soft">{score.second}</span> : null}
           {game.away}
         </h3>
       </div>

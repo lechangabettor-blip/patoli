@@ -16,7 +16,7 @@ import { useMe } from "@/providers/MeProvider";
 import { usePlaceBet } from "@/hooks/usePlaceBet";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { useBuilderFee } from "@/hooks/useBuilderFee";
-import { usePrices } from "@/hooks/useGames";
+import { usePrices, useScores } from "@/hooks/useGames";
 import { useNow } from "@/hooks/useNow";
 import { isLive } from "@/lib/format";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
@@ -56,6 +56,8 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const now = useNow();
   const live = !!now && isLive(selection.game.startTime, now);
   const quote = usePrices([selection.outcome.tokenId], live ? 2_000 : 5_000);
+  const scores = useScores(selection.game.league, live);
+  const score = scores.data?.[selection.game.slug];
   const price = quote.data?.[selection.outcome.tokenId]?.ask ?? selection.price;
   const b = useMemo(() => breakdown(price, undefined, takerBps), [price, takerBps]);
   const payout = stake / b.costPerShare;
@@ -126,6 +128,12 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted">
               {selection.game.title}
               {live ? <span className="rounded-full bg-[rgba(226,75,74,.15)] px-1.5 py-0.5 font-display text-[9px] font-extrabold text-loss">En vivo</span> : null}
+              {score ? (
+                <span className="tnum normal-case tracking-normal text-ink">
+                  {score.first}-{score.second}
+                  {score.state !== "post" && score.period ? ` · ${score.period}${score.clock ? ` ${score.clock}` : ""}` : " · Final"}
+                </span>
+              ) : null}
             </div>
             <div className="mt-1 flex items-end justify-between gap-3">
               <div className="font-display text-2xl font-extrabold uppercase leading-none">{selection.outcome.label}</div>

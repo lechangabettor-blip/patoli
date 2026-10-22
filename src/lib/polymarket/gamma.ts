@@ -48,6 +48,8 @@ export interface Game {
   away: string;
   home: string;
   markets: GameMarket[];
+  /** Polymarket's own live score (fallback for the ESPN feed) */
+  pmScore?: { score?: string; elapsed?: string; period?: string; live?: boolean; ended?: boolean };
 }
 
 const TTL_MS = 45_000;
@@ -121,6 +123,7 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
       title,
       startTime,
       image: ev?.image ?? ev?.icon ?? null,
+      pmScore: ev?.score ? { score: ev.score, elapsed: ev.elapsed, period: ev.period, live: ev.live, ended: ev.ended } : undefined,
       away,
       home,
       markets,
@@ -148,6 +151,12 @@ interface GammaEventRef {
   startDate?: string;
   image?: string;
   icon?: string;
+  // live game data Polymarket attaches to sports events
+  score?: string; // "74-68", title order
+  elapsed?: string; // "05:27"
+  period?: string; // "Q3", "2H"…
+  live?: boolean;
+  ended?: boolean;
 }
 
 interface GammaMarket {
@@ -341,7 +350,7 @@ function norm(s: string) {
     .trim();
 }
 
-function sameTeam(text: string, team: string): boolean {
+export function sameTeam(text: string, team: string): boolean {
   const t = norm(team);
   const x = norm(text);
   if (!t) return false;

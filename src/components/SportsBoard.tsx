@@ -6,7 +6,7 @@ import TopBar from "./TopBar";
 import GameCard, { type Selection } from "./GameCard";
 import BetSheet from "./BetSheet";
 import { LEAGUES, isLeagueId, type LeagueId } from "@/lib/polymarket/leagues";
-import { useGames, usePrices } from "@/hooks/useGames";
+import { useGames, usePrices, useScores } from "@/hooks/useGames";
 import { cn } from "@/lib/cn";
 import { useNow } from "@/hooks/useNow";
 import { isLive } from "@/lib/format";
@@ -41,6 +41,7 @@ export default function SportsBoard() {
   const now = useNow();
   const anyLive = !!now && ordered.slice(0, 12).some((g) => isLive(g.startTime, now));
   const prices = usePrices(tokenIds, anyLive ? 2_000 : 5_000);
+  const scores = useScores(league, anyLive);
 
   // Keep the active league chip in view when arriving from a deep link
   const railRef = useRef<HTMLDivElement>(null);
@@ -84,7 +85,7 @@ export default function SportsBoard() {
         ) : (
           ordered.map((g, i) => (
             <div key={g.id} className={cn(g.slug === focusSlug && "rounded-[18px] ring-2 ring-accent/70")}>
-              <GameCard game={g} prices={prices.data} onPick={setSel} index={i} />
+              <GameCard game={g} prices={prices.data} score={scores.data?.[g.slug]} onPick={setSel} index={i} />
             </div>
           ))
         )}
