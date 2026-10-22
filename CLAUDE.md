@@ -159,6 +159,18 @@ src/components/            screens + UI primitives
 - **Client:** `MeProvider` syncs the profile after login; `useSocial` hooks;
   `FeedCard`/`HomeFeed`/`PublicProfile`/`SearchScreen` consume the APIs.
 
+## Profile stats (2026-10-22)
+
+- **Rolling windows** (`loadWindows` in social.ts, `StatsWindows.tsx`): últimos 7 días / 30 días /
+  todo, counted by **settlement time** (`bets.settled_at`, migration 0009; battles use
+  `finished_at`). Sports (récord, Unidades, P&L, ROI) and Batalla (w-l-d, P&L) are separate
+  records — never mixed (LeChanga's rule). Computed from rows on every single-profile load; no
+  snapshots. Lists (search, people rail) still use the all-time `profile_stats` view.
+- Unidades = Σ won (1/price − 1) − lost (migration 0008). P&L counts Polymarket + Patoli fees.
+- Avatar ring on Inicio = has an open sports bet (`record.open > 0`), not ROI.
+- Leaderboard ("Tabla") deliberately NOT built yet; when built: same three windows, min 3 settled
+  picks in the window to rank.
+
 ## Live bets (2026-10-21)
 
 - Board keeps in-play games until kickoff + max duration per sport (`MAX_GAME_MS` in gamma.ts:
