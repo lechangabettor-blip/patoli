@@ -36,7 +36,7 @@ export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem
           ? { label: "Va ganando", cls: STATUS.won.cls }
           : item.livePrice != null && item.livePrice <= 0.1
             ? { label: "Va perdiendo", cls: STATUS.lost.cls }
-            : { label: "En juego", cls: STATUS.open.cls }
+            : { label: "En juego", cls: "pill-live border-transparent" }
         : STATUS[item.status];
   const { user } = item;
   const isBattle = item.kind === "battle";

@@ -21,8 +21,9 @@
   --card-hover: rgba(255, 61, 23, 0.09);
   --win: #4ade80;
   --loss: #e24b4a;
-  /* Third brand color (2026-10-22): electric violet. Too dark for text/thin lines on --bg; use as glow,
-     fill or thick ring. --violet-soft is its tint for lines and text. Not applied anywhere yet. */
+  /* Third brand color (2026-10-22): electric violet = "en juego" (live pills, live card edge) and the
+     ambient glow / highlighted cards. Too dark for text or thin lines on --bg: fill, glow or thick ring
+     only; --violet-soft is its tint for text and lines. Orange = brand + action, green/red = results. */
   --violet: #4b0082;
   --violet-soft: #9d7bff;
   --push: #b9b9c7;
@@ -67,7 +68,8 @@ html {
 
 body {
   margin: 0;
-  background: var(--bg);
+  /* Faint violet halo at the top: noticed only when it is gone. */
+  background: radial-gradient(ellipse 90% 38% at 50% -12%, rgba(75, 0, 130, 0.28), rgba(31, 31, 41, 0) 70%) no-repeat, var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
   font-weight: 400;
@@ -130,8 +132,17 @@ h1, h2, h3, .display {
   backdrop-filter: blur(6px);
 }
 .card-hot {
-  border-color: var(--line);
-  background: linear-gradient(180deg, rgba(255, 61, 23, 0.1), rgba(52, 52, 67, 0.55));
+  border-color: rgba(157, 123, 255, 0.22);
+  background: linear-gradient(180deg, rgba(75, 0, 130, 0.28), rgba(52, 52, 67, 0.55));
+}
+/* A game in play: thin violet top edge */
+.card-live {
+  border-top: 2px solid var(--violet);
+}
+/* "En vivo" / "En juego": violet fill, white text, soft dot */
+.pill-live {
+  background: var(--violet);
+  color: #fff;
 }
 
 /* Accent pill button */

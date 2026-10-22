@@ -132,7 +132,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
           <div>
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted">
               {selection.game.title}
-              {live ? <span className="rounded-full bg-[rgba(226,75,74,.15)] px-1.5 py-0.5 font-display text-[9px] font-extrabold text-loss">En vivo</span> : null}
+              {live ? <span className="pill-live rounded-full px-1.5 py-0.5 font-display text-[9px] font-extrabold">En vivo</span> : null}
               {score ? (
                 <span className="tnum normal-case tracking-normal text-ink">
                   {score.first}-{score.second}

@@ -63,13 +63,13 @@ export default function GameCard({
   };
 
   return (
-    <article className="card rise overflow-hidden" style={{ animationDelay: `${index * 40}ms` }}>
+    <article className={cn("card rise overflow-hidden", live && "card-live")} style={{ animationDelay: `${index * 40}ms` }}>
       <div className="px-4 pt-3">
         <div className="flex items-center gap-2 text-[11px] text-muted">
           {live ? (
-            <span className="flex items-center gap-1.5 rounded-full bg-[rgba(226,75,74,.15)] px-2 py-0.5 font-display text-[10px] font-extrabold uppercase tracking-wide text-loss">
-              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-loss" /> {score?.state === "post" ? "Final" : "En vivo"}
-              {score && score.state !== "post" && score.period ? <span className="tnum font-sans font-semibold normal-case tracking-normal text-ink">{score.period}{score.clock ? ` ${score.clock}` : ""}</span> : null}
+            <span className="pill-live flex items-center gap-1.5 rounded-full px-2 py-0.5 font-display text-[10px] font-extrabold uppercase tracking-wide">
+              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-violet-soft" /> {score?.state === "post" ? "Final" : "En vivo"}
+              {score && score.state !== "post" && score.period ? <span className="tnum font-sans font-semibold normal-case tracking-normal text-white/90">{score.period}{score.clock ? ` ${score.clock}` : ""}</span> : null}
             </span>
           ) : (
             <span className="rounded-full bg-surface px-2 py-0.5">{kickoffLabel(game.startTime, now)}</span>
