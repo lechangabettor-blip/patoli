@@ -98,9 +98,9 @@ const WINDOW_MS: Record<WindowKey, number> = { d7: 7 * 86_400_000, d30: 30 * 86_
  * Rolling records by settlement time: últimos 7 días, últimos 30 días, todo. Computed from the
  * bets and battles themselves, so any past window is always recoverable (no snapshots).
  */
-export async function loadWindows(profileId: string): Promise<Record<WindowKey, StatsWindow>> {
+export async function loadWindows(profileId: string): Promise<Record<WindowKey, StatsWindow> | undefined> {
   const db = supabaseAdmin();
-  const [{ data: bets }, { data: matches }] = await Promise.all([
+  const [{ data: bets, error: betsError }, { data: matches }] = await Promise.all([
     db.from("bets").select("status, side, size, price, usdc, fee_usdc, builder_fee, settled_at").eq("profile_id", profileId).neq("status", "open"),
     db
       .from("arena_matches")
@@ -108,6 +108,8 @@ export async function loadWindows(profileId: string): Promise<Record<WindowKey, 
       .or(`player_a.eq.${profileId},player_b.eq.${profileId}`)
       .in("status", ["finished", "ready", "settled"]),
   ]);
+  // Until migration 0009 (settled_at) is applied the bets query fails: fall back to all-time numbers.
+  if (betsError) return undefined;
   const now = Date.now();
   const empty = (): StatsWindow => ({ sports: { w: 0, l: 0, v: 0, units: 0, pnl: 0, staked: 0, roi: 0 }, battles: { w: 0, l: 0, d: 0, pnl: 0 } });
   const out: Record<WindowKey, StatsWindow> = { d7: empty(), d30: empty(), all: empty() };

@@ -15,7 +15,6 @@ import { useUser, ticketFromItem } from "@/hooks/useSocial";
 import { useMe } from "@/providers/MeProvider";
 import { useWallet } from "@/providers/WalletContext";
 import { POLYMARKET_PROFILE_URL } from "@/lib/polymarket/constants";
-import { cn } from "@/lib/cn";
 import StatsWindows from "./StatsWindows";
 
 export default function PublicProfile({ handle }: { handle: string }) {
