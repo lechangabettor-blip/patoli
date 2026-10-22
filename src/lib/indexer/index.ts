@@ -294,7 +294,7 @@ async function settleResolvedMarkets(errors: string[]): Promise<number> {
         status = "void";
         pnl = 0;
       }
-      const { error: e2 } = await db.from("bets").update({ status, pnl }).eq("id", b.id);
+      const { error: e2 } = await db.from("bets").update({ status, pnl, settled_at: new Date().toISOString() }).eq("id", b.id);
       if (!e2) n++;
     }
   }

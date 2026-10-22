@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 import { CLOB_API_URL } from "@/lib/polymarket/constants";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { shortTeam } from "@/lib/polymarket/gamma";
-import type { FeedItem, PublicProfile } from "@/types/social";
+import type { FeedItem, PublicProfile, StatsWindow, WindowKey } from "@/types/social";
 
 /** Read models for profiles and the feed. Server-only. */
 
@@ -81,6 +81,7 @@ export async function loadProfile(by: { id?: string; handle?: string }, viewerId
   const battleStats = attachBattleStats; // (applied below once the profile object exists)
   const profile = toProfile(p, s ?? undefined);
   await battleStats([profile]);
+  profile.windows = await loadWindows(profile.id);
   if (viewerId) {
     profile.isMe = viewerId === p.id;
     if (!profile.isMe) {
@@ -89,6 +90,70 @@ export async function loadProfile(by: { id?: string; handle?: string }, viewerId
     }
   }
   return profile;
+}
+
+const WINDOW_MS: Record<WindowKey, number> = { d7: 7 * 86_400_000, d30: 30 * 86_400_000, all: Infinity };
+
+/**
+ * Rolling records by settlement time: últimos 7 días, últimos 30 días, todo. Computed from the
+ * bets and battles themselves, so any past window is always recoverable (no snapshots).
+ */
+export async function loadWindows(profileId: string): Promise<Record<WindowKey, StatsWindow>> {
+  const db = supabaseAdmin();
+  const [{ data: bets }, { data: matches }] = await Promise.all([
+    db.from("bets").select("status, side, size, price, usdc, fee_usdc, builder_fee, settled_at").eq("profile_id", profileId).neq("status", "open"),
+    db
+      .from("arena_matches")
+      .select("player_a, eoa_a, eoa_b, stake, winner_eoa, finished_at, created_at")
+      .or(`player_a.eq.${profileId},player_b.eq.${profileId}`)
+      .in("status", ["finished", "ready", "settled"]),
+  ]);
+  const now = Date.now();
+  const empty = (): StatsWindow => ({ sports: { w: 0, l: 0, v: 0, units: 0, pnl: 0, staked: 0, roi: 0 }, battles: { w: 0, l: 0, d: 0, pnl: 0 } });
+  const out: Record<WindowKey, StatsWindow> = { d7: empty(), d30: empty(), all: empty() };
+  const keys = (at: string | null) => {
+    const age = at ? now - Date.parse(at) : Infinity;
+    return (Object.keys(WINDOW_MS) as WindowKey[]).filter((k) => age <= WINDOW_MS[k]);
+  };
+  for (const b of bets ?? []) {
+    if (b.side !== "BUY") continue;
+    const paid = Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0);
+    const price = Number(b.price);
+    for (const k of keys(b.settled_at as string | null)) {
+      const s = out[k].sports;
+      if (b.status === "won") {
+        s.w++;
+        s.units += price > 0 ? 1 / price - 1 : 0;
+        s.pnl += Number(b.size) - paid;
+        s.staked += paid;
+      } else if (b.status === "lost") {
+        s.l++;
+        s.units -= 1;
+        s.pnl -= paid;
+        s.staked += paid;
+      } else s.v++;
+    }
+  }
+  for (const m of matches ?? []) {
+    const mine = (m.player_a === profileId ? m.eoa_a : m.eoa_b) as string;
+    const w = (m.winner_eoa as string | null)?.toLowerCase();
+    const result = !w ? "d" : w === mine.toLowerCase() ? "w" : "l";
+    for (const k of keys((m.finished_at ?? m.created_at) as string)) {
+      const bt = out[k].battles;
+      if (result === "w") {
+        bt.w++;
+        bt.pnl += Number(m.stake);
+      } else if (result === "l") {
+        bt.l++;
+        bt.pnl -= Number(m.stake);
+      } else bt.d++;
+    }
+  }
+  for (const k of Object.keys(out) as WindowKey[]) {
+    const s = out[k].sports;
+    s.roi = s.staked > 0 ? (s.pnl / s.staked) * 100 : 0;
+  }
+  return out;
 }
 
 export async function searchProfiles(q: string, limit = 20): Promise<PublicProfile[]> {

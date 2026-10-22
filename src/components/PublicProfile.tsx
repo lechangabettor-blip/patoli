@@ -15,8 +15,8 @@ import { useUser, ticketFromItem } from "@/hooks/useSocial";
 import { useMe } from "@/providers/MeProvider";
 import { useWallet } from "@/providers/WalletContext";
 import { POLYMARKET_PROFILE_URL } from "@/lib/polymarket/constants";
-import { formatUsd } from "@/lib/polymarket/odds";
 import { cn } from "@/lib/cn";
+import StatsWindows from "./StatsWindows";
 
 export default function PublicProfile({ handle }: { handle: string }) {
   const router = useRouter();
@@ -105,11 +105,8 @@ export default function PublicProfile({ handle }: { handle: string }) {
                   ) : null}
                 </div>
               </div>
-              <div className="grid grid-cols-4 border-t border-hairline">
-                <Stat k="Récord" v={`${p.record.w}-${p.record.l}`} />
-                <Stat k="Unidades" v={`${p.units >= 0 ? "+" : ""}${p.units.toFixed(1)}u`} cls={p.units > 0 ? "text-win" : p.units < 0 ? "text-loss" : ""} />
-                <Stat k="P&L" v={`${p.pnl >= 0 ? "+" : "-"}$${formatUsd(Math.abs(p.pnl), 0)}`} cls={p.pnl > 0 ? "text-win" : p.pnl < 0 ? "text-loss" : ""} />
-                <Stat k="ROI" v={`${p.roi >= 0 ? "+" : ""}${p.roi.toFixed(1)}%`} cls={p.roi > 0 ? "text-win" : p.roi < 0 ? "text-loss" : ""} />
+              <div className="border-t border-hairline px-3 pb-3 pt-3">
+                <StatsWindows profile={p} />
               </div>
             </section>
 
@@ -132,11 +129,3 @@ export default function PublicProfile({ handle }: { handle: string }) {
   );
 }
 
-function Stat({ k, v, cls }: { k: string; v: string; cls?: string }) {
-  return (
-    <div className="px-2 py-3 text-center">
-      <div className={cn("tnum font-display text-base font-extrabold", cls)}>{v}</div>
-      <div className="text-[10px] uppercase tracking-wider text-muted">{k}</div>
-    </div>
-  );
-}

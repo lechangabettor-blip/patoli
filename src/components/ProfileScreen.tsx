@@ -26,6 +26,7 @@ import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { cn } from "@/lib/cn";
 import FeedCard from "./FeedCard";
 import HistoryTabs from "./HistoryTabs";
+import StatsWindows from "./StatsWindows";
 import { ticketFromItem, useSyncBets, useUser } from "@/hooks/useSocial";
 import { useArenaActions, useArenaMe } from "@/hooks/useArena";
 import { isArenaConfigured } from "@/lib/arena/typed-data";
@@ -209,12 +210,12 @@ export default function ProfileScreen() {
             ) : null}
           </div>
           {me ? (
-            <div className="tnum mt-3 text-xs text-muted">
-              Récord {me.record.w}-{me.record.l}
-              {me.record.v ? `-${me.record.v}` : ""} · <span className={me.units > 0 ? "text-win" : me.units < 0 ? "text-loss" : ""}>{me.units >= 0 ? "+" : ""}{me.units.toFixed(1)}u</span> · {me.followers} seguidores · ROI {me.roi >= 0 ? "+" : ""}
-              {me.roi.toFixed(1)}%
-              {me.battles && me.battles.w + me.battles.l + me.battles.d > 0 ? ` · ✊ ${me.battles.w}-${me.battles.l}` : ""}
-            </div>
+            <>
+              <div className="tnum mt-3 text-xs text-muted">
+                {me.followers} seguidores · {me.following} siguiendo
+              </div>
+              <StatsWindows profile={me} compact />
+            </>
           ) : null}
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             <Stat k="Saldo" v={`$${formatUsd(balance)}`} />

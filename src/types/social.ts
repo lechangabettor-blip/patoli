@@ -2,6 +2,14 @@
 
 type BetStatus = "open" | "won" | "lost" | "void";
 
+export type WindowKey = "d7" | "d30" | "all";
+
+/** One rolling window of results. Sports and Batalla are separate records. */
+export interface StatsWindow {
+  sports: { w: number; l: number; v: number; units: number; pnl: number; staked: number; roi: number };
+  battles: { w: number; l: number; d: number; pnl: number };
+}
+
 export interface PublicProfile {
   id: string;
   handle: string;
@@ -20,6 +28,8 @@ export interface PublicProfile {
   following: number;
   /** Arena (piedra·papel·tijera) record */
   battles: { w: number; l: number; d: number; pnl: number };
+  /** Rolling windows by settlement time (single-profile loads only) */
+  windows?: Record<WindowKey, StatsWindow>;
   createdAt: string;
   /** Only present when a viewer is known */
   isFollowing?: boolean;
