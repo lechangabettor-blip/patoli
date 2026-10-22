@@ -116,6 +116,8 @@ interface BetRow {
   size: number;
   price: number;
   usdc: number;
+  fee_usdc: number;
+  builder_fee: number;
   status: FeedItem["status"];
   pnl: number | null;
   tx_hash: string | null;
@@ -130,7 +132,7 @@ export async function loadFeed(opts: { scope: "all" | "following" | "profile"; v
   let q = db
     .from("bets")
     .select(
-      "id, profile_id, outcome, outcome_index, side, size, price, usdc, status, pnl, tx_hash, matched_at, token_id, markets!bets_condition_id_fkey(question, event_title, event_slug, league, kind, line, game_start), profiles!bets_profile_id_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
+      "id, profile_id, outcome, outcome_index, side, size, price, usdc, fee_usdc, builder_fee, status, pnl, tx_hash, matched_at, token_id, markets!bets_condition_id_fkey(question, event_title, event_slug, league, kind, line, game_start), profiles!bets_profile_id_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
     )
     .eq("side", "BUY")
     .not("profile_id", "is", null)
@@ -326,8 +328,9 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
     eventSlug: m?.event_slug ?? null,
     selection,
     market: MARKET_LABEL[kind] ?? "Otro",
-    odds: Number(b.price) > 0 ? 1 / Number(b.price) : 0,
-    stake: Number(b.usdc),
+    // What left the wallet (shares + Polymarket fee + Patoli fee) → effective odds = payout / that.
+    odds: Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0) > 0 ? Number(b.size) / (Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0)) : 0,
+    stake: Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0),
     payout: Number(b.size),
     status: b.status,
     pnl: b.pnl == null ? null : Number(b.pnl),

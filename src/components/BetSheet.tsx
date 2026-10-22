@@ -59,8 +59,13 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const scores = useScores(selection.game.league, live);
   const score = scores.data?.[selection.game.slug];
   const price = quote.data?.[selection.outcome.tokenId]?.ask ?? selection.price;
-  const b = useMemo(() => breakdown(price, undefined, takerBps), [price, takerBps]);
-  const payout = stake / b.costPerShare;
+  const b = useMemo(() => breakdown(price, selection.market.fee, takerBps), [price, selection.market.fee, takerBps]);
+  // Polymarket spends the full stake on shares and charges the fee ON TOP (that is what leaves the wallet).
+  const shares = stake / b.price;
+  const polymarketFeeUsd = shares * b.polymarketFee;
+  const patoliFeeUsd = shares * b.patoliFee;
+  const total = stake + polymarketFeeUsd + patoliFeeUsd;
+  const payout = shares;
   const minStake = Math.max(1, selection.market.minOrderSize * price);
 
   async function submit() {
@@ -95,7 +100,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
         selection: selection.outcome.label,
         market: MARKET_NAME[selection.market.kind],
         odds: b.netOdds,
-        stake,
+        stake: total,
         payout,
         placedAt: new Date().toISOString(),
         status: "open",
@@ -143,8 +148,8 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
             {/* Price transparency — the whole point */}
             <div className="tnum mt-4 space-y-1.5 rounded-xl bg-surface/60 p-3 text-xs text-muted">
               <Row k="Precio de mercado (Polymarket)" v={formatOdds(b.marketOdds)} />
-              <Row k="Comisión Polymarket" v={`${((b.polymarketFee / b.price) * 100).toFixed(2)}%`} />
-              <Row k="Comisión Patoli" v={takerBps > 0 ? `${((b.patoliFee / b.price) * 100).toFixed(2)}%` : "0% (beta)"} />
+              <Row k="Comisión Polymarket" v={b.polymarketFee > 0 ? `${formatUsd(polymarketFeeUsd)} (${((b.polymarketFee / b.price) * 100).toFixed(2)}%)` : "$0.00"} />
+              <Row k="Comisión Patoli" v={takerBps > 0 ? `${formatUsd(patoliFeeUsd)} (${((b.patoliFee / b.price) * 100).toFixed(2)}%)` : "$0.00 (beta)"} />
               <div className="flex items-center justify-between border-t border-hairline pt-1.5 text-ink">
                 <span>Tu precio</span>
                 <span className="font-semibold">{formatOdds(b.netOdds)}</span>
@@ -184,6 +189,10 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
               <div className="tnum mt-2 flex items-center justify-between text-sm">
                 <span className="text-muted">Si gana cobras</span>
                 <span className="font-display text-lg font-extrabold text-win">${formatUsd(payout)}</span>
+              </div>
+              <div className="tnum mt-1 flex items-center justify-between text-xs text-muted">
+                <span>Sale de tu saldo</span>
+                <span>${formatUsd(total)}{total > stake ? " · incluye comisiones" : ""}</span>
               </div>
             </div>
 

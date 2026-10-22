@@ -41,7 +41,7 @@ export default function GameCard({
     const live = prices?.[o.tokenId]?.ask ?? null;
     const p = live ?? (o.price > 0 && o.price < 1 ? o.price : null);
     const dead = p == null || !m.acceptingOrders;
-    const odds = p != null ? breakdown(p, undefined, takerBps).netOdds : null;
+    const odds = p != null ? breakdown(p, m.fee, takerBps).netOdds : null;
     return (
       <button
         disabled={dead}

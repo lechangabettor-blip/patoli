@@ -277,7 +277,7 @@ async function settleResolvedMarkets(errors: string[]): Promise<number> {
   }
   let n = 0;
   for (const r of resolved) {
-    const { data: bets } = await db.from("bets").select("id, outcome_index, size, usdc, side").eq("condition_id", r.condition_id).eq("status", "open");
+    const { data: bets } = await db.from("bets").select("id, outcome_index, size, usdc, fee_usdc, builder_fee, side").eq("condition_id", r.condition_id).eq("status", "open");
     for (const b of bets ?? []) {
       let status: "won" | "lost" | "void";
       let pnl: number;
@@ -286,8 +286,9 @@ async function settleResolvedMarkets(errors: string[]): Promise<number> {
         pnl = 0;
       } else if (b.side === "BUY") {
         const won = b.outcome_index === r.winning_index;
+        const paid = Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0);
         status = won ? "won" : "lost";
-        pnl = won ? Number(b.size) - Number(b.usdc) : -Number(b.usdc);
+        pnl = won ? Number(b.size) - paid : -paid;
       } else {
         // SELL = closed a position early; realized P&L lives on the BUY row. Mark void for the record.
         status = "void";

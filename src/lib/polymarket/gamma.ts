@@ -1,5 +1,6 @@
 import "server-only";
 import { GAMMA_API_URL } from "./constants";
+import { DEFAULT_FEE, type FeeSchedule } from "./odds";
 import { LEAGUES, LEAGUE_BY_ID, type LeagueId, type League } from "./leagues";
 
 /**
@@ -34,6 +35,8 @@ export interface GameMarket {
   minOrderSize: number;
   acceptingOrders: boolean;
   liquidity: number;
+  /** Polymarket's taker fee for this market: per share = rate · (p·(1−p))^exponent */
+  fee: FeeSchedule;
   outcomes: GameOutcome[];
 }
 
@@ -172,6 +175,8 @@ interface GammaMarket {
   orderPriceMinTickSize?: number;
   orderMinSize?: number;
   acceptingOrders?: boolean;
+  feesEnabled?: boolean;
+  feeSchedule?: { rate?: number; exponent?: number; takerOnly?: boolean };
   liquidityNum?: number;
   liquidity?: string | number;
   gameStartTime?: string;
@@ -232,6 +237,10 @@ function base(m: GammaMarket, kind: MarketKind, line: number | null): Omit<GameM
     minOrderSize: Number(m.orderMinSize ?? 5),
     acceptingOrders: m.acceptingOrders !== false,
     liquidity: liq(m),
+    fee:
+      m.feesEnabled === false
+        ? { rate: 0, exponent: 1 }
+        : { rate: Number(m.feeSchedule?.rate ?? DEFAULT_FEE.rate), exponent: Number(m.feeSchedule?.exponent ?? 1) },
   };
 }
 

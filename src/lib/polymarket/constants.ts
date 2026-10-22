@@ -50,7 +50,8 @@ export const NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS = "0xadA2005600Dec949baf300
 export const V2_ROUTER_ADDRESS = "0x12121212006e4CD160D18e3f00711DA5c3372600" as const;
 
 // Fees (see docs: sports taker fee rate 0.05 since Jul-2026; builder fee is ours)
-export const POLYMARKET_SPORTS_FEE_RATE = 0.05;
+/** FALLBACK ONLY — the real rate comes per market from Gamma's `feeSchedule` (NFL 3%, Liga MX 5%, NBA 0% as of 2026-10). */
+export const POLYMARKET_SPORTS_FEE_RATE = 0.03;
 /** Our builder fee in basis points (max allowed by the Builder Program is 100). */
 export const PATOLI_BUILDER_FEE_BPS = Number(process.env.NEXT_PUBLIC_PATOLI_FEE_BPS ?? 100);
 

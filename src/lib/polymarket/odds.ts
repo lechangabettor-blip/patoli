@@ -5,7 +5,8 @@ import { PATOLI_BUILDER_FEE_BPS, POLYMARKET_SPORTS_FEE_RATE } from "./constants"
  *
  * Polymarket shares pay $1 if the outcome happens. A share bought at price p
  * costs p plus fees:
- *   - Polymarket taker fee  = feeRate · p · (1 − p)   per share
+ *   - Polymarket taker fee  = rate · (p · (1 − p))^exponent   per share — rate and exponent
+ *     are set per market by Polymarket (Gamma `feeSchedule`); exponent is 1 today
  *   - Patoli builder fee    = p · bps / 10 000          per share
  * Decimal odds are 1 / (effective cost per share).
  */
@@ -27,13 +28,20 @@ export interface OddsBreakdown {
   totalFeePct: number;
 }
 
+export interface FeeSchedule {
+  rate: number;
+  exponent: number;
+}
+
+export const DEFAULT_FEE: FeeSchedule = { rate: POLYMARKET_SPORTS_FEE_RATE, exponent: 1 };
+
 export function breakdown(
   price: number,
-  feeRate = POLYMARKET_SPORTS_FEE_RATE,
+  fee: FeeSchedule = DEFAULT_FEE,
   builderBps = PATOLI_BUILDER_FEE_BPS,
 ): OddsBreakdown {
   const p = clamp(price, 0.001, 0.999);
-  const polymarketFee = feeRate * p * (1 - p);
+  const polymarketFee = fee.rate * Math.pow(p * (1 - p), fee.exponent || 1);
   const patoliFee = (p * builderBps) / 10_000;
   const costPerShare = p + polymarketFee + patoliFee;
   return {

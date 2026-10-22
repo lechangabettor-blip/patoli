@@ -125,7 +125,7 @@ const Ticket = forwardRef<HTMLDivElement, { data: TicketData; className?: string
         {/* numbers */}
         <div className="mt-6 grid grid-cols-3 gap-2 px-6">
           <Num k="Momio" v={formatOdds(data.odds)} accent />
-          <Num k="Juega" v={`$${formatUsd(data.stake, 0)}`} />
+          <Num k="Juega" v={`${formatUsd(data.stake, Math.abs(data.stake - Math.round(data.stake)) < 0.005 ? 0 : 2)}`} />
           <Num k={status === "won" ? "Cobró" : "Cobra"} v={`$${formatUsd(data.payout, 2)}`} win={status === "won"} />
         </div>
 
