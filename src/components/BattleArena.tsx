@@ -610,7 +610,7 @@ function MatchView({ id, myEoa, onExit, onRematch }: { id: string; myEoa: Hex; o
                 leagueEmoji: "✊",
                 matchup: `vs @${rival}`,
                 selection: `${draw ? "Empate" : iWon ? "Ganaste" : "Perdiste"} ${myScore}-${theirScore}`,
-                market: "Piedra, papel o tijera",
+                market: "✊ Batalla",
                 odds: 2,
                 stake: Number(m.stake),
                 payout: Number(m.stake) * 2,

@@ -22,7 +22,7 @@ const STATUS: Record<FeedItem["status"], { label: string; cls: string }> = {
   void: { label: "Anulada", cls: "text-push border-hairline bg-surface" },
 };
 
-const MARKET_LABEL: Record<FeedItem["market"], string> = { ML: "Ganador", Spread: "Hándicap", Total: "Total", BTTS: "Ambos anotan", Batalla: "Piedra, papel o tijera", Otro: "Mercado" };
+const MARKET_LABEL: Record<FeedItem["market"], string> = { ML: "Ganador", Spread: "Hándicap", Total: "Total", BTTS: "Ambos anotan", Batalla: "Batalla", Otro: "Mercado" };
 
 export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem; index?: number; onTicket?: (item: FeedItem) => void }) {
   const now = useNow();
@@ -89,7 +89,7 @@ export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem
             {item.event}
           </div>
           <div className="mt-0.5 truncate font-display text-xl font-extrabold uppercase leading-none">{item.selection}</div>
-          <div className="mt-1 truncate text-xs text-muted">{isBattle ? `vs @${item.battle!.opponent.handle} · ${MARKET_LABEL[item.market]}` : MARKET_LABEL[item.market]}</div>
+          <div className="mt-1 truncate text-xs text-muted">{isBattle ? `vs @${item.battle!.opponent.handle}` : MARKET_LABEL[item.market]}</div>
         </div>
         <div className="shrink-0 text-right">
           <div className="tnum font-display text-2xl font-extrabold text-accent-soft">{isBattle ? `${item.battle!.scoreMe}-${item.battle!.scoreThem}` : formatOdds(item.odds)}</div>

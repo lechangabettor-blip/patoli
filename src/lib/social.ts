@@ -293,7 +293,7 @@ export async function loadBattles(opts: { scope: "all" | "following" | "profile"
         kind: "battle",
         user: { handle: me.handle, avatar: me.avatar, verified: me.verified, record: me.record, pnl: me.pnl },
         league: null,
-        event: "Batalla · piedra, papel o tijera",
+        event: "✊ Batalla",
         eventSlug: null,
         selection: `${result === "draw" ? "Empate" : result === "won" ? "Ganó" : "Perdió"} ${scoreMe}-${scoreThem}`,
         market: "Batalla",
