@@ -3,7 +3,7 @@
 import type { Game, GameMarket, GameOutcome } from "@/lib/polymarket/gamma";
 import type { PriceMap } from "@/hooks/useGames";
 import { breakdown, formatOdds } from "@/lib/polymarket/odds";
-import { kickoffLabel } from "@/lib/format";
+import { isLive, kickoffLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 import { useBuilderFee } from "@/hooks/useBuilderFee";
 import { cn } from "@/lib/cn";
@@ -32,6 +32,7 @@ export default function GameCard({
   const spread = game.markets.find((m) => m.kind === "spread");
   const btts = game.markets.find((m) => m.kind === "btts");
   const total = game.markets.find((m) => m.kind === "total");
+  const live = !!now && isLive(game.startTime, now);
 
   const Btn = ({ m, o, stacked = false }: { m: GameMarket; o: GameOutcome; stacked?: boolean }) => {
     const live = prices?.[o.tokenId]?.ask ?? null;
@@ -62,7 +63,13 @@ export default function GameCard({
     <article className="card rise overflow-hidden" style={{ animationDelay: `${index * 40}ms` }}>
       <div className="px-4 pt-3">
         <div className="flex items-center gap-2 text-[11px] text-muted">
-          <span className="rounded-full bg-surface px-2 py-0.5">{kickoffLabel(game.startTime, now)}</span>
+          {live ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-[rgba(226,75,74,.15)] px-2 py-0.5 font-display text-[10px] font-extrabold uppercase tracking-wide text-loss">
+              <span className="pulse-soft inline-block h-1.5 w-1.5 rounded-full bg-loss" /> En vivo
+            </span>
+          ) : (
+            <span className="rounded-full bg-surface px-2 py-0.5">{kickoffLabel(game.startTime, now)}</span>
+          )}
           {ml && ml.outcomes.length === 3 ? <span>1X2</span> : null}
         </div>
         <h3 className="mt-1.5 font-display text-[17px] font-extrabold uppercase leading-tight tracking-tight">

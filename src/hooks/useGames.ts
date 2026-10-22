@@ -19,13 +19,14 @@ export function useGames(league: LeagueId) {
 
 export type PriceMap = Record<string, { bid: number | null; ask: number | null; mid: number | null }>;
 
-export function usePrices(tokenIds: string[]) {
+/** Order-book prices for a set of tokens. `intervalMs` 2 s while a game is in play, 5 s prematch. */
+export function usePrices(tokenIds: string[], intervalMs = 5_000) {
   const key = tokenIds.slice().sort().join(",");
   return useQuery({
     queryKey: ["prices", key],
     enabled: tokenIds.length > 0,
-    refetchInterval: 5_000,
-    staleTime: 3_000,
+    refetchInterval: intervalMs,
+    staleTime: Math.min(3_000, intervalMs - 500),
     queryFn: async (): Promise<PriceMap> => {
       const r = await fetch("/api/prices", {
         method: "POST",

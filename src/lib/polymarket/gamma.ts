@@ -1,6 +1,6 @@
 import "server-only";
 import { GAMMA_API_URL } from "./constants";
-import { LEAGUES, LEAGUE_BY_ID, type LeagueId } from "./leagues";
+import { LEAGUES, LEAGUE_BY_ID, type LeagueId, type League } from "./leagues";
 
 /**
  * Server-side reads of Polymarket's Gamma API, normalized to what the Sports
@@ -53,6 +53,9 @@ export interface Game {
 const TTL_MS = 45_000;
 const cache = new Map<LeagueId, { at: number; games: Game[] }>();
 
+/** Longest a game of each sport can plausibly run, kickoff to final whistle (incl. OT / stoppage). */
+const MAX_GAME_MS: Record<League["sport"], number> = { soccer: 2.25 * 3600_000, basketball: 3 * 3600_000, football: 4 * 3600_000 };
+
 export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> {
   const hit = cache.get(league);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.games.slice(0, limit);
@@ -87,7 +90,8 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
     if (b && (!b.total || liq(m) > liq(b.total))) b.total = m;
   }
 
-  const cutoff = Date.now() - 10 * 60_000; // prematch only (small grace for clock skew)
+  // In-play games stay on the board (live bets, 2026-10-21); a game leaves once it is surely over.
+  const cutoff = Date.now() - MAX_GAME_MS[cfg.sport];
   const games: Game[] = [];
   for (const [slug, b] of byGame) {
     if (b.ml.length === 0) continue;

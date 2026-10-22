@@ -16,6 +16,9 @@ import { useMe } from "@/providers/MeProvider";
 import { usePlaceBet } from "@/hooks/usePlaceBet";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { useBuilderFee } from "@/hooks/useBuilderFee";
+import { usePrices } from "@/hooks/useGames";
+import { useNow } from "@/hooks/useNow";
+import { isLive } from "@/lib/format";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { cn } from "@/lib/cn";
@@ -48,9 +51,15 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const [fail, setFail] = useState<string | null>(null);
   const handle = me?.handle ?? ((email ?? "tú").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "tú");
 
-  const b = useMemo(() => breakdown(selection.price, undefined, takerBps), [selection.price, takerBps]);
+  // The sheet keeps quoting while open (2 s in play, 5 s prematch): the price the user confirms is
+  // the price on screen at that moment, and the order is capped at exactly that.
+  const now = useNow();
+  const live = !!now && isLive(selection.game.startTime, now);
+  const quote = usePrices([selection.outcome.tokenId], live ? 2_000 : 5_000);
+  const price = quote.data?.[selection.outcome.tokenId]?.ask ?? selection.price;
+  const b = useMemo(() => breakdown(price, undefined, takerBps), [price, takerBps]);
   const payout = stake / b.costPerShare;
-  const minStake = Math.max(1, selection.market.minOrderSize * selection.price);
+  const minStake = Math.max(1, selection.market.minOrderSize * price);
 
   async function submit() {
     setFail(null);
@@ -71,6 +80,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
       stake,
       negRisk: selection.market.negRisk,
       tickSize: selection.market.tickSize,
+      price,
     });
     if (res.ok) {
       const league = LEAGUE_BY_ID[selection.game.league];
@@ -90,7 +100,10 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
         proof: res.txHashes[0] ?? res.orderId,
         kickoff: selection.game.startTime,
       });
-    } else setFail(res.reason);
+    } else {
+      if (res.lineMoved) void quote.refetch();
+      setFail(res.reason);
+    }
   }
 
   const busy = isPlacing || (step !== "idle" && step !== "complete");
@@ -110,7 +123,10 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
           </div>
         ) : (
           <div>
-            <div className="text-[11px] uppercase tracking-wider text-muted">{selection.game.title}</div>
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted">
+              {selection.game.title}
+              {live ? <span className="rounded-full bg-[rgba(226,75,74,.15)] px-1.5 py-0.5 font-display text-[9px] font-extrabold text-loss">En vivo</span> : null}
+            </div>
             <div className="mt-1 flex items-end justify-between gap-3">
               <div className="font-display text-2xl font-extrabold uppercase leading-none">{selection.outcome.label}</div>
               <div className="tnum font-display text-3xl font-extrabold text-accent-soft">{formatOdds(b.netOdds)}</div>

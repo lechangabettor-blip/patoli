@@ -8,6 +8,8 @@ import BetSheet from "./BetSheet";
 import { LEAGUES, isLeagueId, type LeagueId } from "@/lib/polymarket/leagues";
 import { useGames, usePrices } from "@/hooks/useGames";
 import { cn } from "@/lib/cn";
+import { useNow } from "@/hooks/useNow";
+import { isLive } from "@/lib/format";
 
 /**
  * The URL is the source of truth: /deportes?liga=nfl&partido=<slug>.
@@ -36,7 +38,9 @@ export default function SportsBoard() {
     () => ordered.slice(0, 12).flatMap((g) => g.markets.flatMap((m) => m.outcomes.map((o) => o.tokenId))),
     [ordered],
   );
-  const prices = usePrices(tokenIds);
+  const now = useNow();
+  const anyLive = !!now && ordered.slice(0, 12).some((g) => isLive(g.startTime, now));
+  const prices = usePrices(tokenIds, anyLive ? 2_000 : 5_000);
 
   // Keep the active league chip in view when arriving from a deep link
   const railRef = useRef<HTMLDivElement>(null);
@@ -85,7 +89,7 @@ export default function SportsBoard() {
           ))
         )}
         <p className="pb-2 pt-4 text-center text-[11px] text-muted-2">
-          Precios en vivo de Polymarket · tu precio ya incluye comisiones · prematch
+          Precios en vivo de Polymarket · tu precio ya incluye comisiones · prematch y en vivo
         </p>
       </section>
 

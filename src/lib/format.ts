@@ -6,6 +6,12 @@ export function shortAddress(a?: string | null, n = 4) {
 }
 
 /** Kickoff label relative to `now`; empty while the clock is unknown (prerender). */
+/** Game has started and is plausibly still running (the board already drops games that are surely over). */
+export function isLive(iso: string, now: Date): boolean {
+  const diff = now.getTime() - new Date(iso).getTime();
+  return diff >= 0 && diff < 4 * 3600_000;
+}
+
 export function kickoffLabel(iso: string, now: Date | null): string {
   if (!now) return "";
   const d = new Date(iso);
