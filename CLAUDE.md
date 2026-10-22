@@ -172,7 +172,13 @@ src/components/            screens + UI primitives
 - Session shortcuts in usePlaceBet (`approvalsOk`, `collateralSynced`) skip the on-chain
   approval check and the CLOB balance poll after the first successful order; reset on a
   balance/allowance rejection. Saves ~0.5–1 s per bet.
-- Not built: CLOB WebSocket (sub-second prices), scores/clock on the card (needs a score feed).
+- Scores: `src/lib/scores.ts` + `/api/scores?league=` — ESPN public scoreboard
+  (site.api.espn.com, unofficial, no key; league paths in `ESPN_PATH`), 8 s server cache, client
+  polls 10 s while any game is live (`useScores`). Team matching via `sameTeam` on ESPN's
+  displayName/short/name/location, same-day window. Fallback = Polymarket's own event score
+  (`Game.pmScore` from the embedded event: score/elapsed/period/live/ended, ~45 s behind).
+  Score is shown in title order (first-named team first); Polymarket's "74-68" is title order too.
+- Not built: CLOB WebSocket (sub-second prices).
 
 ## Arena — PvP piedra·papel·tijera (built 2026-10-17, NOT deployed yet)
 
