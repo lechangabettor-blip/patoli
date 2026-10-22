@@ -159,6 +159,21 @@ src/components/            screens + UI primitives
 - **Client:** `MeProvider` syncs the profile after login; `useSocial` hooks;
   `FeedCard`/`HomeFeed`/`PublicProfile`/`SearchScreen` consume the APIs.
 
+## Live bets (2026-10-21)
+
+- Board keeps in-play games until kickoff + max duration per sport (`MAX_GAME_MS` in gamma.ts:
+  soccer 2h15, basketball 3h, football 4h); `isLive()` in format.ts drives the "En vivo" pill.
+- Prices: `usePrices(tokenIds, 2000 | 5000)` — 2 s while any listed game is live. Structure
+  (Gamma) stays cached 45 s + CDN 30 s; only prices need to be fresh.
+- Order = FOK market order **capped at the on-screen price** (`price` in PlaceBetParams →
+  UserMarketOrderV2.price). Fills at that price or better, else the CLOB rejects and the sheet
+  re-quotes (`lineMoved`). The bet sheet polls its own token while open, so "the price you tap"
+  = "the price you confirm". No "aceptar cambios" dialog (LeChanga's call).
+- Session shortcuts in usePlaceBet (`approvalsOk`, `collateralSynced`) skip the on-chain
+  approval check and the CLOB balance poll after the first successful order; reset on a
+  balance/allowance rejection. Saves ~0.5–1 s per bet.
+- Not built: CLOB WebSocket (sub-second prices), scores/clock on the card (needs a score feed).
+
 ## Arena — PvP piedra·papel·tijera (built 2026-10-17, NOT deployed yet)
 
 > **2026-10-21 — settlement reconcile.** Instant settle and the cron sweep can run the same
