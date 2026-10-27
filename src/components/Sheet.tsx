@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
 
@@ -15,6 +16,9 @@ export default function Sheet({
   title?: string;
   children: React.ReactNode;
 }) {
+  // Portal to <body>: a sheet rendered inside an animated card (transform → containing block
+  // for position:fixed) would open inside the card instead of over the whole screen.
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -26,7 +30,8 @@ export default function Sheet({
     };
   }, [open, onClose]);
 
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <>
@@ -64,6 +69,9 @@ export default function Sheet({
           </motion.div>
         </>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
+
+const subscribeNoop = () => () => {};
