@@ -27,7 +27,9 @@ type Chip = { id: string; label: string; test: (m: DetailMarket) => boolean };
 
 const PERIOD_LABEL: Record<Period, string> = { full: "", "1h": "1ª mitad", "2h": "2ª mitad", q1: "1er cuarto", q2: "2º cuarto", q3: "3er cuarto", q4: "4º cuarto" };
 const PERIOD_ORDER: Record<Period, number> = { full: 0, "1h": 1, "2h": 2, q1: 3, q2: 4, q3: 5, q4: 6 };
-const GROUP_ORDER: Record<DetailMarket["group"], number> = { ganador: 0, handicap: 1, total: 2, btts: 3, equipo: 4, props: 5, otros: 7 };
+const GROUP_ORDER: Record<DetailMarket["group"], number> = { ganador: 0, doble: 1, handicap: 2, total: 3, btts: 4, equipo: 5, props: 6, otros: 8 };
+/** A line counts only if someone is selling it for real: ≥ this many dollars within 2¢ of the best ask */
+const MIN_DEPTH_USD = 20;
 const STATS: { id: string; label: string }[] = [
   { id: "points", label: "Puntos" },
   { id: "rebounds", label: "Rebotes" },
@@ -42,6 +44,7 @@ const CHIPS: Chip[] = [
   { id: "todos", label: "Todos", test: () => true },
   ...STATS.map((st) => ({ id: st.id, label: st.label, test: (m: DetailMarket) => m.stat === st.id })),
   { id: "ganador", label: "Ganador", test: (m) => m.group === "ganador" },
+  { id: "doble", label: "Doble oportunidad", test: (m) => m.group === "doble" },
   { id: "handicap", label: "Hándicap", test: (m) => m.group === "handicap" },
   { id: "total", label: "Totales", test: (m) => m.group === "total" },
   { id: "btts", label: "Ambos anotan", test: (m) => m.group === "btts" },
@@ -67,8 +70,9 @@ interface Section {
   defaultOpen: boolean;
 }
 
-/** A line somebody is actually quoting on both sides (Gamma price, so rows never jump with live ticks). */
-const alive = (m: GameMarket) => m.outcomes.length >= 2 && m.outcomes.slice(0, 2).every((o) => o.price > 0.01 && o.price < 0.99);
+/** A line somebody is really selling on both sides: a sane price and enough dollars behind it (order book at load time, so rows never jump with live ticks). */
+const sellable = (o: GameOutcome) => o.price > 0.01 && o.price < 0.97 && (o.depth === undefined || o.depth >= MIN_DEPTH_USD);
+const alive = (m: GameMarket) => m.outcomes.length >= 2 && m.outcomes.slice(0, 2).every(sellable);
 /** Most liquid line; if that one is lopsided (or liquidity is unknown), the line closest to even. */
 function mainOf(ms: DetailMarket[]): DetailMarket {
   const even = (m: DetailMarket) => Math.abs((m.outcomes[0]?.price ?? 0.5) - 0.5);
@@ -89,7 +93,7 @@ function buildSections(markets: DetailMarket[]): Section[] {
       let title = m.label;
       if (m.kind === "prop") title = `${m.label.split(" · ")[0]}${m.period === "full" ? "" : ` · ${PERIOD_LABEL[m.period]}`}`;
       if (m.group === "otros") title = m.period === "full" ? "Otros mercados" : `Otros · ${PERIOD_LABEL[m.period]}`;
-      s = { key, title, layout, group: m.group, period: m.period, markets: [], compact: [], defaultOpen: m.period === "full" && (m.group === "ganador" || m.group === "handicap" || m.group === "total") };
+      s = { key, title, layout, group: m.group, period: m.period, markets: [], compact: [], defaultOpen: m.period === "full" && (m.group === "ganador" || m.group === "doble" || m.group === "handicap" || m.group === "total") };
       map.set(key, s);
     }
     s.markets.push(m);
@@ -112,14 +116,14 @@ function buildSections(markets: DetailMarket[]): Section[] {
       for (const m of s.markets) byPlayer.set(m.subject ?? "", [...(byPlayer.get(m.subject ?? "") ?? []), m]);
       s.compact = [...byPlayer.values()].map(mainOf);
     } else {
-      s.markets = s.markets.filter((m) => m.outcomes.some((o) => o.price > 0.01 && o.price < 0.99));
+      s.markets = s.markets.map((m) => ({ ...m, outcomes: m.outcomes.filter(sellable) })).filter((m) => m.outcomes.length >= 2 || (m.group === "doble" && m.outcomes.length >= 1));
       if (s.markets.length === 0) continue;
       s.compact = s.markets;
     }
     out.push(s);
   }
   // Todos: the three core markets, then player props, then the rest of the full game, then halves and quarters.
-  const rank = (s: Section) => (s.period === "full" && (s.group === "ganador" || s.group === "handicap" || s.group === "total") ? 0 : s.group === "props" ? 1 : s.period === "full" ? 2 : 3);
+  const rank = (s: Section) => (s.period === "full" && (s.group === "ganador" || s.group === "doble" || s.group === "handicap" || s.group === "total") ? 0 : s.group === "props" ? 1 : s.period === "full" ? 2 : 3);
   out.sort((a, b) => rank(a) - rank(b) || PERIOD_ORDER[a.period] - PERIOD_ORDER[b.period] || GROUP_ORDER[a.group] - GROUP_ORDER[b.group] || (STAT_ORDER[a.markets[0].stat ?? ""] ?? 9) - (STAT_ORDER[b.markets[0].stat ?? ""] ?? 9) || a.title.localeCompare(b.title));
   return out;
 }
@@ -146,18 +150,18 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
     [sections, chip, active],
   );
   const isOpen = (s: Section) => toggled[s.key] ?? (chip !== "todos" || s.defaultOpen);
-  const shown = (s: Section) => (expanded[s.key] ? s.markets : s.compact);
+  const shown = (s: Section) => s.compact;
 
   const live = !!detail && !!now && isLive(detail.game.startTime, now);
   const scores = useScores(detail?.game.league ?? "nfl", live);
   const score = detail ? scores.data?.[detail.game.slug] : undefined;
 
-  const tokenIds = useMemo(() => visible.filter(isOpen).flatMap((s) => shown(s).flatMap((m) => m.outcomes.map((o) => o.tokenId))).slice(0, 200), [visible, toggled, expanded, chip]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tokenIds = useMemo(() => visible.filter(isOpen).flatMap((s) => shown(s).flatMap((m) => m.outcomes.map((o) => o.tokenId))).slice(0, 200), [visible, toggled, chip]); // eslint-disable-line react-hooks/exhaustive-deps
   const prices = usePrices(tokenIds, live ? 2_000 : 5_000);
 
   const game: Game | null = detail ? { ...detail.game, markets: [] } : null;
   const league = detail ? LEAGUE_BY_ID[detail.game.league] : null;
-  const offered = sections.reduce((n, s) => n + s.markets.length, 0);
+  const offered = sections.reduce((n, s) => n + s.compact.length, 0);
 
   return (
     <>
@@ -229,7 +233,7 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
                   <button onClick={() => setToggled((t) => ({ ...t, [s.key]: !open }))} className="flex w-full items-center justify-between px-4 py-3 text-left" aria-expanded={open}>
                     <span className="font-display text-[13px] font-extrabold uppercase tracking-wide">{s.title}</span>
                     <span className="flex items-center gap-2 text-[11px] text-muted-2">
-                      {s.markets.length > 1 ? `${s.markets.length}` : ""}
+                      {rows.length > 1 ? `${rows.length}` : ""}
                       <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
                     </span>
                   </button>

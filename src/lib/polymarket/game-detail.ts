@@ -1,5 +1,5 @@
 import "server-only";
-import { GAMMA_API_URL } from "./constants";
+import { CLOB_API_URL, GAMMA_API_URL } from "./constants";
 import { DEFAULT_FEE } from "./odds";
 import { LEAGUES, LEAGUE_BY_ID, type LeagueId } from "./leagues";
 import { sameTeam, shortTeam, type Game, type GameMarket, type GameOutcome, type MarketKind, type Period } from "./gamma";
@@ -17,7 +17,7 @@ import { sameTeam, shortTeam, type Game, type GameMarket, type GameOutcome, type
 export interface DetailMarket extends GameMarket {
   period: Period;
   /** Chip the market belongs to on the game page */
-  group: "ganador" | "handicap" | "total" | "btts" | "equipo" | "props" | "otros";
+  group: "ganador" | "doble" | "handicap" | "total" | "btts" | "equipo" | "props" | "otros";
   /** Team (team totals) or player (props) */
   subject?: string;
   /** Props: points | rebounds | assists | threes | steals | blocks */
@@ -81,7 +81,7 @@ export async function fetchGameDetail(slug: string): Promise<GameDetail | null> 
   const league = LEAGUES.find((l) => slug.startsWith(`${l.slugPrefix}-`))?.id;
   if (!league) return null;
   const [main, more] = await Promise.all([fetchEvent(slug), fetchEvent(`${slug}-more-markets`)]);
-  const detail = main ? build(league, main, more) : null;
+  const detail = main ? await withBooks(build(league, main, more)) : null;
   cache.set(slug, { at: Date.now(), detail });
   return detail;
 }
@@ -133,8 +133,76 @@ function build(league: LeagueId, ev: GammaEvent, more: GammaEvent | null): GameD
   for (const period of Object.keys(threeWay) as Period[]) {
     const merged = mergeThreeWay(threeWay[period], { home, away, homeRaw, awayRaw }, period);
     if (merged) markets.push(merged);
+    const doble = dobleOportunidad(threeWay[period], { home, away, homeRaw, awayRaw }, period);
+    if (doble) markets.push(doble);
   }
   return { game, markets, offered };
+}
+
+/**
+ * Doble oportunidad (soccer): "X o empate" = the NO side of the other team's win market,
+ * "X o Y" = the NO side of the draw market. Same three markets as the 1X2, other outcome.
+ */
+function dobleOportunidad(ms: GammaMarket[], t: { home: string; away: string; homeRaw: string; awayRaw: string }, period: Period): DetailMarket | null {
+  const find = (key: "home" | "draw" | "away") =>
+    ms.find((m) => {
+      const g = (m.groupItemTitle ?? "").toLowerCase();
+      const q = m.question.toLowerCase();
+      if (key === "draw") return /draw|empate|tie/.test(g) || /end in a draw/.test(q);
+      return sameTeam(g || q, key === "home" ? t.homeRaw : t.awayRaw) && !/end in a draw/.test(q);
+    });
+  const no = (m: GammaMarket | undefined, label: string): GameOutcome | null => {
+    const p = m ? parsed(m) : null;
+    if (!p) return null;
+    const i = p.outcomes.findIndex((o) => /^no$/i.test(o));
+    return i < 0 ? null : { label, tokenId: p.tokens[i], price: p.prices[i] ?? 0 };
+  };
+  const outcomes = [no(find("away"), `${t.home} o Empate`), no(find("home"), `${t.away} o Empate`), no(find("draw"), `${t.home} o ${t.away}`)].filter((o): o is GameOutcome => !!o);
+  if (outcomes.length < 2) return null;
+  const first = find("away") ?? find("home") ?? ms[0];
+  return { ...mk(first, "moneyline", null, period, "doble", withPeriod("Doble oportunidad", period), outcomes), negRisk: ms.some((m) => m.negRisk) };
+}
+
+/**
+ * Real prices and depth from the order book. Gamma's price is a midpoint that can sit far from
+ * what you can actually buy (a thin line showed 0.285 while the best ask was 0.56), so each
+ * outcome gets the best ask as its price and the dollars offered within 2¢ of it as `depth`.
+ */
+async function withBooks(detail: GameDetail): Promise<GameDetail> {
+  const tokens = detail.markets.flatMap((m) => m.outcomes.map((o) => o.tokenId));
+  const chunks: string[][] = [];
+  for (let i = 0; i < tokens.length; i += 300) chunks.push(tokens.slice(i, i + 300));
+  const book = new Map<string, { ask: number; depth: number }>();
+  try {
+    const results = await Promise.all(
+      chunks.map(async (c) => {
+        const r = await fetch(`${CLOB_API_URL}/books`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(c.map((token_id) => ({ token_id }))), cache: "no-store", signal: AbortSignal.timeout(5_000) });
+        return r.ok ? ((await r.json()) as { asset_id: string; asks?: { price: string; size: string }[] }[]) : [];
+      }),
+    );
+    for (const b of results.flat()) {
+      const asks = (b.asks ?? []).map((a) => ({ p: Number(a.price), s: Number(a.size) })).filter((a) => a.p > 0 && a.s > 0).sort((x, y) => x.p - y.p);
+      const best = asks[0];
+      if (!best) {
+        book.set(b.asset_id, { ask: 0, depth: 0 });
+        continue;
+      }
+      const depth = asks.filter((a) => a.p <= best.p + 0.02).reduce((s, a) => s + a.s * a.p, 0);
+      book.set(b.asset_id, { ask: best.p, depth });
+    }
+  } catch {
+    return detail; // Gamma prices stay; the client still quotes live
+  }
+  for (const m of detail.markets) {
+    for (const o of m.outcomes) {
+      const b = book.get(o.tokenId);
+      if (!b) continue;
+      o.depth = Math.round(b.depth);
+      if (b.ask > 0) o.price = b.ask;
+      else o.price = 0; // nobody selling
+    }
+  }
+  return detail;
 }
 
 function periodOf(type: string): Period {

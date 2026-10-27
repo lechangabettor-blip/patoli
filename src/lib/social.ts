@@ -423,7 +423,13 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
   if (kind === "moneyline" && /^(yes|no)$/i.test(b.outcome) && m?.question) {
     const q = m.question;
     const team = /end in a draw/i.test(q) ? "Empate" : shortTeam((q.match(/^Will (.+?) win/i)?.[1] ?? q).trim());
-    selection = /^yes$/i.test(b.outcome) ? team : `No ${team}`;
+    if (/^yes$/i.test(b.outcome)) selection = team;
+    else {
+      // NO on a 1X2 side = doble oportunidad: "the other team or draw", or "either team" when it is the draw market
+      const teams = (m.event_title ?? "").split(/\s+vs\.?\s+/i).map((x) => shortTeam(x.trim()));
+      const other = teams.length === 2 ? teams.find((x) => x !== team) : undefined;
+      selection = team === "Empate" ? (teams.length === 2 ? `${teams[0]} o ${teams[1]}` : "Cualquiera gana") : `${other ?? "Rival"} o Empate`;
+    }
   }
   if (kind === "btts") selection = /^yes$/i.test(b.outcome) ? "Ambos anotan · Sí" : "Ambos anotan · No";
   if (kind === "team_total" && m?.line != null) {

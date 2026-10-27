@@ -67,6 +67,9 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const total = stake + polymarketFeeUsd + patoliFeeUsd;
   const payout = shares;
   const minStake = Math.max(1, selection.market.minOrderSize * price);
+  // Dollars really on offer near this price (game page passes it from the order book). Undefined = unknown.
+  const available = selection.outcome.depth;
+  const thin = available !== undefined && stake > available;
 
   async function submit() {
     setFail(null);
@@ -213,13 +216,16 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
               disabled={
                 busy ||
                 stake < minStake ||
+                thin ||
                 (status === "connected" && isReady && (stake > balance || !ATTRIBUTION_READY))
               }
               className="btn-accent mt-4 w-full py-3.5 text-sm"
             >
               {busy ? "Un momento…" : cta}
             </button>
-            {status === "connected" && isReady && stake > balance ? (
+            {thin ? (
+              <p className="mt-2 text-center text-xs text-loss">A este precio solo hay ${formatUsd(available ?? 0, 0)} disponibles. Baja el monto o elige otra línea.</p>
+            ) : status === "connected" && isReady && stake > balance ? (
               <p className="mt-2 text-center text-xs text-muted">Te falta saldo. Deposita USDC en tu perfil.</p>
             ) : (
               <p className="mt-2 text-center text-[11px] text-muted-2">Prematch · se liquida con las reglas de Polymarket · mínimo ${formatUsd(minStake, 0)}</p>

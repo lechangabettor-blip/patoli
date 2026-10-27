@@ -20,6 +20,8 @@ export type MarketKind = "moneyline" | "spread" | "total" | "btts" | "team_total
 export type Period = "full" | "1h" | "2h" | "q1" | "q2" | "q3" | "q4";
 
 export interface GameOutcome {
+  /** USD on the ask side within 2¢ of the best ask (game page only; from the order book) */
+  depth?: number;
   /** Display label, already localized: "Seahawks -2.5", "Más 46.5", "Empate" */
   label: string;
   tokenId: string;
