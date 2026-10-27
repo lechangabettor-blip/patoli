@@ -16,6 +16,8 @@ export interface Selection {
   market: GameMarket;
   outcome: GameOutcome;
   price: number;
+  /** Set when the pick was opened from someone's card (Súbaseee = same side, Bájeseee = opposite) */
+  source?: { betId: string; side: "tail" | "fade"; handle: string };
 }
 
 export default function GameCard({

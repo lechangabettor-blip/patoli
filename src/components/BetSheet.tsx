@@ -3,6 +3,7 @@
 import type { MarketKind } from "@/lib/polymarket/gamma";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Info } from "lucide-react";
 import Sheet from "./Sheet";
 import TicketShare from "./TicketShare";
@@ -14,6 +15,7 @@ import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { useMe } from "@/providers/MeProvider";
 import { usePlaceBet } from "@/hooks/usePlaceBet";
+import { useReact } from "@/hooks/useSocial";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { useBuilderFee } from "@/hooks/useBuilderFee";
 import { usePrices, useScores } from "@/hooks/useGames";
@@ -44,6 +46,8 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const { me } = useMe();
   const { isReady, step, setupTrading, error } = useTrading();
   const { placeBet, isPlacing } = usePlaceBet();
+  const react = useReact();
+  const qc = useQueryClient();
   const { balance } = useUsdcBalance();
   const { takerBps } = useBuilderFee();
   const [stake, setStake] = useState(10);
@@ -93,6 +97,13 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
       price,
     });
     if (res.ok) {
+      if (selection.source) {
+        // Count the tail/fade only on a real fill, then let every open feed pick up the new number.
+        void react(selection.source.betId, true, selection.source.side).then(() => {
+          void qc.invalidateQueries({ queryKey: ["feed"] });
+          void qc.invalidateQueries({ queryKey: ["user"] });
+        });
+      }
       const league = LEAGUE_BY_ID[selection.game.league];
       setDone({
         handle,
@@ -147,6 +158,11 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
               <div className="font-display text-2xl font-extrabold uppercase leading-none">{selection.outcome.label}</div>
               <div className="tnum font-display text-3xl font-extrabold text-accent-soft">{formatOdds(b.netOdds)}</div>
             </div>
+            {selection.source ? (
+              <p className="mt-1.5 text-xs text-muted">
+                {selection.source.side === "tail" ? "Te subes al pick de" : "Vas contra el pick de"} <span className="text-ink">@{selection.source.handle}</span>
+              </p>
+            ) : null}
 
             {/* Price transparency — the whole point */}
             <div className="tnum mt-4 space-y-1.5 rounded-xl bg-surface/60 p-3 text-xs text-muted">

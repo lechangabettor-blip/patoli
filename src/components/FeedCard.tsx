@@ -14,6 +14,7 @@ import { formatOdds, formatUsd } from "@/lib/polymarket/odds";
 import type { FeedItem } from "@/types/social";
 import { useMe } from "@/providers/MeProvider";
 import { useReact } from "@/hooks/useSocial";
+import TailButtons from "./TailButtons";
 
 const STATUS: Record<FeedItem["status"], { label: string; cls: string }> = {
   open: { label: "Abierta", cls: "text-accent-soft border-line bg-[rgba(255,61,23,.08)]" },
@@ -98,6 +99,8 @@ export default function FeedCard({ item, index = 0, onTicket }: { item: FeedItem
           </div>
         </div>
       </div>
+
+      <TailButtons item={item} />
 
       <footer className="mt-3 flex items-center justify-between border-t border-hairline pt-3">
         <div className="flex items-center gap-3">

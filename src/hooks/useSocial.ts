@@ -57,10 +57,10 @@ export function useUser(handle: string | null) {
 export function useReact() {
   const { getToken } = useMe();
   return useCallback(
-    async (id: string, on: boolean): Promise<{ fire: number; fired: boolean } | null> => {
+    async (id: string, on: boolean, kind: "fire" | "tail" | "fade" = "fire"): Promise<{ fire: number; fired: boolean } | null> => {
       const t = await getToken();
       if (!t) return null;
-      const r = await fetch("/api/react", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${t}` }, body: JSON.stringify({ id, on }) });
+      const r = await fetch("/api/react", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${t}` }, body: JSON.stringify({ id, on, kind }) });
       return r.ok ? r.json() : null;
     },
     [getToken],

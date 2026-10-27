@@ -55,12 +55,19 @@ export interface FeedItem {
   kickoff: string | null;
   /** Outcome token (sports bets) — lets the server attach a live price */
   tokenId?: string;
+  /** The other token of the same Polymarket market (what "Bájeseee" buys) */
+  fadeTokenId?: string;
   /** Current market price of the pick (0–1) while open and the game has started */
   livePrice?: number;
   proof: string | null; // tx hash
   fire: number;
   /** The viewer already reacted (only when a viewer is known) */
   fired?: boolean;
+  /** People who placed the same bet from this card (Súbaseee) / the opposite side (Bájeseee) */
+  tails: number;
+  fades: number;
+  tailed?: boolean;
+  faded?: boolean;
   /** "battle" items come from the Arena; everything else is a Polymarket bet */
   kind?: "bet" | "battle";
   battle?: {

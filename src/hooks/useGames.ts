@@ -21,19 +21,23 @@ export function useGames(league: LeagueId) {
 
 export type PriceMap = Record<string, { bid: number | null; ask: number | null; mid: number | null }>;
 
+export const gameDetailKey = (slug: string) => ["game-detail", slug] as const;
+
+export async function fetchGameDetail(slug: string): Promise<GameDetail | null> {
+  const r = await fetch(`/api/games/${encodeURIComponent(slug)}/markets`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("game");
+  return r.json();
+}
+
 /** Every market of one game (the game page). */
 export function useGameDetail(slug: string) {
   return useQuery({
-    queryKey: ["game-detail", slug],
+    queryKey: gameDetailKey(slug),
     enabled: !!slug,
     staleTime: 30_000,
     refetchInterval: 60_000,
-    queryFn: async (): Promise<GameDetail | null> => {
-      const r = await fetch(`/api/games/${encodeURIComponent(slug)}/markets`);
-      if (r.status === 404) return null;
-      if (!r.ok) throw new Error("game");
-      return r.json();
-    },
+    queryFn: () => fetchGameDetail(slug),
   });
 }
 

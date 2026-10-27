@@ -230,7 +230,16 @@ interface BetRow {
   tx_hash: string | null;
   matched_at: string;
   token_id: string;
-  markets: { question: string; event_title: string | null; event_slug: string | null; league: string | null; kind: string | null; line: number | null; game_start: string | null } | null;
+  markets: {
+    question: string;
+    event_title: string | null;
+    event_slug: string | null;
+    league: string | null;
+    kind: string | null;
+    line: number | null;
+    game_start: string | null;
+    outcomes: { index: number; label: string; tokenId: string | null }[] | null;
+  } | null;
   profiles: ProfileRow | null;
 }
 
@@ -239,7 +248,7 @@ export async function loadFeed(opts: { scope: "all" | "following" | "profile"; v
   let q = db
     .from("bets")
     .select(
-      "id, profile_id, outcome, outcome_index, side, size, price, usdc, fee_usdc, builder_fee, status, pnl, tx_hash, matched_at, token_id, markets!bets_condition_id_fkey(question, event_title, event_slug, league, kind, line, game_start), profiles!bets_profile_id_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
+      "id, profile_id, outcome, outcome_index, side, size, price, usdc, fee_usdc, builder_fee, status, pnl, tx_hash, matched_at, token_id, markets!bets_condition_id_fkey(question, event_title, event_slug, league, kind, line, game_start, outcomes), profiles!bets_profile_id_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
     )
     .eq("side", "BUY")
     .not("profile_id", "is", null)
@@ -346,6 +355,8 @@ export async function loadBattles(opts: { scope: "all" | "following" | "profile"
         kickoff: null,
         proof: b.settle_tx,
         fire: 0,
+        tails: 0,
+        fades: 0,
         battle: { opponent: { handle: them.handle, avatar: them.avatar }, scoreMe, scoreThem, result },
       } satisfies FeedItem;
     });
@@ -394,18 +405,26 @@ export async function attachLive(items: FeedItem[]): Promise<FeedItem[]> {
 }
 
 /** 🔥 counts per item, plus whether the viewer is among them. Mutates and returns `items`. */
+/** 🔥 + Súbaseee/Bájeseee counts (all three live in `reactions`, told apart by `kind`). */
 export async function attachFire(items: FeedItem[], viewerId: string | null): Promise<FeedItem[]> {
   if (items.length === 0) return items;
-  const { data } = await supabaseAdmin().from("reactions").select("bet_id, profile_id").eq("kind", "fire").in("bet_id", items.map((i) => i.id));
+  const { data } = await supabaseAdmin().from("reactions").select("bet_id, profile_id, kind").in("kind", ["fire", "tail", "fade"]).in("bet_id", items.map((i) => i.id));
   const count = new Map<string, number>();
   const mine = new Set<string>();
   for (const r of data ?? []) {
-    count.set(r.bet_id as string, (count.get(r.bet_id as string) ?? 0) + 1);
-    if (viewerId && r.profile_id === viewerId) mine.add(r.bet_id as string);
+    const k = `${r.kind}:${r.bet_id}`;
+    count.set(k, (count.get(k) ?? 0) + 1);
+    if (viewerId && r.profile_id === viewerId) mine.add(k);
   }
   for (const it of items) {
-    it.fire = count.get(it.id) ?? 0;
-    if (viewerId) it.fired = mine.has(it.id);
+    it.fire = count.get(`fire:${it.id}`) ?? 0;
+    it.tails = count.get(`tail:${it.id}`) ?? 0;
+    it.fades = count.get(`fade:${it.id}`) ?? 0;
+    if (viewerId) {
+      it.fired = mine.has(`fire:${it.id}`);
+      it.tailed = mine.has(`tail:${it.id}`);
+      it.faded = mine.has(`fade:${it.id}`);
+    }
   }
   return items;
 }
@@ -468,8 +487,12 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
     placedAt: b.matched_at,
     kickoff: m?.game_start ?? null,
     tokenId: b.token_id,
+    // Every Polymarket market has exactly two tokens; the one we did not buy is the fade.
+    fadeTokenId: m?.outcomes?.length === 2 ? (m.outcomes.find((o) => o.tokenId && o.tokenId !== b.token_id)?.tokenId ?? undefined) : undefined,
     proof: b.tx_hash,
     fire: 0,
+    tails: 0,
+    fades: 0,
     kind: "bet",
   };
 }

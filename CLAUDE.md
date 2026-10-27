@@ -158,6 +158,16 @@ src/components/            screens + UI primitives
   the UI shows empty states. Types in `src/types/social.ts`.
 - **Client:** `MeProvider` syncs the profile after login; `useSocial` hooks;
   `FeedCard`/`HomeFeed`/`PublicProfile`/`SearchScreen` consume the APIs.
+- **Súbaseee / Bájeseee (2026-10-27):** every open sports pick of someone else shows two
+  buttons (`TailButtons.tsx`, inside `FeedCard`). Tail = same token; fade = the market's
+  other token (`FeedItem.fadeTokenId`, from `markets.outcomes`) — on a soccer 1X2 pick that
+  is the No side, i.e. "Rival o Empate" in the Doble oportunidad market. On tap the client
+  pulls the game's markets (`fetchGameDetail` through the query cache), finds the token and
+  opens the normal `BetSheet` with `Selection.source = {betId, side, handle}`; closed market
+  / no asks → inline "Mercado cerrado" / "Sin liquidez". Once the order really fills the sheet
+  POSTs `/api/react {kind: "tail"|"fade"}` (same `reactions` table as 🔥, told apart by
+  `kind`) and the counts (`tails`/`fades`, `tailed`/`faded`) ride along with `attachFire`.
+  Hidden on your own picks, on Batalla, and on settled picks.
 
 ## Profile stats (2026-10-22)
 
