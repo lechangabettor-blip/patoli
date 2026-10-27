@@ -19,8 +19,8 @@ import { cn } from "@/lib/cn";
 /* ───────────────────────────── grouping ─────────────────────────────
  * Compact by design (LeChanga, 2026-10-26): most alternate lines have little or no
  * liquidity, so a ladder shows the main line (most liquid, closest to even) plus at most
- * 4 lines each way, and a props section shows one row per player (his even line). "Ver todas
- * las líneas" expands the rest. Player props get their own chips, first in the row.
+ * 4 lines each way, and a props section shows one row per player (his even line). The rest
+ * is simply not offered (no expander). Player props get their own chips, first in the row.
  */
 
 type Chip = { id: string; label: string; test: (m: DetailMarket) => boolean };
@@ -139,7 +139,6 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
   const { takerBps } = useBuilderFee();
   const [chip, setChip] = useState("todos");
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [sel, setSel] = useState<Selection | null>(null);
 
   const sections = useMemo(() => (detail ? buildSections(detail.markets) : []), [detail]);
@@ -227,7 +226,6 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
             {visible.map((s) => {
               const open = isOpen(s);
               const rows = shown(s);
-              const more = s.markets.length - s.compact.length;
               return (
                 <article key={s.key} className="card overflow-hidden">
                   <button onClick={() => setToggled((t) => ({ ...t, [s.key]: !open }))} className="flex w-full items-center justify-between px-4 py-3 text-left" aria-expanded={open}>
@@ -240,11 +238,6 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
                   {open ? (
                     <div className="px-3 pb-3">
                       <SectionBody s={s} rows={rows} game={game} prices={prices.data} takerBps={takerBps} onPick={setSel} />
-                      {more > 0 ? (
-                        <button onClick={() => setExpanded((e) => ({ ...e, [s.key]: !e[s.key] }))} className="mt-2 w-full py-1.5 text-center font-display text-[11px] font-bold uppercase tracking-wide text-muted">
-                          {expanded[s.key] ? "Ver menos" : `Ver todas las líneas (${s.markets.length})`}
-                        </button>
-                      ) : null}
                     </div>
                   ) : null}
                 </article>
