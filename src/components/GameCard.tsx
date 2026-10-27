@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import type { Game, GameMarket, GameOutcome } from "@/lib/polymarket/gamma";
 import type { LiveScore } from "@/lib/scores";
 import type { PriceMap } from "@/hooks/useGames";
@@ -116,6 +118,9 @@ export default function GameCard({
             ))}
           </div>
         ) : null}
+        <Link href={`/deportes/partido/${game.slug}`} className="flex items-center justify-center gap-1 pt-1 font-display text-[11px] font-bold uppercase tracking-wide text-muted">
+          Todos los mercados <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
     </article>
   );

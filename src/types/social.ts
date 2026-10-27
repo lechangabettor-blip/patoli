@@ -45,7 +45,7 @@ export interface FeedItem {
   event: string; // "Seahawks vs. Broncos"
   eventSlug: string | null;
   selection: string; // "Seahawks -2.5"
-  market: "ML" | "Spread" | "Total" | "BTTS" | "Batalla" | "Otro";
+  market: "ML" | "Spread" | "Total" | "BTTS" | "Prop" | "Batalla" | "Otro";
   odds: number; // gross decimal at fill (1/price)
   stake: number; // USDC
   payout: number; // shares = USDC if wins

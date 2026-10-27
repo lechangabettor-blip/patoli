@@ -23,7 +23,7 @@ import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { cn } from "@/lib/cn";
 
-const MARKET_NAME: Record<MarketKind, string> = { moneyline: "Ganador", spread: "Hándicap", total: "Total", btts: "Ambos anotan" };
+const MARKET_NAME: Record<MarketKind, string> = { moneyline: "Ganador", spread: "Hándicap", total: "Total", btts: "Ambos anotan", team_total: "Total por equipo", prop: "Prop de jugador", yesno: "Mercado" };
 
 const ATTRIBUTION_READY = isBuilderCodeValid(PATOLI_BUILDER_CODE);
 
@@ -98,7 +98,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
         leagueEmoji: league.emoji,
         matchup: `${selection.game.home} vs ${selection.game.away}`,
         selection: selection.outcome.label,
-        market: MARKET_NAME[selection.market.kind],
+        market: selection.market.label ?? MARKET_NAME[selection.market.kind],
         odds: b.netOdds,
         stake: total,
         payout,

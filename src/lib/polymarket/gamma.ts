@@ -14,7 +14,10 @@ import { LEAGUES, LEAGUE_BY_ID, type LeagueId, type League } from "./leagues";
  */
 
 /** btts = "both teams to score" (soccer only; replaces the spread row there) */
-export type MarketKind = "moneyline" | "spread" | "total" | "btts";
+/** btts = both teams to score · team_total = one team's O/U · prop = player O/U · yesno = any other two-way market */
+export type MarketKind = "moneyline" | "spread" | "total" | "btts" | "team_total" | "prop" | "yesno";
+/** Part of the game a market covers */
+export type Period = "full" | "1h" | "2h" | "q1" | "q2" | "q3" | "q4";
 
 export interface GameOutcome {
   /** Display label, already localized: "Seahawks -2.5", "Más 46.5", "Empate" */
@@ -37,6 +40,8 @@ export interface GameMarket {
   liquidity: number;
   /** Polymarket's taker fee for this market: per share = rate · (p·(1−p))^exponent */
   fee: FeeSchedule;
+  /** es-MX section label when the market comes from the game page (e.g. "Hándicap · 1ª mitad") */
+  label?: string;
   outcomes: GameOutcome[];
 }
 

@@ -202,7 +202,17 @@ export async function searchProfiles(q: string, limit = 20): Promise<PublicProfi
   return out;
 }
 
-const MARKET_LABEL: Record<string, FeedItem["market"]> = { moneyline: "ML", spread: "Spread", total: "Total", btts: "BTTS" };
+const MARKET_LABEL: Record<string, FeedItem["market"]> = { moneyline: "ML", spread: "Spread", total: "Total", team_total: "Total", btts: "BTTS", prop: "Prop", yesno: "Otro" };
+const PERIOD_TEXT: Record<string, string> = { "1h": "1ª mitad", "2h": "2ª mitad", q1: "1er cuarto", q2: "2º cuarto", q3: "3er cuarto", q4: "4º cuarto" };
+const STAT_SHORT: Record<string, string> = { points: "pts", rebounds: "reb", assists: "ast", threes: "triples", steals: "robos", blocks: "bloqueos" };
+
+/** "spread_1h" → { base: "spread", period: "1h", stat: undefined } · "prop_points" → { base: "prop", stat: "points" } */
+function splitKind(kind: string): { base: string; period: string | null; stat?: string } {
+  const m = kind.match(/^(.*?)(?:_(1h|2h|q[1-4]))?$/)!;
+  const base = m[1];
+  if (base.startsWith("prop_")) return { base: "prop", period: null, stat: base.slice(5) };
+  return { base, period: m[2] ?? null };
+}
 
 interface BetRow {
   id: string;
@@ -402,8 +412,9 @@ export async function attachFire(items: FeedItem[], viewerId: string | null): Pr
 
 function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
   const m = b.markets;
-  const kind = m?.kind ?? "other";
+  const { base: kind, period, stat } = splitKind(m?.kind ?? "other");
   const fmtLine = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+  const ou = (o: string) => (/^(over|yes)$/i.test(o) ? "Más" : /^(under|no)$/i.test(o) ? "Menos" : o);
   let selection = b.outcome;
   if (kind === "spread" && m?.line != null) selection = `${b.outcome} ${fmtLine(b.outcome_index === 0 ? m.line : -m.line)}`;
   if (kind === "total" && m?.line != null) selection = `${/over/i.test(b.outcome) ? "Más" : /under/i.test(b.outcome) ? "Menos" : b.outcome} ${m.line}`;
@@ -415,6 +426,23 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
     selection = /^yes$/i.test(b.outcome) ? team : `No ${team}`;
   }
   if (kind === "btts") selection = /^yes$/i.test(b.outcome) ? "Ambos anotan · Sí" : "Ambos anotan · No";
+  if (kind === "team_total" && m?.line != null) {
+    // "Steelers Team Total: O/U 10.5" · "A vs. B: Chelsea FC O/U 0.5" · "Timberwolves 1H Team Total: O/U 56.5"
+    const q = m.question.includes(": ") && /vs\.?/.test(m.question.split(": ")[0]) ? m.question.split(": ").slice(1).join(": ") : m.question;
+    const team = shortTeam(q.replace(/\s*(1H|2H|1st Half|2nd Half)?\s*Team Total.*$/i, "").replace(/\s*(1st Half|2nd Half)?\s*O\/U.*$/i, "").trim());
+    selection = `${ou(b.outcome)} ${m.line} · ${team}`;
+  }
+  if (kind === "prop" && m?.line != null) {
+    const player = m.question.split(":")[0].trim();
+    selection = `${player} · ${ou(b.outcome)} ${m.line} ${STAT_SHORT[stat ?? ""] ?? ""}`.trim();
+  }
+  if (kind === "yesno" && m?.question) {
+    const q = m.question.includes(": ") ? m.question.split(": ").slice(1).join(": ") : m.question;
+    const what = q.replace(/^Exact Margin:\s*/i, "Margen exacto: ").replace(/Team to Score First/i, "Primero en anotar").replace(/Odd\/Even Score/i, "Par / impar").replace(/Overtime\?/i, "¿Tiempo extra?").replace(/Race to (\d+) Points?/i, "Carrera a $1").replace(/Safety\?/i, "¿Safety?").replace(/\s*O\/U\s*[\d.]+$/i, "");
+    const pick = /^yes$/i.test(b.outcome) ? "Sí" : /^no$/i.test(b.outcome) ? "No" : shortTeam(b.outcome);
+    selection = `${what} · ${pick}`;
+  }
+  if (period && PERIOD_TEXT[period]) selection = `${selection} · ${PERIOD_TEXT[period]}`;
   const p = b.profiles!;
   const prof = toProfile(p, s);
   return {

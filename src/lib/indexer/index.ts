@@ -57,7 +57,21 @@ export interface IndexRunResult {
   errors: string[];
 }
 
-const KIND: Record<string, string> = { moneyline: "moneyline", spreads: "spread", totals: "total", both_teams_to_score: "btts" };
+/**
+ * Our market kind from Polymarket's sportsMarketType: base kind + period suffix.
+ * "spreads" → "spread" · "first_half_spreads" → "spread_1h" · "q3_totals" → "total_q3" ·
+ * "team_totals" → "team_total" · "points" → "prop_points" · anything else → "yesno" (two-way) / "other".
+ */
+function kindOf(type: string | undefined): string {
+  const t = type ?? "";
+  const period = /first_half/.test(t) ? "_1h" : /second_half/.test(t) ? "_2h" : (t.match(/^q([1-4])_/)?.[1] ? `_q${t.match(/^q([1-4])_/)![1]}` : "");
+  const base = t.replace(/^(first_half_|second_half_|q[1-4]_|soccer_first_half_|soccer_second_half_|soccer_)/, "").replace(/_first_half$|_second_half$|_points$/, "");
+  const map: Record<string, string> = { moneyline: "moneyline", spreads: "spread", totals: "total", team_totals: "team_total", both_teams_to_score: "btts" };
+  if (map[base]) return map[base] + period;
+  if (/^(points|rebounds|assists|threes|steals|blocks)$/.test(base)) return `prop_${base}`;
+  if (!t) return "other";
+  return "yesno" + period;
+}
 
 export async function runIndexer(opts: { maxPages?: number } = {}): Promise<IndexRunResult> {
   const res: IndexRunResult = { tradesSeen: 0, betsUpserted: 0, marketsUpserted: 0, settled: 0, unknownWallets: [], errors: [] };
@@ -196,7 +210,7 @@ function toMarketRow(m: GammaMarket) {
     event_slug: ev?.slug?.replace(/-more-markets$/, "") ?? null,
     event_title: ev?.title ?? null,
     league,
-    kind: KIND[m.sportsMarketType ?? ""] ?? "other",
+    kind: kindOf(m.sportsMarketType),
     line: m.line == null ? null : Number(m.line),
     outcomes: outcomes.map((label, i) => ({ index: i, label, tokenId: tokens[i] ?? null })),
     game_start: m.gameStartTime ? new Date(m.gameStartTime.replace(" ", "T").replace(/\+00$/, "Z")).toISOString() : null,
