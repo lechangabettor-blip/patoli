@@ -197,9 +197,11 @@ async function withBooks(detail: GameDetail): Promise<GameDetail> {
     for (const o of m.outcomes) {
       const b = book.get(o.tokenId);
       if (!b) continue;
-      o.depth = Math.round(b.depth);
-      if (b.ask > 0) o.price = b.ask;
-      else o.price = 0; // nobody selling
+      // A best ask far above the market's midpoint is a stale one-sided book (someone asking 83¢ for a
+      // −5.5 handicap): treat it as nothing for sale rather than show a trap price.
+      const stale = b.ask > 0 && o.price > 0 && b.ask - o.price > 0.2;
+      o.depth = stale ? 0 : Math.round(b.depth);
+      o.price = b.ask > 0 && !stale ? b.ask : 0; // 0 = nobody selling
     }
   }
   return detail;
