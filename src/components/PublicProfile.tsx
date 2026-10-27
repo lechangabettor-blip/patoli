@@ -79,7 +79,7 @@ export default function PublicProfile({ handle }: { handle: string }) {
                     </Link>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setTipOpen(true)} className="btn-ghost px-4 py-2 font-display text-xs font-bold uppercase">
+                      <button onClick={() => setTipOpen(true)} className="btn-violet px-4 py-2 text-xs">
                         Tip
                       </button>
                       {p.isFollowing ? (

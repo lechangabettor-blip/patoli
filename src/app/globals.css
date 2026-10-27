@@ -160,6 +160,21 @@ h1, h2, h3, .display {
 .btn-accent:active { transform: scale(0.98); filter: brightness(0.95); }
 .btn-accent:disabled { opacity: 0.5; box-shadow: none; }
 
+/* Violet pill button (tips) */
+.btn-violet {
+  background: var(--violet);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 8px 24px rgba(75, 0, 130, 0.45);
+  transition: transform 120ms ease, filter 120ms ease;
+}
+.btn-violet:active { transform: scale(0.98); filter: brightness(1.1); }
+.btn-violet:disabled { opacity: 0.5; box-shadow: none; }
+
 .btn-ghost {
   background: var(--surface);
   color: var(--ink);
