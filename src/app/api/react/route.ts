@@ -41,12 +41,14 @@ export async function POST(req: NextRequest) {
   if (kind !== "fire") {
     if (body.on === false) return NextResponse.json({ error: "no se puede quitar" }, { status: 400 });
     const verdict = await verifyTail(db, id, viewerId, kind as "tail" | "fade");
-    if (verdict !== "ok") return NextResponse.json({ error: verdict, pending: verdict === "pendiente" }, { status: verdict === "pendiente" ? 202 : 409 });
-  }
-  if (body.on === false) {
-    await db.from("reactions").delete().eq("bet_id", id).eq("profile_id", viewerId).eq("kind", kind);
+    if (typeof verdict === "string") return NextResponse.json({ error: verdict, pending: verdict === "pendiente" }, { status: verdict === "pendiente" ? 202 : 409 });
+    // One reaction per fill: the unique index on proof_bet_id makes a reused proof fail here.
+    const { error } = await db.from("reactions").upsert({ bet_id: id, profile_id: viewerId, kind, proof_bet_id: verdict.proof }, { onConflict: "bet_id,profile_id,kind", ignoreDuplicates: true });
+    if (error) return NextResponse.json({ error: "no se pudo guardar" }, { status: 500 });
+  } else if (body.on === false) {
+    await db.from("reactions").delete().eq("bet_id", id).eq("profile_id", viewerId).eq("kind", "fire");
   } else {
-    const { error } = await db.from("reactions").upsert({ bet_id: id, profile_id: viewerId, kind }, { onConflict: "bet_id,profile_id,kind", ignoreDuplicates: true });
+    const { error } = await db.from("reactions").upsert({ bet_id: id, profile_id: viewerId, kind: "fire" }, { onConflict: "bet_id,profile_id,kind", ignoreDuplicates: true });
     if (error) return NextResponse.json({ error: "no se pudo guardar" }, { status: 500 });
   }
   const { count } = await db.from("reactions").select("bet_id", { count: "exact", head: true }).eq("bet_id", id).eq("kind", kind);
@@ -56,8 +58,11 @@ export async function POST(req: NextRequest) {
 
 type Db = ReturnType<typeof supabaseAdmin>;
 
-/** "ok" | "pendiente" (fill not indexed yet) | a reason the tail/fade can never count. */
-async function verifyTail(db: Db, sourceId: string, viewerId: string, side: "tail" | "fade"): Promise<string> {
+/**
+ * { proof } = the viewer's own fill that backs this tail/fade (one not already spent on another
+ * reaction) · "pendiente" = fill not indexed yet · any other string = it can never count.
+ */
+async function verifyTail(db: Db, sourceId: string, viewerId: string, side: "tail" | "fade"): Promise<{ proof: string } | string> {
   const { data: src } = await db
     .from("bets")
     .select("id, profile_id, token_id, status, matched_at, markets!bets_condition_id_fkey(outcomes)")
@@ -76,6 +81,14 @@ async function verifyTail(db: Db, sourceId: string, viewerId: string, side: "tai
     .eq("side", "BUY")
     .eq("token_id", target)
     .gte("matched_at", src.matched_at as string)
-    .limit(1);
-  return mine && mine.length > 0 ? "ok" : "pendiente";
+    .order("matched_at", { ascending: true })
+    .limit(20);
+  const fills = (mine ?? []).map((b) => b.id as string);
+  if (fills.length === 0) return "pendiente";
+  const { data: spent } = await db.from("reactions").select("proof_bet_id, bet_id").in("proof_bet_id", fills);
+  const already = (spent ?? []).find((r) => r.bet_id === sourceId);
+  if (already) return { proof: already.proof_bet_id as string }; // same reaction again → idempotent
+  const used = new Set((spent ?? []).map((r) => r.proof_bet_id as string));
+  const free = fills.find((f) => !used.has(f));
+  return free ? { proof: free } : "pendiente";
 }

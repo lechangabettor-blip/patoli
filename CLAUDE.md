@@ -169,8 +169,9 @@ src/components/            screens + UI primitives
   `kind`) and the counts (`tails`/`fades`, `tailed`/`faded`) ride along with `attachFire`.
   **Server-verified:** the row is written only if `bets` holds a BUY by the viewer on that
   token after the source pick, by someone other than its author, while the pick is open
-  (`verifyTail`); 202 until the indexer has the fill (`useRecordTail` retries), never
-  deletable. Hidden on your own picks, on Batalla, and on settled picks.
+  (`verifyTail`); each reaction is tied to one specific fill (`reactions.proof_bet_id`,
+  unique — migration 0010), so one bet cannot prove tails on several picks; 202 until the
+  indexer has an unspent fill (`useRecordTail` retries), never deletable. Hidden on your own picks, on Batalla, and on settled picks.
 
 ## Profile stats (2026-10-22)
 
