@@ -16,17 +16,31 @@ import { breakdown, formatOdds } from "@/lib/polymarket/odds";
 import { isLive, kickoffLabel } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
-/* ───────────────────────────── grouping ───────────────────────────── */
+/* ───────────────────────────── grouping ─────────────────────────────
+ * Compact by design (LeChanga, 2026-10-26): most alternate lines have little or no
+ * liquidity, so a ladder shows the main line (most liquid, closest to even) plus at most
+ * 4 lines each way, and a props section shows one row per player (his even line). "Ver todas
+ * las líneas" expands the rest. Player props get their own chips, first in the row.
+ */
 
 type Chip = { id: string; label: string; test: (m: DetailMarket) => boolean };
 
 const PERIOD_LABEL: Record<Period, string> = { full: "", "1h": "1ª mitad", "2h": "2ª mitad", q1: "1er cuarto", q2: "2º cuarto", q3: "3er cuarto", q4: "4º cuarto" };
 const PERIOD_ORDER: Record<Period, number> = { full: 0, "1h": 1, "2h": 2, q1: 3, q2: 4, q3: 5, q4: 6 };
-const GROUP_ORDER: Record<DetailMarket["group"], number> = { ganador: 0, handicap: 1, total: 2, btts: 3, equipo: 4, props: 6, otros: 7 };
-const STAT_ORDER: Record<string, number> = { points: 0, rebounds: 1, assists: 2, threes: 3, steals: 4, blocks: 5 };
+const GROUP_ORDER: Record<DetailMarket["group"], number> = { ganador: 0, handicap: 1, total: 2, btts: 3, equipo: 4, props: 5, otros: 7 };
+const STATS: { id: string; label: string }[] = [
+  { id: "points", label: "Puntos" },
+  { id: "rebounds", label: "Rebotes" },
+  { id: "assists", label: "Asistencias" },
+  { id: "threes", label: "Triples" },
+  { id: "steals", label: "Robos" },
+];
+const STAT_ORDER: Record<string, number> = Object.fromEntries(STATS.map((s, i) => [s.id, i]));
+const WINDOW = 4; // lines each side of the main one
 
 const CHIPS: Chip[] = [
   { id: "todos", label: "Todos", test: () => true },
+  ...STATS.map((st) => ({ id: st.id, label: st.label, test: (m: DetailMarket) => m.stat === st.id })),
   { id: "ganador", label: "Ganador", test: (m) => m.group === "ganador" },
   { id: "handicap", label: "Hándicap", test: (m) => m.group === "handicap" },
   { id: "total", label: "Totales", test: (m) => m.group === "total" },
@@ -35,7 +49,6 @@ const CHIPS: Chip[] = [
   { id: "1h", label: "1ª mitad", test: (m) => m.period === "1h" },
   { id: "2h", label: "2ª mitad", test: (m) => m.period === "2h" },
   { id: "cuartos", label: "Cuartos", test: (m) => /^q[1-4]$/.test(m.period) },
-  { id: "props", label: "Props", test: (m) => m.group === "props" },
   { id: "otros", label: "Otros", test: (m) => m.group === "otros" },
 ];
 
@@ -45,17 +58,29 @@ interface Section {
   layout: "buttons" | "ladder" | "players" | "list";
   group: DetailMarket["group"];
   period: Period;
+  /** Every market of the section (already sorted) */
   markets: DetailMarket[];
-  /** Column headers for a ladder */
+  /** The compact subset shown by default */
+  compact: DetailMarket[];
   columns?: [string, string];
-  /** The line the board shows (most liquid) */
   mainId?: string;
   defaultOpen: boolean;
+}
+
+/** A line somebody is actually quoting on both sides (Gamma price, so rows never jump with live ticks). */
+const alive = (m: GameMarket) => m.outcomes.length >= 2 && m.outcomes.slice(0, 2).every((o) => o.price > 0.01 && o.price < 0.99);
+/** Most liquid line; if that one is lopsided (or liquidity is unknown), the line closest to even. */
+function mainOf(ms: DetailMarket[]): DetailMarket {
+  const even = (m: DetailMarket) => Math.abs((m.outcomes[0]?.price ?? 0.5) - 0.5);
+  const byLiq = [...ms].sort((a, b) => b.liquidity - a.liquidity)[0];
+  if (byLiq && byLiq.liquidity > 0 && even(byLiq) <= 0.2) return byLiq;
+  return [...ms].sort((a, b) => even(a) - even(b))[0];
 }
 
 function buildSections(markets: DetailMarket[]): Section[] {
   const map = new Map<string, Section>();
   for (const m of markets) {
+    if (m.stat === "blocks") continue; // not on the menu (LeChanga)
     const sub = m.group === "props" ? (m.stat ?? "") : m.group === "equipo" ? (m.subject ?? "") : m.group === "otros" ? "otros" : "";
     const key = `${m.group}|${m.period}|${sub}`;
     let s = map.get(key);
@@ -64,29 +89,38 @@ function buildSections(markets: DetailMarket[]): Section[] {
       let title = m.label;
       if (m.kind === "prop") title = `${m.label.split(" · ")[0]}${m.period === "full" ? "" : ` · ${PERIOD_LABEL[m.period]}`}`;
       if (m.group === "otros") title = m.period === "full" ? "Otros mercados" : `Otros · ${PERIOD_LABEL[m.period]}`;
-      s = { key, title, layout, group: m.group, period: m.period, markets: [], defaultOpen: m.period === "full" && (m.group === "ganador" || m.group === "handicap" || m.group === "total") };
+      s = { key, title, layout, group: m.group, period: m.period, markets: [], compact: [], defaultOpen: m.period === "full" && (m.group === "ganador" || m.group === "handicap" || m.group === "total") };
       map.set(key, s);
     }
     s.markets.push(m);
   }
-  const out = [...map.values()];
-  for (const s of out) {
+  const out: Section[] = [];
+  for (const s of map.values()) {
     if (s.layout === "ladder") {
-      s.markets.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
+      s.markets = s.markets.filter(alive).sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
+      if (s.markets.length === 0) continue;
       const first = s.markets[0];
-      s.columns = s.markets[0].kind === "spread" ? [teamOf(first.outcomes[0].label), teamOf(first.outcomes[1].label)] : ["Más", "Menos"];
-      s.mainId = s.markets.reduce((best, m) => (m.liquidity > best.liquidity ? m : best), s.markets[0]).id;
+      s.columns = first.kind === "spread" ? [teamOf(first.outcomes[0].label), teamOf(first.outcomes[1].label)] : ["Más", "Menos"];
+      const main = mainOf(s.markets);
+      s.mainId = main.id;
+      const i = s.markets.indexOf(main);
+      s.compact = s.markets.slice(Math.max(0, i - WINDOW), i + WINDOW + 1);
+    } else if (s.layout === "players") {
+      s.markets = s.markets.filter(alive).sort((a, b) => (a.subject ?? "").localeCompare(b.subject ?? "") || (a.line ?? 0) - (b.line ?? 0));
+      if (s.markets.length === 0) continue;
+      const byPlayer = new Map<string, DetailMarket[]>();
+      for (const m of s.markets) byPlayer.set(m.subject ?? "", [...(byPlayer.get(m.subject ?? "") ?? []), m]);
+      s.compact = [...byPlayer.values()].map(mainOf);
+    } else {
+      s.markets = s.markets.filter((m) => m.outcomes.some((o) => o.price > 0.01 && o.price < 0.99));
+      if (s.markets.length === 0) continue;
+      s.compact = s.markets;
     }
-    if (s.layout === "players") s.markets.sort((a, b) => (a.subject ?? "").localeCompare(b.subject ?? "") || (a.line ?? 0) - (b.line ?? 0));
+    out.push(s);
   }
-  out.sort((a, b) => {
-    const pa = PERIOD_ORDER[a.period] === 0 ? 0 : 1;
-    const pb = PERIOD_ORDER[b.period] === 0 ? 0 : 1;
-    if (pa !== pb) return pa - pb; // full game first, then the rest
-    if (a.group === "props" && b.group !== "props") return 1;
-    if (b.group === "props" && a.group !== "props") return -1;
-    return PERIOD_ORDER[a.period] - PERIOD_ORDER[b.period] || GROUP_ORDER[a.group] - GROUP_ORDER[b.group] || (STAT_ORDER[a.markets[0].stat ?? ""] ?? 9) - (STAT_ORDER[b.markets[0].stat ?? ""] ?? 9) || a.title.localeCompare(b.title);
-  });
+  // Todos: the three core markets, then player props, then the rest of the full game, then halves and quarters.
+  const rank = (s: Section) => (s.period === "full" && (s.group === "ganador" || s.group === "handicap" || s.group === "total") ? 0 : s.group === "props" ? 1 : s.period === "full" ? 2 : 3);
+  out.sort((a, b) => rank(a) - rank(b) || PERIOD_ORDER[a.period] - PERIOD_ORDER[b.period] || GROUP_ORDER[a.group] - GROUP_ORDER[b.group] || (STAT_ORDER[a.markets[0].stat ?? ""] ?? 9) - (STAT_ORDER[b.markets[0].stat ?? ""] ?? 9) || a.title.localeCompare(b.title));
   return out;
 }
 
@@ -101,23 +135,29 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
   const { takerBps } = useBuilderFee();
   const [chip, setChip] = useState("todos");
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [sel, setSel] = useState<Selection | null>(null);
 
   const sections = useMemo(() => (detail ? buildSections(detail.markets) : []), [detail]);
-  const chips = useMemo(() => CHIPS.filter((c) => c.id === "todos" || (detail?.markets ?? []).some(c.test)), [detail]);
+  const chips = useMemo(() => CHIPS.filter((c) => c.id === "todos" || sections.some((s) => s.markets.some(c.test))), [sections]);
   const active = CHIPS.find((c) => c.id === chip) ?? CHIPS[0];
-  const visible = useMemo(() => (chip === "todos" ? sections : sections.map((s) => ({ ...s, markets: s.markets.filter(active.test) })).filter((s) => s.markets.length > 0)), [sections, chip, active]);
+  const visible = useMemo(
+    () => (chip === "todos" ? sections : sections.map((s) => ({ ...s, markets: s.markets.filter(active.test), compact: s.compact.filter(active.test) })).filter((s) => s.markets.length > 0)),
+    [sections, chip, active],
+  );
   const isOpen = (s: Section) => toggled[s.key] ?? (chip !== "todos" || s.defaultOpen);
+  const shown = (s: Section) => (expanded[s.key] ? s.markets : s.compact);
 
   const live = !!detail && !!now && isLive(detail.game.startTime, now);
   const scores = useScores(detail?.game.league ?? "nfl", live);
   const score = detail ? scores.data?.[detail.game.slug] : undefined;
 
-  const tokenIds = useMemo(() => visible.filter(isOpen).flatMap((s) => s.markets.flatMap((m) => m.outcomes.map((o) => o.tokenId))).slice(0, 200), [visible, toggled, chip]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tokenIds = useMemo(() => visible.filter(isOpen).flatMap((s) => shown(s).flatMap((m) => m.outcomes.map((o) => o.tokenId))).slice(0, 200), [visible, toggled, expanded, chip]); // eslint-disable-line react-hooks/exhaustive-deps
   const prices = usePrices(tokenIds, live ? 2_000 : 5_000);
 
   const game: Game | null = detail ? { ...detail.game, markets: [] } : null;
   const league = detail ? LEAGUE_BY_ID[detail.game.league] : null;
+  const offered = sections.reduce((n, s) => n + s.markets.length, 0);
 
   return (
     <>
@@ -151,7 +191,7 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
               ) : (
                 <span className="rounded-full bg-surface px-2 py-0.5">{kickoffLabel(detail.game.startTime, now)}</span>
               )}
-              <span className="text-muted-2">{detail.markets.length} mercados</span>
+              <span className="text-muted-2">{offered} mercados</span>
             </div>
             <h1 className="mt-1.5 font-display text-[20px] font-extrabold uppercase leading-tight tracking-tight">
               {detail.game.home}{" "}
@@ -182,6 +222,8 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
           <section className="space-y-3 px-4 pt-3">
             {visible.map((s) => {
               const open = isOpen(s);
+              const rows = shown(s);
+              const more = s.markets.length - s.compact.length;
               return (
                 <article key={s.key} className="card overflow-hidden">
                   <button onClick={() => setToggled((t) => ({ ...t, [s.key]: !open }))} className="flex w-full items-center justify-between px-4 py-3 text-left" aria-expanded={open}>
@@ -193,7 +235,12 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
                   </button>
                   {open ? (
                     <div className="px-3 pb-3">
-                      <SectionBody s={s} game={game} prices={prices.data} takerBps={takerBps} onPick={setSel} />
+                      <SectionBody s={s} rows={rows} game={game} prices={prices.data} takerBps={takerBps} onPick={setSel} />
+                      {more > 0 ? (
+                        <button onClick={() => setExpanded((e) => ({ ...e, [s.key]: !e[s.key] }))} className="mt-2 w-full py-1.5 text-center font-display text-[11px] font-bold uppercase tracking-wide text-muted">
+                          {expanded[s.key] ? "Ver menos" : `Ver todas las líneas (${s.markets.length})`}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </article>
@@ -211,7 +258,7 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
 
 /* ───────────────────────────── bodies ───────────────────────────── */
 
-function SectionBody({ s, game, prices, takerBps, onPick }: { s: Section; game: Game; prices: PriceMap | undefined; takerBps: number; onPick: (sel: Selection) => void }) {
+function SectionBody({ s, rows, game, prices, takerBps, onPick }: { s: Section; rows: DetailMarket[]; game: Game; prices: PriceMap | undefined; takerBps: number; onPick: (sel: Selection) => void }) {
   const Btn = ({ m, o, main = false, compact = false }: { m: GameMarket; o: GameOutcome; main?: boolean; compact?: boolean }) => {
     const liveP = prices?.[o.tokenId]?.ask ?? null;
     const p = liveP ?? (o.price > 0 && o.price < 1 ? o.price : null);
@@ -237,7 +284,7 @@ function SectionBody({ s, game, prices, takerBps, onPick }: { s: Section; game: 
   if (s.layout === "buttons") {
     return (
       <div className="space-y-2">
-        {s.markets.map((m) => (
+        {rows.map((m) => (
           <div key={m.id} className="flex gap-2">
             {m.outcomes.map((o) => (
               <Btn key={o.tokenId} m={m} o={o} />
@@ -256,7 +303,7 @@ function SectionBody({ s, game, prices, takerBps, onPick }: { s: Section; game: 
           <span className="truncate">{s.columns?.[1]}</span>
         </div>
         <div className="space-y-1.5">
-          {s.markets.map((m) => (
+          {rows.map((m) => (
             <div key={m.id} className="grid grid-cols-2 gap-2">
               {m.outcomes.slice(0, 2).map((o) => (
                 <Btn key={o.tokenId} m={m} o={{ ...o, label: ladderLabel(o.label, m) }} main={m.id === s.mainId} compact />
@@ -271,13 +318,13 @@ function SectionBody({ s, game, prices, takerBps, onPick }: { s: Section; game: 
   if (s.layout === "players") {
     return (
       <div className="space-y-1.5">
-        {s.markets.map((m) => (
+        {rows.map((m) => (
           <div key={m.id} className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2">
             <span className="min-w-0 truncate text-[12px]">
               {m.subject} <span className="tnum text-muted">{m.line}</span>
             </span>
             {m.outcomes.slice(0, 2).map((o) => (
-              <Btn key={o.tokenId} m={m} o={{ ...o, label: o.label.replace(/s[d.]+$/, "") }} compact />
+              <Btn key={o.tokenId} m={m} o={{ ...o, label: o.label.replace(/\s[\d.]+$/, "") }} compact />
             ))}
           </div>
         ))}
@@ -285,10 +332,9 @@ function SectionBody({ s, game, prices, takerBps, onPick }: { s: Section; game: 
     );
   }
 
-  // list: one labelled row per market
   return (
     <div className="space-y-2">
-      {s.markets.map((m) => (
+      {rows.map((m) => (
         <div key={m.id}>
           <div className="mb-1 px-1 text-[11px] text-muted">{m.label}</div>
           <div className="flex gap-2">
