@@ -186,6 +186,13 @@ src/components/            screens + UI primitives
   records the tip only if it finds a pUSD Transfer from the viewer's wallet to the recipient's
   (`tips` table, migration 0011, RLS with no public policy). The owner sees their own total via
   `/api/me` → `MeProfile.tipsReceived` ("tips recibidos" line in Perfil).
+- **Dinero tab (own Perfil → Historial, 2026-10-27):** `GET /api/me/money` → `loadMoney`
+  (`src/lib/money.ts`) reads every USDC.e/USDC/pUSD transfer of the deposit wallet through
+  Alchemy `alchemy_getAssetTransfers` (both directions, ≤3 pages, 30 s cache) and keeps only
+  user actions: Depósito (stable in from outside), Retiro (pUSD to the offramp / burn), Tip a/de
+  @handle (other users' deposit wallets, labelled from `tips`), A/De Batalla (forwarder / Arena).
+  Exchanges, adapters, CTF, onramp and mints are plumbing and hidden (bets show as picks).
+  Never on a public profile.
 
 ## Profile stats (2026-10-22)
 

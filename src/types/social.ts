@@ -78,6 +78,18 @@ export interface FeedItem {
   };
 }
 
+/** One money movement of the owner's deposit wallet (Dinero tab; private) */
+export interface MoneyRow {
+  hash: string;
+  at: string; // ISO
+  kind: "deposit" | "withdraw" | "tip_in" | "tip_out" | "arena_in" | "arena_out" | "send";
+  /** Signed: + into the wallet, − out of it */
+  amount: number;
+  asset: "pUSD" | "USDC";
+  /** The other user, for tips */
+  handle?: string;
+}
+
 export interface MeProfile extends PublicProfile {
   email: string | null;
   /** pUSD received as tips, all time (private: only the owner sees it) */

@@ -27,7 +27,7 @@ import { cn } from "@/lib/cn";
 import FeedCard from "./FeedCard";
 import HistoryTabs from "./HistoryTabs";
 import StatsWindows from "./StatsWindows";
-import { ticketFromItem, useSyncBets, useUser } from "@/hooks/useSocial";
+import { ticketFromItem, useMoney, useSyncBets, useUser } from "@/hooks/useSocial";
 import { useArenaActions, useArenaMe } from "@/hooks/useArena";
 import { isArenaConfigured } from "@/lib/arena/typed-data";
 import { copyText } from "@/lib/clipboard";
@@ -82,6 +82,7 @@ export default function ProfileScreen() {
   // profile and the feed. Polymarket positions below are only a background check
   // (Cobrar + "is the indexer behind?"), never what the user sees as their record.
   const mine = useUser(me?.handle ?? null);
+  const money = useMoney();
   const myBets = mine.data?.bets ?? [];
   const open = myBets.filter((b) => b.status === "open");
   const history = myBets.filter((b) => b.status !== "open");
@@ -399,7 +400,7 @@ export default function ProfileScreen() {
         {/* Settled bets — the public, verifiable record */}
         {me ? (
           <>
-            <HistoryTabs items={history} loading={mine.isLoading} onTicket={(it) => setTicket(ticketFromItem(it))} />
+            <HistoryTabs items={history} loading={mine.isLoading} onTicket={(it) => setTicket(ticketFromItem(it))} money={{ rows: money.data ?? [], loading: money.isLoading }} />
           </>
         ) : null}
 

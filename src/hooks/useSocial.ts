@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMe } from "@/providers/MeProvider";
-import type { FeedItem, PublicProfile } from "@/types/social";
+import type { FeedItem, MoneyRow, PublicProfile } from "@/types/social";
 import { LEAGUE_BY_ID, isLeagueId } from "@/lib/polymarket/leagues";
 import type { TicketData } from "@/components/Ticket";
 
@@ -49,6 +49,23 @@ export function useUser(handle: string | null) {
       if (r.status === 404) return null;
       if (!r.ok) throw new Error("user");
       return r.json();
+    },
+  });
+}
+
+/** The owner's own deposits, withdrawals and tips (Dinero tab). Only fetched when logged in. */
+export function useMoney() {
+  const { getToken, me } = useMe();
+  return useQuery({
+    queryKey: ["money", me?.id ?? null],
+    enabled: !!me,
+    staleTime: 30_000,
+    queryFn: async (): Promise<MoneyRow[]> => {
+      const t = await getToken();
+      if (!t) return [];
+      const r = await fetch("/api/me/money", { headers: { authorization: `Bearer ${t}` } });
+      if (!r.ok) throw new Error("money");
+      return ((await r.json()) as { rows: MoneyRow[] }).rows;
     },
   });
 }
