@@ -69,11 +69,11 @@ export default function TailButtons({ item }: { item: FeedItem }) {
           disabled={!!busy || !item.fadeTokenId}
           className={cn(
             "flex items-center justify-center gap-1.5 rounded-xl border py-2 font-display text-[12px] font-extrabold uppercase tracking-wide transition-[transform,opacity] active:scale-[.98] disabled:opacity-40",
-            item.faded ? "border-ink bg-ink text-bg" : "border-line bg-surface text-ink",
+            item.faded ? "border-violet bg-violet text-white" : "border-[rgba(157,123,255,.4)] bg-[rgba(75,0,130,.22)] text-violet-soft",
           )}
         >
           <TrendingDown className="h-3.5 w-3.5" /> Bájeseee
-          {item.fades > 0 ? <span className={cn("tnum", item.faded ? "opacity-70" : "text-muted")}>{item.fades}</span> : null}
+          {item.fades > 0 ? <span className={cn("tnum", item.faded ? "text-white/80" : "text-violet-soft/70")}>{item.fades}</span> : null}
         </button>
       </div>
       {err ? <p className="mt-1.5 text-center text-[11px] text-loss">{err}</p> : null}
