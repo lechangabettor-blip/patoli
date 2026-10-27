@@ -171,6 +171,24 @@ src/components/            screens + UI primitives
 - Leaderboard ("Tabla") deliberately NOT built yet; when built: same three windows, min 3 settled
   picks in the window to rank.
 
+## Game page — every market per game (2026-10-26)
+
+- `/deportes/partido/[slug]` → `GameDetailScreen`; data from `/api/games/[slug]/markets` →
+  `fetchGameDetail` (`src/lib/polymarket/game-detail.ts`): fetches the event AND its
+  `<slug>-more-markets` companion (soccer keeps spreads/totals/BTTS/team totals there), drops
+  closed / non-accepting markets, classifies `sportsMarketType` → kind + period + group + es-MX
+  label. NBA raw event is ~1.6 MB → ~270 KB served (45 s memory cache, 30 s CDN).
+- Kinds: moneyline · spread · total · team_total · btts · prop (player O/U; outcomes Yes/No =
+  Más/Menos) · yesno (anything else, question translated). Period: full/1h/2h/q1–q4.
+- Chips filter by group or period; sections = (group, period, stat|team). Ladders: spread =
+  two team columns (column A = first-named team, `line` rewritten to column A's line so rows
+  sort one way), total = Más/Menos; props = rows per player. Only open sections' tokens are
+  polled (cap 200), 2 s live / 5 s prematch. Main line = most liquid, highlighted.
+- Indexer stores richer kinds (`kindOf`: "spread_1h", "team_total", "prop_points", "yesno"…);
+  `splitKind` in social.ts turns them into feed/ticket text. FeedItem.market gained "Prop".
+- Dynamic pages under (tabs) must wrap the `params` await in Suspense (cacheComponents), as
+  `/u/[handle]` does, or the build fails at prerender.
+
 ## Live bets (2026-10-21)
 
 - Board keeps in-play games until kickoff + max duration per sport (`MAX_GAME_MS` in gamma.ts:
