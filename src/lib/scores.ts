@@ -1,4 +1,5 @@
 import "server-only";
+import { ttlCache } from "@/lib/ttl-cache";
 import type { Game } from "@/lib/polymarket/gamma";
 import { sameTeam } from "@/lib/polymarket/gamma";
 import type { LeagueId } from "@/lib/polymarket/leagues";
@@ -39,18 +40,15 @@ interface EspnEvent {
   }[];
 }
 
-const TTL_MS = 8_000;
-const cache = new Map<LeagueId, { at: number; events: EspnEvent[] }>();
+const cache = ttlCache<LeagueId, EspnEvent[]>(8_000);
 
 async function espnEvents(league: LeagueId): Promise<EspnEvent[]> {
   const hit = cache.get(league);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.events;
+  if (hit) return hit;
   const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH[league]}/scoreboard`, { cache: "no-store", signal: AbortSignal.timeout(4_000) });
   if (!r.ok) throw new Error(`espn ${r.status}`);
   const j = (await r.json()) as { events?: EspnEvent[] };
-  const events = j.events ?? [];
-  cache.set(league, { at: Date.now(), events });
-  return events;
+  return cache.set(league, j.events ?? []);
 }
 
 const teamNames = (t: EspnEvent["competitions"][0]["competitors"][0]["team"]) => [t.displayName, t.shortDisplayName, t.name, t.location];

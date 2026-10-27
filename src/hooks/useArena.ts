@@ -9,7 +9,7 @@ import { isRealtimeConfigured, supabaseBrowser } from "@/lib/supabase/browser";
 import { ARENA_DOMAIN, ARENA_TYPES, commitHash, isArenaConfigured, toUnits, type MatchStruct, type Move } from "@/lib/arena/typed-data";
 import type { MatchPlayers, MatchRow, RoundRow } from "@/lib/arena/engine";
 
-export interface ArenaMe {
+interface ArenaMe {
   balance: number;
   free: number;
   waiting: number;
@@ -18,7 +18,7 @@ export interface ArenaMe {
   matchId: string | null;
   matchStatus: string | null;
 }
-export interface MatchState {
+interface MatchState {
   match: MatchRow;
   rounds: RoundRow[];
   players?: MatchPlayers;

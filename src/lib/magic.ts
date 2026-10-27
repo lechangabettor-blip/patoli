@@ -13,7 +13,7 @@ function createMagic(key: string) {
   });
 }
 
-export type PatoliMagic = ReturnType<typeof createMagic>;
+type PatoliMagic = ReturnType<typeof createMagic>;
 
 let instance: PatoliMagic | null = null;
 

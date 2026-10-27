@@ -5,7 +5,7 @@ import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 
 /** A position as Polymarket's Data API reports it for the deposit wallet (on-chain truth). */
-export interface Position {
+interface Position {
   conditionId: string;
   asset: string;
   outcome: string;

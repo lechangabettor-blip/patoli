@@ -1,4 +1,5 @@
 import "server-only";
+import type { GammaMarket } from "@/lib/polymarket/gamma-raw";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { CLOB_API_URL, GAMMA_API_URL, PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { LEAGUES } from "@/lib/polymarket/leagues";
@@ -33,20 +34,6 @@ interface BuilderTrade {
   builderCode?: string;
 }
 
-interface GammaMarket {
-  conditionId: string;
-  question: string;
-  slug?: string;
-  outcomes?: string;
-  outcomePrices?: string;
-  clobTokenIds?: string;
-  sportsMarketType?: string;
-  line?: number | string | null;
-  gameStartTime?: string;
-  closed?: boolean;
-  umaResolutionStatus?: string;
-  events?: { slug?: string; title?: string }[];
-}
 
 export interface IndexRunResult {
   tradesSeen: number;

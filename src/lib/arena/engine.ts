@@ -51,7 +51,7 @@ import {
  * abandoned matches go through the on-chain claim (24h window) filed by the operator.
  */
 
-export type Side = "a" | "b";
+type Side = "a" | "b";
 /**
  * A match is ACTIVE while it is being played. Decided matches that are still settling
  * (ready) or in the on-chain claim path (finished/disputed, up to 24h) are NOT active:

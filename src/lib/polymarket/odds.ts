@@ -11,7 +11,7 @@ import { PATOLI_BUILDER_FEE_BPS, POLYMARKET_SPORTS_FEE_RATE } from "./constants"
  * Decimal odds are 1 / (effective cost per share).
  */
 
-export interface OddsBreakdown {
+interface OddsBreakdown {
   /** Raw market price (0–1) */
   price: number;
   /** Gross decimal odds at market price (1/p) */

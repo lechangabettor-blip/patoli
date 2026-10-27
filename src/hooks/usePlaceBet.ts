@@ -8,7 +8,7 @@ import { useTrading } from "@/providers/TradingProvider";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { useSyncBets } from "@/hooks/useSocial";
 
-export interface PlaceBetParams {
+interface PlaceBetParams {
   tokenId: string;
   /** Stake in USDC */
   stake: number;
@@ -18,7 +18,7 @@ export interface PlaceBetParams {
   price: number;
 }
 
-export type PlaceBetResult =
+type PlaceBetResult =
   | { ok: true; orderId: string; txHashes: string[] }
   | { ok: false; reason: string; lineMoved?: boolean };
 

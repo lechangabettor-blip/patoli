@@ -51,8 +51,11 @@ src/app/api/positions      Data API positions proxy
 src/app/api/polymarket/sign  builder HMAC signing (secret stays server-side)
 src/providers/             WalletProvider (Magic→ethers signer), TradingProvider
                            (Safe deploy, API creds, approvals, ClobClient)
-src/lib/polymarket/        constants, leagues (tag ids), gamma (normalize),
-                           odds (fee math), approvals, session
+src/lib/polymarket/        constants, leagues (tag ids), gamma (board), game-detail
+                           (game page), gamma-raw (ONE copy of the raw Gamma types,
+                           parsers, team names, 3-way merge — shared by both + indexer),
+                           odds (fee math), v2 (deposit-wallet batches)
+src/lib/ttl-cache.ts       the in-memory memo used by gamma, game-detail and scores
 src/components/            screens + UI primitives
 ```
 

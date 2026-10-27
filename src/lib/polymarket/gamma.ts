@@ -1,7 +1,11 @@
 import "server-only";
 import { GAMMA_API_URL } from "./constants";
-import { DEFAULT_FEE, type FeeSchedule } from "./odds";
+import type { FeeSchedule } from "./odds";
 import { LEAGUES, LEAGUE_BY_ID, type LeagueId, type League } from "./leagues";
+import { ttlCache } from "@/lib/ttl-cache";
+import { liq, marketCore, parseTeams, parsed, sameTeam, shortTeam, threeWayOutcomes, toIso, type GammaMarket, type Teams } from "./gamma-raw";
+
+export { sameTeam, shortTeam } from "./gamma-raw";
 
 /**
  * Server-side reads of Polymarket's Gamma API, normalized to what the Sports
@@ -13,7 +17,6 @@ import { LEAGUES, LEAGUE_BY_ID, type LeagueId, type League } from "./leagues";
  * into one three-way line), the most liquid spread and the most liquid total.
  */
 
-/** btts = "both teams to score" (soccer only; replaces the spread row there) */
 /** btts = both teams to score · team_total = one team's O/U · prop = player O/U · yesno = any other two-way market */
 export type MarketKind = "moneyline" | "spread" | "total" | "btts" | "team_total" | "prop" | "yesno";
 /** Part of the game a market covers */
@@ -62,15 +65,14 @@ export interface Game {
   pmScore?: { score?: string; elapsed?: string; period?: string; live?: boolean; ended?: boolean };
 }
 
-const TTL_MS = 45_000;
-const cache = new Map<LeagueId, { at: number; games: Game[] }>();
+const cache = ttlCache<LeagueId, Game[]>(45_000);
 
 /** Longest a game of each sport can plausibly run, kickoff to final whistle (incl. OT / stoppage). */
 const MAX_GAME_MS: Record<League["sport"], number> = { soccer: 2.25 * 3600_000, basketball: 3 * 3600_000, football: 4 * 3600_000 };
 
 export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> {
   const hit = cache.get(league);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.games.slice(0, limit);
+  if (hit) return hit.slice(0, limit);
 
   const cfg = LEAGUE_BY_ID[league];
   // Soccer shows "Ambos anotan" where US sports show the spread (LeChanga, 2026-10-16).
@@ -140,8 +142,8 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
     });
   }
 
-  games.sort((a, b) => a.startTime.localeCompare(b.startTime));
-  cache.set(league, { at: Date.now(), games });
+  games.sort((a, b) => a.startTime.localeCompare(b.startTime) || a.slug.localeCompare(b.slug));
+  cache.set(league, games);
   return games.slice(0, limit);
 }
 
@@ -150,47 +152,6 @@ export async function fetchGameBySlug(slug: string): Promise<Game | null> {
   if (!league) return null;
   const games = await fetchGames(league, 200);
   return games.find((g) => g.slug === slug) ?? null;
-}
-
-// ---------------------------------------------------------------- Gamma types
-
-interface GammaEventRef {
-  id: string | number;
-  slug: string;
-  title: string;
-  startDate?: string;
-  image?: string;
-  icon?: string;
-  // live game data Polymarket attaches to sports events
-  score?: string; // "74-68", title order
-  elapsed?: string; // "05:27"
-  period?: string; // "Q3", "2H"…
-  live?: boolean;
-  ended?: boolean;
-}
-
-interface GammaMarket {
-  id: string | number;
-  conditionId: string;
-  question: string;
-  outcomes?: string;
-  outcomePrices?: string;
-  clobTokenIds?: string;
-  sportsMarketType?: string;
-  line?: number | string | null;
-  negRisk?: boolean;
-  orderPriceMinTickSize?: number;
-  orderMinSize?: number;
-  acceptingOrders?: boolean;
-  feesEnabled?: boolean;
-  feeSchedule?: { rate?: number; exponent?: number; takerOnly?: boolean };
-  liquidityNum?: number;
-  liquidity?: string | number;
-  gameStartTime?: string;
-  groupItemTitle?: string;
-  closed?: boolean;
-  active?: boolean;
-  events?: GammaEventRef[];
 }
 
 async function fetchMarkets(
@@ -220,80 +181,22 @@ async function fetchMarkets(
 
 // ---------------------------------------------------------------- normalizers
 
-function parsed(m: GammaMarket): { outcomes: string[]; prices: number[]; tokens: string[] } | null {
-  try {
-    const outcomes = JSON.parse(m.outcomes ?? "[]") as string[];
-    const prices = (JSON.parse(m.outcomePrices ?? "[]") as string[]).map(Number);
-    const tokens = JSON.parse(m.clobTokenIds ?? "[]") as string[];
-    if (tokens.length === 0 || outcomes.length !== tokens.length) return null;
-    return { outcomes, prices, tokens };
-  } catch {
-    return null;
-  }
-}
 
-function base(m: GammaMarket, kind: MarketKind, line: number | null): Omit<GameMarket, "outcomes"> {
-  return {
-    id: String(m.id),
-    conditionId: m.conditionId,
-    kind,
-    question: m.question,
-    line,
-    negRisk: !!m.negRisk,
-    tickSize: Number(m.orderPriceMinTickSize ?? 0.01),
-    minOrderSize: Number(m.orderMinSize ?? 5),
-    acceptingOrders: m.acceptingOrders !== false,
-    liquidity: liq(m),
-    fee:
-      m.feesEnabled === false
-        ? { rate: 0, exponent: 1 }
-        : { rate: Number(m.feeSchedule?.rate ?? DEFAULT_FEE.rate), exponent: Number(m.feeSchedule?.exponent ?? 1) },
-  };
-}
 
 /** US-style moneyline: one market, outcomes are the two teams. */
 function twoWay(m: GammaMarket): GameMarket | null {
   const p = parsed(m);
   if (!p) return null;
   return {
-    ...base(m, "moneyline", null),
+    ...marketCore(m, "moneyline", null),
     outcomes: p.outcomes.map((label, i) => ({ label: shortTeam(label), tokenId: p.tokens[i], price: p.prices[i] ?? 0 })),
   };
 }
 
 /** Soccer: three yes/no markets (home win, draw, away win) → one 3-way line. */
-function mergeThreeWay(
-  markets: GammaMarket[],
-  t: { home: string; away: string; homeRaw: string; awayRaw: string },
-): GameMarket | null {
-  const { home, away, homeRaw, awayRaw } = t;
-  const picks: { key: "home" | "draw" | "away"; m: GammaMarket }[] = [];
-  for (const m of markets) {
-    const g = (m.groupItemTitle ?? "").toLowerCase();
-    const q = m.question.toLowerCase();
-    const key: "home" | "draw" | "away" | null = /draw|empate|tie/.test(g) || /end in a draw/.test(q)
-      ? "draw"
-      : sameTeam(g || q, homeRaw)
-        ? "home"
-        : sameTeam(g || q, awayRaw)
-          ? "away"
-          : null;
-    if (key && !picks.some((x) => x.key === key)) picks.push({ key, m });
-  }
-  if (picks.length < 2) return null;
-  const order: Record<"home" | "draw" | "away", number> = { home: 0, draw: 1, away: 2 };
-  picks.sort((a, b) => order[a.key] - order[b.key]);
-  const outcomes: GameOutcome[] = [];
-  for (const { key, m } of picks) {
-    const p = parsed(m);
-    if (!p) continue;
-    const yes = p.outcomes.findIndex((o) => o.toLowerCase() === "yes");
-    const i = yes >= 0 ? yes : 0;
-    outcomes.push({ label: key === "draw" ? "Empate" : key === "home" ? home : away, tokenId: p.tokens[i], price: p.prices[i] ?? 0 });
-  }
-  if (outcomes.length < 2) return null;
-  const first = picks[0].m;
-  return { ...base(first, "moneyline", null), negRisk: picks.some((x) => x.m.negRisk) || first.negRisk === true, outcomes };
+function mergeThreeWay(markets: GammaMarket[], t: Teams): GameMarket | null {
+  const tw = threeWayOutcomes(markets, t);
+  return tw ? { ...marketCore(tw.first, "moneyline", null), negRisk: tw.negRisk, outcomes: tw.outcomes } : null;
 }
 
 /**
@@ -313,7 +216,7 @@ function spreadMarket(m: GammaMarket, teamOrder: string[]): GameMarket | null {
   ];
   const first = teamOrder[0];
   if (first && !sameTeam(p.outcomes[0], first) && sameTeam(p.outcomes[1], first)) outcomes.reverse();
-  return { ...base(m, "spread", line), outcomes };
+  return { ...marketCore(m, "spread", line), outcomes };
 }
 
 /** Soccer "Both Teams to Score": Yes/No → "Ambos anotan · Sí / No". */
@@ -324,7 +227,7 @@ function bttsMarket(m: GammaMarket): GameMarket | null {
   const no = p.outcomes.findIndex((o) => /^no$/i.test(o));
   if (yes < 0 || no < 0) return null;
   return {
-    ...base(m, "btts", null),
+    ...marketCore(m, "btts", null),
     outcomes: [
       { label: "Ambos anotan · Sí", tokenId: p.tokens[yes], price: p.prices[yes] ?? 0 },
       { label: "Ambos anotan · No", tokenId: p.tokens[no], price: p.prices[no] ?? 0 },
@@ -338,7 +241,7 @@ function totalMarket(m: GammaMarket): GameMarket | null {
   const line = m.line == null ? null : Number(m.line);
   const word = (o: string) => (/over/i.test(o) ? "Más" : /under/i.test(o) ? "Menos" : o);
   return {
-    ...base(m, "total", line),
+    ...marketCore(m, "total", line),
     outcomes: p.outcomes.map((o, i) => ({
       label: line == null ? word(o) : `${word(o)} ${line}`,
       tokenId: p.tokens[i],
@@ -349,69 +252,8 @@ function totalMarket(m: GammaMarket): GameMarket | null {
 
 // ---------------------------------------------------------------- helpers
 
-const liq = (m: GammaMarket) => Number(m.liquidityNum ?? m.liquidity ?? 0);
 
 function baseSlug(m: GammaMarket): string | null {
   const s = m.events?.[0]?.slug;
   return s ? s.replace(/-more-markets$/, "") : null;
-}
-
-function norm(s: string) {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9 ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export function sameTeam(text: string, team: string): boolean {
-  const t = norm(team);
-  const x = norm(text);
-  if (!t) return false;
-  if (x.includes(t)) return true;
-  // fall back to the most distinctive word (e.g. "necaxa" in "Club Necaxa")
-  const words = t.split(" ").filter((w) => w.length > 3 && !["club", "fc", "cf", "cd", "de", "la", "los", "las", "del", "united", "city"].includes(w));
-  return words.some((w) => x.includes(w));
-}
-
-function parseTeams(title: string): { away: string; home: string; awayRaw: string; homeRaw: string } {
-  // Polymarket titles: US sports "Away vs. Home"; soccer "Home vs. Away".
-  // We only need the two names; order is handled by the league's `threeWay`.
-  const parts = title.split(/\s+vs\.?\s+/i);
-  if (parts.length === 2) {
-    const homeRaw = parts[0].trim();
-    const awayRaw = parts[1].trim();
-    return { away: shortTeam(awayRaw), home: shortTeam(homeRaw), awayRaw, homeRaw };
-  }
-  return { away: "", home: shortTeam(title), awayRaw: "", homeRaw: title };
-}
-
-const TEAM_NOISE = new Set(["club", "fc", "cf", "cd", "sc", "rc", "rcd", "ud", "sd", "ac", "afc", "ss", "us", "as", "de", "la", "del", "unam", "uanl", "futbol", "fútbol"]);
-const TEAM_OVERRIDES: Record<string, string> = {
-  "Pumas de la UNAM": "Pumas",
-  "Tigres de la UANL": "Tigres",
-  "CD Guadalajara": "Chivas",
-  "Club Atlético de Madrid": "Atlético",
-  "RCD Espanyol de Barcelona": "Espanyol",
-  "RC Deportivo A Coruña": "Deportivo",
-  "Atlético de San Luis": "San Luis",
-  "FC Juárez": "Juárez",
-};
-
-/** "Club Necaxa" → "Necaxa", "Atlas FC" → "Atlas". Full names stay in the game title. */
-export function shortTeam(raw: string): string {
-  const name = raw.trim();
-  if (TEAM_OVERRIDES[name]) return TEAM_OVERRIDES[name];
-  const words = name.split(/\s+/);
-  const kept = words.filter((w) => !TEAM_NOISE.has(w.toLowerCase().replace(/\./g, "")));
-  return (kept.length ? kept : words).join(" ");
-}
-
-function toIso(s: string | undefined): string {
-  if (!s) return new Date(0).toISOString();
-  // gameStartTime comes as "2026-10-19 00:20:00+00"
-  const d = new Date(s.replace(" ", "T").replace(/\+00$/, "Z"));
-  return isNaN(d.getTime()) ? new Date(0).toISOString() : d.toISOString();
 }

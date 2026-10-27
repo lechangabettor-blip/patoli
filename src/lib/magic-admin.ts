@@ -5,7 +5,7 @@ import { Magic } from "@magic-sdk/admin";
  * Verifies a Magic DID token sent by the browser and returns the identity it
  * proves. Used by every authenticated route. Needs MAGIC_SECRET_KEY (server).
  */
-export interface MagicIdentity {
+interface MagicIdentity {
   issuer: string;
   eoa: `0x${string}`;
   email: string | null;
