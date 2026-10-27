@@ -11,7 +11,12 @@ const KINDS = new Set(["fire", "tail", "fade"]);
 /**
  * POST /api/react { id, on: boolean, kind?: "fire" | "tail" | "fade" }  (Bearer DID token)
  * → { kind, count, on, fire, fired } for that feed item (fire/fired kept for the 🔥 client).
- * "tail"/"fade" are written by the bet sheet once a Súbaseee/Bájeseee bet is really placed.
+ *
+ * "tail"/"fade" are social proof, so the client's word is not enough: the row is written only
+ * when the viewer owns a BUY fill (indexed in `bets`) on the source pick's token (tail) or on
+ * the other token of the same market (fade), placed after the source pick, by someone other
+ * than its author, while the pick is still open. Until the indexer has the fill → 202 pending
+ * (the sheet retries). They can never be removed through this endpoint.
  */
 export async function POST(req: NextRequest) {
   await connection();
@@ -33,6 +38,11 @@ export async function POST(req: NextRequest) {
     : (await db.from("bets").select("id").eq("id", id).maybeSingle()).data;
   if (!exists) return NextResponse.json({ error: "no existe" }, { status: 404 });
 
+  if (kind !== "fire") {
+    if (body.on === false) return NextResponse.json({ error: "no se puede quitar" }, { status: 400 });
+    const verdict = await verifyTail(db, id, viewerId, kind as "tail" | "fade");
+    if (verdict !== "ok") return NextResponse.json({ error: verdict, pending: verdict === "pendiente" }, { status: verdict === "pendiente" ? 202 : 409 });
+  }
   if (body.on === false) {
     await db.from("reactions").delete().eq("bet_id", id).eq("profile_id", viewerId).eq("kind", kind);
   } else {
@@ -42,4 +52,30 @@ export async function POST(req: NextRequest) {
   const { count } = await db.from("reactions").select("bet_id", { count: "exact", head: true }).eq("bet_id", id).eq("kind", kind);
   const on = body.on !== false;
   return NextResponse.json({ kind, count: count ?? 0, on, fire: count ?? 0, fired: on });
+}
+
+type Db = ReturnType<typeof supabaseAdmin>;
+
+/** "ok" | "pendiente" (fill not indexed yet) | a reason the tail/fade can never count. */
+async function verifyTail(db: Db, sourceId: string, viewerId: string, side: "tail" | "fade"): Promise<string> {
+  const { data: src } = await db
+    .from("bets")
+    .select("id, profile_id, token_id, status, matched_at, markets!bets_condition_id_fkey(outcomes)")
+    .eq("id", sourceId)
+    .maybeSingle();
+  if (!src) return "no existe";
+  if (src.profile_id === viewerId) return "es tu propio pick";
+  if (src.status !== "open") return "pick cerrado";
+  const outcomes = ((src.markets as unknown as { outcomes?: { tokenId: string | null }[] } | null)?.outcomes ?? []).map((o) => o.tokenId).filter(Boolean) as string[];
+  const target = side === "tail" ? (src.token_id as string) : outcomes.length === 2 ? outcomes.find((t) => t !== src.token_id) : undefined;
+  if (!target) return "sin lado contrario";
+  const { data: mine } = await db
+    .from("bets")
+    .select("id")
+    .eq("profile_id", viewerId)
+    .eq("side", "BUY")
+    .eq("token_id", target)
+    .gte("matched_at", src.matched_at as string)
+    .limit(1);
+  return mine && mine.length > 0 ? "ok" : "pendiente";
 }

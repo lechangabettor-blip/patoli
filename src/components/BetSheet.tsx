@@ -3,7 +3,6 @@
 import type { MarketKind } from "@/lib/polymarket/gamma";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Info } from "lucide-react";
 import Sheet from "./Sheet";
 import TicketShare from "./TicketShare";
@@ -15,7 +14,7 @@ import { useWallet } from "@/providers/WalletContext";
 import { useTrading } from "@/providers/TradingProvider";
 import { useMe } from "@/providers/MeProvider";
 import { usePlaceBet } from "@/hooks/usePlaceBet";
-import { useReact } from "@/hooks/useSocial";
+import { useRecordTail } from "@/hooks/useSocial";
 import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { useBuilderFee } from "@/hooks/useBuilderFee";
 import { usePrices, useScores } from "@/hooks/useGames";
@@ -46,8 +45,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const { me } = useMe();
   const { isReady, step, setupTrading, error } = useTrading();
   const { placeBet, isPlacing } = usePlaceBet();
-  const react = useReact();
-  const qc = useQueryClient();
+  const recordTail = useRecordTail();
   const { balance } = useUsdcBalance();
   const { takerBps } = useBuilderFee();
   const [stake, setStake] = useState(10);
@@ -97,13 +95,8 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
       price,
     });
     if (res.ok) {
-      if (selection.source) {
-        // Count the tail/fade only on a real fill, then let every open feed pick up the new number.
-        void react(selection.source.betId, true, selection.source.side).then(() => {
-          void qc.invalidateQueries({ queryKey: ["feed"] });
-          void qc.invalidateQueries({ queryKey: ["user"] });
-        });
-      }
+      // Súbaseee/Bájeseee: the server counts it once it sees this fill indexed under our profile.
+      if (selection.source) void recordTail(selection.source.betId, selection.source.side);
       const league = LEAGUE_BY_ID[selection.game.league];
       setDone({
         handle,

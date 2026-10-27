@@ -67,6 +67,34 @@ export function useReact() {
   );
 }
 
+/**
+ * Records a Súbaseee/Bájeseee after the order filled. The server only counts it once the indexer
+ * has the viewer's fill (usePlaceBet pulls it at 1.5 s / 6 s / 15 s), so we retry on 202.
+ */
+export function useRecordTail() {
+  const { getToken } = useMe();
+  const qc = useQueryClient();
+  return useCallback(
+    async (betId: string, side: "tail" | "fade"): Promise<boolean> => {
+      for (const delay of [2_500, 5_000, 8_000, 12_000, 20_000]) {
+        await new Promise((r) => setTimeout(r, delay));
+        const t = await getToken();
+        if (!t) return false;
+        const r = await fetch("/api/react", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${t}` }, body: JSON.stringify({ id: betId, on: true, kind: side }) });
+        if (r.status === 202) continue;
+        if (r.ok) {
+          qc.invalidateQueries({ queryKey: ["feed"] });
+          qc.invalidateQueries({ queryKey: ["user"] });
+          return true;
+        }
+        return false;
+      }
+      return false;
+    },
+    [getToken, qc],
+  );
+}
+
 /** Feed item → shareable ticket. */
 export function ticketFromItem(item: FeedItem): TicketData {
   const league = isLeagueId(item.league) ? LEAGUE_BY_ID[item.league] : null;

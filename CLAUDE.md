@@ -167,7 +167,10 @@ src/components/            screens + UI primitives
   / no asks → inline "Mercado cerrado" / "Sin liquidez". Once the order really fills the sheet
   POSTs `/api/react {kind: "tail"|"fade"}` (same `reactions` table as 🔥, told apart by
   `kind`) and the counts (`tails`/`fades`, `tailed`/`faded`) ride along with `attachFire`.
-  Hidden on your own picks, on Batalla, and on settled picks.
+  **Server-verified:** the row is written only if `bets` holds a BUY by the viewer on that
+  token after the source pick, by someone other than its author, while the pick is open
+  (`verifyTail`); 202 until the indexer has the fill (`useRecordTail` retries), never
+  deletable. Hidden on your own picks, on Batalla, and on settled picks.
 
 ## Profile stats (2026-10-22)
 
