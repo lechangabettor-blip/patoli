@@ -215,8 +215,9 @@ function SectionBody({ s, game, prices, takerBps, onPick }: { s: Section; game: 
   const Btn = ({ m, o, main = false, compact = false }: { m: GameMarket; o: GameOutcome; main?: boolean; compact?: boolean }) => {
     const liveP = prices?.[o.tokenId]?.ask ?? null;
     const p = liveP ?? (o.price > 0 && o.price < 1 ? o.price : null);
-    const dead = p == null || !m.acceptingOrders;
-    const odds = p != null ? breakdown(p, m.fee, takerBps).netOdds : null;
+    // ≤1¢ or ≥99¢ means nobody is really quoting that line: show it as unavailable instead of "995".
+    const dead = p == null || p <= 0.01 || p >= 0.99 || !m.acceptingOrders;
+    const odds = p != null && !dead ? breakdown(p, m.fee, takerBps).netOdds : null;
     return (
       <button
         disabled={dead}
@@ -271,12 +272,12 @@ function SectionBody({ s, game, prices, takerBps, onPick }: { s: Section; game: 
     return (
       <div className="space-y-1.5">
         {s.markets.map((m) => (
-          <div key={m.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-            <span className="min-w-0 truncate text-[12px]">{m.subject}</span>
+          <div key={m.id} className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2">
+            <span className="min-w-0 truncate text-[12px]">
+              {m.subject} <span className="tnum text-muted">{m.line}</span>
+            </span>
             {m.outcomes.slice(0, 2).map((o) => (
-              <div key={o.tokenId} className="w-[104px]">
-                <Btn m={m} o={o} compact />
-              </div>
+              <Btn key={o.tokenId} m={m} o={{ ...o, label: o.label.replace(/s[d.]+$/, "") }} compact />
             ))}
           </div>
         ))}
