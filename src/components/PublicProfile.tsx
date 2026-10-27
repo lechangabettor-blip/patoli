@@ -10,6 +10,7 @@ import HistoryTabs from "./HistoryTabs";
 import BottomNav from "./BottomNav";
 import Sheet from "./Sheet";
 import TicketShare from "./TicketShare";
+import TipSheet from "./TipSheet";
 import type { TicketData } from "./Ticket";
 import { useUser, ticketFromItem } from "@/hooks/useSocial";
 import { useMe } from "@/providers/MeProvider";
@@ -24,6 +25,7 @@ export default function PublicProfile({ handle }: { handle: string }) {
   const { me, follow } = useMe();
   const q = useUser(handle);
   const [ticket, setTicket] = useState<TicketData | null>(null);
+  const [tipOpen, setTipOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function toggleFollow(want: boolean) {
@@ -75,14 +77,21 @@ export default function PublicProfile({ handle }: { handle: string }) {
                     <Link href="/perfil" className="btn-ghost px-4 py-2 font-display text-xs font-bold uppercase">
                       Mi cuenta
                     </Link>
-                  ) : p.isFollowing ? (
-                    <button onClick={() => toggleFollow(false)} disabled={busy} className="btn-ghost px-5 py-2 font-display text-xs font-bold uppercase">
-                      Siguiendo
-                    </button>
                   ) : (
-                    <button onClick={() => toggleFollow(true)} disabled={busy} className="btn-accent px-5 py-2 text-xs">
-                      Seguir
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setTipOpen(true)} className="btn-ghost px-4 py-2 font-display text-xs font-bold uppercase">
+                        Tip
+                      </button>
+                      {p.isFollowing ? (
+                        <button onClick={() => toggleFollow(false)} disabled={busy} className="btn-ghost px-5 py-2 font-display text-xs font-bold uppercase">
+                          Siguiendo
+                        </button>
+                      ) : (
+                        <button onClick={() => toggleFollow(true)} disabled={busy} className="btn-accent px-5 py-2 text-xs">
+                          Seguir
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="mt-2 flex items-center gap-1.5">
@@ -124,6 +133,7 @@ export default function PublicProfile({ handle }: { handle: string }) {
       <Sheet open={!!ticket} onClose={() => setTicket(null)} title="Boleto">
         {ticket ? <TicketShare data={ticket} onDone={() => setTicket(null)} /> : null}
       </Sheet>
+      {q.data?.profile && !isMe ? <TipSheet to={q.data.profile} open={tipOpen} onClose={() => setTipOpen(false)} /> : null}
     </>
   );
 }

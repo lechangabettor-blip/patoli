@@ -80,4 +80,6 @@ export interface FeedItem {
 
 export interface MeProfile extends PublicProfile {
   email: string | null;
+  /** pUSD received as tips, all time (private: only the owner sees it) */
+  tipsReceived?: number;
 }

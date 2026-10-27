@@ -9,6 +9,9 @@ import {
   CLOB_API_URL,
   PATOLI_BUILDER_CODE,
   POLYGON_CHAIN_ID,
+  PUSD_ADDRESS,
+  PUSD_DECIMALS,
+  TIP_MAX_USD,
   RELAYER_URL,
   REMOTE_SIGNING_URL,
   isBuilderCodeValid,
@@ -75,6 +78,8 @@ interface TradingContextType {
   /** Move USDC.e parked in the v1 Safe into the deposit wallet (gasless). */
   /** Withdraw: pUSD → USDC.e sent to `to` on Polygon (gasless). Returns tx hash if known. */
   withdraw: (to: `0x${string}`, amount: bigint) => Promise<string | undefined>;
+  /** Tip: plain pUSD transfer to another user's deposit wallet (gasless; ≤ TIP_MAX_USD). Returns tx hash. */
+  tip: (to: `0x${string}`, amount: bigint) => Promise<string | undefined>;
   /** Move pUSD from the deposit wallet into the Arena escrow (gasless batch; credited to the EOA). */
   depositArena: (amount: bigint) => Promise<void>;
   /** Cobrar: redeem resolved positions into pUSD (gasless, one signature for all). */
@@ -265,6 +270,19 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     [relayClient, walletAddress],
   );
 
+  const tip = useCallback(
+    async (to: `0x${string}`, amount: bigint) => {
+      if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
+      if (amount <= 0n) throw new Error("Monto inválido");
+      if (amount > BigInt(TIP_MAX_USD) * 10n ** BigInt(PUSD_DECIMALS)) throw new Error(`El tip máximo es ${TIP_MAX_USD}`);
+      if (to.toLowerCase() === walletAddress.toLowerCase()) throw new Error("No te puedes dar tip a ti mismo");
+      const resp = await relayClient.executeDepositWalletBatch([buildErc20TransferCall(PUSD_ADDRESS, to, amount)], walletAddress, batchDeadline());
+      const result = await resp.wait();
+      return (result as { transactionHash?: string } | undefined)?.transactionHash;
+    },
+    [relayClient, walletAddress],
+  );
+
   const depositArena = useCallback(
     async (amount: bigint) => {
       if (!relayClient || !walletAddress || !eoaAddress) throw new Error("Primero activa tu cuenta");
@@ -332,11 +350,12 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       ensureApprovals,
       rescueNativeUsdc,
       withdraw,
+      tip,
       depositArena,
       redeem,
       resetTrading,
     }),
-    [session, step, error, isReady, walletAddress, clobClient, relayClient, setupTrading, wrapUsdc, ensureApprovals, rescueNativeUsdc, withdraw, depositArena, redeem, resetTrading],
+    [session, step, error, isReady, walletAddress, clobClient, relayClient, setupTrading, wrapUsdc, ensureApprovals, rescueNativeUsdc, withdraw, tip, depositArena, redeem, resetTrading],
   );
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>;

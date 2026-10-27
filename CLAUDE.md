@@ -173,6 +173,17 @@ src/components/            screens + UI primitives
   unique — migration 0010), so one bet cannot prove tails on several picks; 202 until the
   indexer has an unspent fill (`useRecordTail` retries), never deletable. Hidden on your own picks, on Batalla, and on settled picks.
 
+## Tips (2026-10-27)
+
+- **Tip** button on every public profile that is not yours (`TipSheet.tsx`): one typed amount
+  (`TIP_MAX_USD` = 100, min 1, no presets by his choice), confirm step, then a gasless batch with a
+  single pUSD `transfer` from the tipper's deposit wallet to the recipient's `profiles.wallet`
+  (`TradingProvider.tip`). No Patoli fee. Irreversible.
+- **Private:** never a feed item. `POST /api/tip {txHash, to}` reads the receipt on Polygon and
+  records the tip only if it finds a pUSD Transfer from the viewer's wallet to the recipient's
+  (`tips` table, migration 0011, RLS with no public policy). The owner sees their own total via
+  `/api/me` → `MeProfile.tipsReceived` ("tips recibidos" line in Perfil).
+
 ## Profile stats (2026-10-22)
 
 - **Rolling windows** (`loadWindows` in social.ts, `StatsWindows.tsx`): últimos 7 días / 30 días /

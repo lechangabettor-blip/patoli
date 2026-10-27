@@ -37,6 +37,8 @@ export const NEG_RISK_ADAPTER_ADDRESS = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35
 // (concepts/pusd, trading/deposit-wallets) and ArbClaude's working setup.
 export const PUSD_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB" as const;
 export const PUSD_DECIMALS = 6;
+/** Largest tip in pUSD (product rule, enforced in the sheet, before signing and in the DB) */
+export const TIP_MAX_USD = 100;
 export const COLLATERAL_ONRAMP_ADDRESS = "0x93070a847efEf7F70739046A929D47a521F5B8ee" as const;
 export const COLLATERAL_OFFRAMP_ADDRESS = "0x2957922Eb93258b93368531d39fAcCA3B4dC5854" as const;
 export const V2_PROTOCOL_EXCHANGE_ADDRESS = "0xe3333700cA9d93003F00f0F71f8515005F6c00Aa" as const;

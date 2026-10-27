@@ -56,7 +56,10 @@ export async function GET(req: NextRequest) {
   const { data: priv } = await db.from("profile_private").select("profile_id").eq("issuer", id.issuer).maybeSingle();
   if (!priv) return NextResponse.json(null, { status: 404 });
   const profile = await loadProfile({ id: priv.profile_id as string }, priv.profile_id as string);
-  return NextResponse.json(profile ? { ...profile, email: id.email } : null);
+  if (!profile) return NextResponse.json(null);
+  const { data: tips } = await db.from("tips").select("amount").eq("to_profile", priv.profile_id as string);
+  const tipsReceived = (tips ?? []).reduce((s, t) => s + Number(t.amount), 0);
+  return NextResponse.json({ ...profile, email: id.email, tipsReceived });
 }
 
 function suggestHandle(email: string | null, eoa: string): string {

@@ -213,6 +213,7 @@ export default function ProfileScreen() {
             <>
               <div className="tnum mt-3 text-xs text-muted">
                 {me.followers} seguidores · {me.following} siguiendo
+                {me.tipsReceived ? <> · tips recibidos <b className="text-ink">${formatUsd(me.tipsReceived)}</b></> : null}
               </div>
               <StatsWindows profile={me} compact />
             </>
