@@ -39,18 +39,20 @@ export default function HistoryTabs({ items, loading, onTicket, money }: { items
   return (
     <>
       <div className="mt-6 flex items-center justify-between">
-        <h2 className="text-lg">Historial</h2>
-        <div className="flex rounded-full bg-surface p-0.5">
+        <h2 className="shrink-0 text-lg">Historial</h2>
+        <div className="flex shrink-0 rounded-full bg-surface p-0.5">
           {tabs.map(([id, label, n]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
               className={cn(
-                "tnum rounded-full px-3 py-1 font-display text-[11px] font-bold uppercase tracking-wide transition-colors",
+                "tnum whitespace-nowrap rounded-full py-1 font-display text-[11px] font-bold uppercase tracking-wide transition-colors",
+                tabs.length > 2 ? "px-2.5" : "px-3",
                 tab === id ? "bg-accent text-white" : "text-muted",
               )}
             >
-              {label} {n ? <span className={cn("ml-0.5", tab === id ? "text-white/80" : "text-muted-2")}>{n}</span> : null}
+              {label}
+              {n && (tabs.length <= 2 || tab === id) ? <span className={cn("ml-1", tab === id ? "text-white/80" : "text-muted-2")}>{n}</span> : null}
             </button>
           ))}
         </div>
