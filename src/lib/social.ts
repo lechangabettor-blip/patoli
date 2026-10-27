@@ -158,17 +158,47 @@ export async function loadWindows(profileId: string): Promise<Record<WindowKey, 
   return out;
 }
 
+/** Unidades settled in the last 7 days per profile (one query for the whole list). Mutates and returns `profiles`. */
+async function attachWeekUnits(profiles: PublicProfile[]): Promise<PublicProfile[]> {
+  if (profiles.length === 0) return profiles;
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { data, error } = await supabaseAdmin()
+    .from("bets")
+    .select("profile_id, status, price")
+    .in("profile_id", profiles.map((p) => p.id))
+    .eq("side", "BUY")
+    .in("status", ["won", "lost"])
+    .gte("settled_at", since);
+  const units = new Map<string, number>();
+  for (const b of error ? [] : (data ?? [])) {
+    const pid = b.profile_id as string;
+    const price = Number(b.price);
+    units.set(pid, (units.get(pid) ?? 0) + (b.status === "won" ? (price > 0 ? 1 / price - 1 : 0) : -1));
+  }
+  for (const p of profiles) p.units7 = units.get(p.id) ?? 0;
+  return profiles;
+}
+
+/**
+ * Profiles for Buscar and the people rail. With a query: name matches. Without one (the rail):
+ * everyone, best week first — Unidades settled in the last 7 days, then who has a pick riding,
+ * then newest (LeChanga, 2026-10-26).
+ */
 export async function searchProfiles(q: string, limit = 20): Promise<PublicProfile[]> {
   const db = supabaseAdmin();
   const needle = q.toLowerCase().replace(/[^a-z0-9_ ]/g, "");
-  let query = db.from("profiles").select("id, handle, display_name, avatar, bio, is_verified, wallet, created_at").eq("is_banned", false).limit(limit);
+  let query = db.from("profiles").select("id, handle, display_name, avatar, bio, is_verified, wallet, created_at").eq("is_banned", false).limit(needle ? limit : 200);
   query = needle ? query.or(`handle.ilike.%${needle}%,display_name.ilike.%${needle}%`) : query.order("created_at", { ascending: false });
   const { data: rows } = await query;
   if (!rows?.length) return [];
   const { data: stats } = await db.from("profile_stats").select("*").in("profile_id", rows.map((r) => r.id));
   const sm = new Map((stats ?? []).map((s) => [s.profile_id as string, s as StatsRow]));
   const out = (rows as ProfileRow[]).map((r) => toProfile(r, sm.get(r.id)));
-  await attachBattleStats(out);
+  await Promise.all([attachBattleStats(out), attachWeekUnits(out)]);
+  if (!needle) {
+    out.sort((a, b) => (b.units7 ?? 0) - (a.units7 ?? 0) || b.record.open - a.record.open || b.createdAt.localeCompare(a.createdAt));
+    return out.slice(0, limit);
+  }
   return out;
 }
 

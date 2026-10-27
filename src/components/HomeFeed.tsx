@@ -52,6 +52,9 @@ export default function HomeFeed() {
               </span>
             </span>
             <span className="w-full truncate text-center text-[11px] text-muted">@{u.handle.replace("_demo", "")}</span>
+            <span className={cn("tnum -mt-1 text-[10px] font-semibold", (u.units7 ?? 0) > 0 ? "text-win" : (u.units7 ?? 0) < 0 ? "text-loss" : "text-muted-2")}>
+              {(u.units7 ?? 0) > 0 ? "+" : ""}{(u.units7 ?? 0).toFixed(1)}u
+            </span>
           </Link>
         ))}
         {people.isLoading ? Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton h-14 w-14 shrink-0 rounded-full" />) : null}

@@ -28,6 +28,8 @@ export interface PublicProfile {
   following: number;
   /** Arena (piedra·papel·tijera) record */
   battles: { w: number; l: number; d: number; pnl: number };
+  /** Unidades settled in the last 7 days (rolling) — the people rail sorts by this */
+  units7?: number;
   /** Rolling windows by settlement time (single-profile loads only) */
   windows?: Record<WindowKey, StatsWindow>;
   createdAt: string;
