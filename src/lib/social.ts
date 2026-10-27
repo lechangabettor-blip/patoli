@@ -203,12 +203,12 @@ export async function searchProfiles(q: string, limit = 20): Promise<PublicProfi
 }
 
 const MARKET_LABEL: Record<string, FeedItem["market"]> = { moneyline: "ML", spread: "Spread", total: "Total", team_total: "Total", btts: "BTTS", prop: "Prop", yesno: "Otro" };
-const PERIOD_TEXT: Record<string, string> = { "1h": "1ª mitad", "2h": "2ª mitad", q1: "1er cuarto", q2: "2º cuarto", q3: "3er cuarto", q4: "4º cuarto" };
+const PERIOD_TEXT: Record<string, string> = { "1h": "1ª mitad", "2h": "2ª mitad", q1: "1er cuarto", q2: "2º cuarto", q3: "3er cuarto", q4: "4º cuarto", f5: "1ras 5 entradas" };
 const STAT_SHORT: Record<string, string> = { points: "pts", rebounds: "reb", assists: "ast", threes: "triples", steals: "robos", blocks: "bloqueos" };
 
 /** "spread_1h" → { base: "spread", period: "1h", stat: undefined } · "prop_points" → { base: "prop", stat: "points" } */
 function splitKind(kind: string): { base: string; period: string | null; stat?: string } {
-  const m = kind.match(/^(.*?)(?:_(1h|2h|q[1-4]))?$/)!;
+  const m = kind.match(/^(.*?)(?:_(1h|2h|q[1-4]|f5))?$/)!;
   const base = m[1];
   if (base.startsWith("prop_")) return { base: "prop", period: null, stat: base.slice(5) };
   return { base, period: m[2] ?? null };
@@ -462,8 +462,8 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
     selection = `${player} · ${ou(b.outcome)} ${m.line} ${STAT_SHORT[stat ?? ""] ?? ""}`.trim();
   }
   if (kind === "yesno" && m?.question) {
-    const q = m.question.includes(": ") ? m.question.split(": ").slice(1).join(": ") : m.question;
-    const what = q.replace(/^Exact Margin:\s*/i, "Margen exacto: ").replace(/Team to Score First/i, "Primero en anotar").replace(/Odd\/Even Score/i, "Par / impar").replace(/Overtime\?/i, "¿Tiempo extra?").replace(/Race to (\d+) Points?/i, "Carrera a $1").replace(/Safety\?/i, "¿Safety?").replace(/\s*O\/U\s*[\d.]+$/i, "");
+    const q = /\?: /.test(m.question) ? m.question.split("?: ")[0] + "?" : m.question.includes(": ") ? m.question.split(": ").slice(1).join(": ") : m.question;
+    const what = q.replace(/^Exact Margin:\s*/i, "Margen exacto: ").replace(/Will there be a run scored in the first inning\?/i, "¿Carrera en la 1ª entrada?").replace(/Will the game go to extra innings\?/i, "¿Entradas extra?").replace(/Team to Score First/i, "Primero en anotar").replace(/Odd\/Even Score/i, "Par / impar").replace(/Overtime\?/i, "¿Tiempo extra?").replace(/Race to (\d+) Points?/i, "Carrera a $1").replace(/Safety\?/i, "¿Safety?").replace(/\s*O\/U\s*[\d.]+$/i, "");
     const pick = /^yes$/i.test(b.outcome) ? "Sí" : /^no$/i.test(b.outcome) ? "No" : shortTeam(b.outcome);
     selection = `${what} · ${pick}`;
   }

@@ -2,7 +2,7 @@
 // https://gamma-api.polymarket.com/tags/slug/<slug> on 2026-10-14; UCL re-verified 2026-10-21
 // (tag 1234 "Champions League" only carries futures — game markets live under 100977 "UCL").
 
-export type LeagueId = "ligamx" | "nfl" | "nba" | "ucl" | "epl" | "laliga";
+export type LeagueId = "ligamx" | "nfl" | "nba" | "mlb" | "ucl" | "epl" | "laliga";
 
 export interface League {
   id: LeagueId;
@@ -14,7 +14,7 @@ export interface League {
   tagId: string;
   /** Slug prefix used on game events, e.g. "nfl-dal-gb-2026-10-19" */
   slugPrefix: string;
-  sport: "soccer" | "football" | "basketball";
+  sport: "soccer" | "football" | "basketball" | "baseball";
   /** Whether a draw outcome exists on the moneyline */
   threeWay: boolean;
   emoji: string;
@@ -24,6 +24,8 @@ export const LEAGUES: League[] = [
   { id: "ligamx", label: "Liga MX", name: "Liga MX", tagId: "102448", slugPrefix: "mex", sport: "soccer", threeWay: true, emoji: "🇲🇽" },
   { id: "nfl", label: "NFL", name: "NFL", tagId: "450", slugPrefix: "nfl", sport: "football", threeWay: false, emoji: "🏈" },
   { id: "nba", label: "NBA", name: "NBA", tagId: "745", slugPrefix: "nba", sport: "basketball", threeWay: false, emoji: "🏀" },
+  // Added 2026-10-27 for the World Series; tag 100381 = Gamma /sports "mlb" primaryTagId.
+  { id: "mlb", label: "MLB", name: "MLB", tagId: "100381", slugPrefix: "mlb", sport: "baseball", threeWay: false, emoji: "⚾" },
   { id: "ucl", label: "Champions", name: "UEFA Champions League", tagId: "100977", slugPrefix: "ucl", sport: "soccer", threeWay: true, emoji: "🏆" },
   { id: "epl", label: "Premier", name: "Premier League", tagId: "82", slugPrefix: "epl", sport: "soccer", threeWay: true, emoji: "🏴󠁧󠁢󠁥󠁮󠁧󠁿" },
   { id: "laliga", label: "La Liga", name: "La Liga", tagId: "780", slugPrefix: "lal", sport: "soccer", threeWay: true, emoji: "🇪🇸" },

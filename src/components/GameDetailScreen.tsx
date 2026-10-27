@@ -25,8 +25,8 @@ import { cn } from "@/lib/cn";
 
 type Chip = { id: string; label: string; test: (m: DetailMarket) => boolean };
 
-const PERIOD_LABEL: Record<Period, string> = { full: "", "1h": "1ª mitad", "2h": "2ª mitad", q1: "1er cuarto", q2: "2º cuarto", q3: "3er cuarto", q4: "4º cuarto" };
-const PERIOD_ORDER: Record<Period, number> = { full: 0, "1h": 1, "2h": 2, q1: 3, q2: 4, q3: 5, q4: 6 };
+const PERIOD_LABEL: Record<Period, string> = { full: "", "1h": "1ª mitad", "2h": "2ª mitad", q1: "1er cuarto", q2: "2º cuarto", q3: "3er cuarto", q4: "4º cuarto", f5: "1ras 5 entradas" };
+const PERIOD_ORDER: Record<Period, number> = { full: 0, "1h": 1, "2h": 2, q1: 3, q2: 4, q3: 5, q4: 6, f5: 1 };
 const GROUP_ORDER: Record<DetailMarket["group"], number> = { ganador: 0, doble: 1, handicap: 2, total: 3, btts: 4, equipo: 5, props: 6, otros: 8 };
 /** A line counts only if someone is selling it for real: ≥ this many dollars within 2¢ of the best ask */
 const MIN_DEPTH_USD = 20;
@@ -49,6 +49,7 @@ const CHIPS: Chip[] = [
   { id: "total", label: "Totales", test: (m) => m.group === "total" },
   { id: "btts", label: "Ambos anotan", test: (m) => m.group === "btts" },
   { id: "equipo", label: "Por equipo", test: (m) => m.group === "equipo" },
+  { id: "f5", label: "1ras 5 entradas", test: (m) => m.period === "f5" },
   { id: "1h", label: "1ª mitad", test: (m) => m.period === "1h" },
   { id: "2h", label: "2ª mitad", test: (m) => m.period === "2h" },
   { id: "cuartos", label: "Cuartos", test: (m) => /^q[1-4]$/.test(m.period) },

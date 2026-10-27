@@ -20,7 +20,7 @@ export { sameTeam, shortTeam } from "./gamma-raw";
 /** btts = both teams to score · team_total = one team's O/U · prop = player O/U · yesno = any other two-way market */
 export type MarketKind = "moneyline" | "spread" | "total" | "btts" | "team_total" | "prop" | "yesno";
 /** Part of the game a market covers */
-export type Period = "full" | "1h" | "2h" | "q1" | "q2" | "q3" | "q4";
+export type Period = "full" | "1h" | "2h" | "q1" | "q2" | "q3" | "q4" | "f5";
 
 export interface GameOutcome {
   /** USD on the ask side within 2¢ of the best ask (game page only; from the order book) */
@@ -68,7 +68,7 @@ export interface Game {
 const cache = ttlCache<LeagueId, Game[]>(45_000);
 
 /** Longest a game of each sport can plausibly run, kickoff to final whistle (incl. OT / stoppage). */
-const MAX_GAME_MS: Record<League["sport"], number> = { soccer: 2.25 * 3600_000, basketball: 3 * 3600_000, football: 4 * 3600_000 };
+const MAX_GAME_MS: Record<League["sport"], number> = { soccer: 2.25 * 3600_000, basketball: 3 * 3600_000, football: 4 * 3600_000, baseball: 4.5 * 3600_000 };
 
 export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> {
   const hit = cache.get(league);

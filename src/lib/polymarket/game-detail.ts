@@ -40,7 +40,7 @@ interface GammaEvent extends GammaEventRef {
 
 const cache = ttlCache<string, GameDetail | null>(45_000);
 
-const PERIOD_LABEL: Record<Period, string> = { full: "", "1h": "1ª mitad", "2h": "2ª mitad", q1: "1er cuarto", q2: "2º cuarto", q3: "3er cuarto", q4: "4º cuarto" };
+const PERIOD_LABEL: Record<Period, string> = { full: "", "1h": "1ª mitad", "2h": "2ª mitad", q1: "1er cuarto", q2: "2º cuarto", q3: "3er cuarto", q4: "4º cuarto", f5: "1ras 5 entradas" };
 const STAT_LABEL: Record<string, string> = { points: "Puntos", rebounds: "Rebotes", assists: "Asistencias", threes: "Triples", steals: "Robos", blocks: "Bloqueos" };
 
 export async function fetchGameDetail(slug: string): Promise<GameDetail | null> {
@@ -79,12 +79,17 @@ function build(league: LeagueId, ev: GammaEvent, more: GammaEvent | null): GameD
   };
 
   const markets: DetailMarket[] = [];
-  const threeWay: Record<Period, GammaMarket[]> = { full: [], "1h": [], "2h": [], q1: [], q2: [], q3: [], q4: [] };
+  const threeWay: Record<Period, GammaMarket[]> = { full: [], "1h": [], "2h": [], q1: [], q2: [], q3: [], q4: [], f5: [] };
   for (const m of all) {
     if (m.closed || m.active === false || m.acceptingOrders === false) continue;
     const type = m.sportsMarketType ?? "";
     const period = periodOf(type);
-    const baseType = type.replace(/^(first_half_|second_half_|q[1-4]_|soccer_first_half_|soccer_second_half_|soccer_)/, "").replace(/_first_half$|_second_half$|_points$/, "");
+    // Baseball: "baseball_team_first_five_spread|total" (singular) → the regular spreads/totals ladders, period f5.
+    const baseType = type
+      .replace(/^(first_half_|second_half_|q[1-4]_|soccer_first_half_|soccer_second_half_|soccer_|baseball_team_first_five_)/, "")
+      .replace(/_first_half$|_second_half$|_points$/, "")
+      .replace(/^spread$/, "spreads")
+      .replace(/^total$/, "totals");
     const p = parsed(m);
     if (!p) continue;
 
@@ -174,6 +179,7 @@ async function withBooks(detail: GameDetail): Promise<GameDetail> {
 }
 
 function periodOf(type: string): Period {
+  if (/first_five/.test(type)) return "f5";
   if (/first_half/.test(type) || /^1h/.test(type)) return "1h";
   if (/second_half/.test(type)) return "2h";
   const q = type.match(/^q([1-4])_/);
@@ -255,7 +261,7 @@ function classify(
     }
     default: {
       // Anything else Polymarket adds: show it under "Otros" with its own question.
-      const q = m.question.includes(": ") ? m.question.split(": ").slice(1).join(": ") : m.question;
+      const q = /\?: /.test(m.question) ? m.question.split("?: ")[0] + "?" : m.question.includes(": ") ? m.question.split(": ").slice(1).join(": ") : m.question;
       if (p.outcomes.length === 2 && /^yes$/i.test(p.outcomes[0]) && /^no$/i.test(p.outcomes[1])) {
         return mk(m, "yesno", line, period, "otros", withPeriod(translateQuestion(q), period), [out(0, "Sí"), out(1, "No")]);
       }
@@ -274,6 +280,8 @@ function classify(
 function translateQuestion(q: string): string {
   return q
     .replace(/Team to Score First/i, "Primero en anotar")
+    .replace(/Will there be a run scored in the first inning\?/i, "¿Carrera en la 1ª entrada?")
+    .replace(/Will the game go to extra innings\?/i, "¿Entradas extra?")
     .replace(/Odd\/Even Score/i, "Marcador par / impar")
     .replace(/Overtime\?/i, "¿Tiempo extra?")
     .replace(/Race to (\d+) Points?/i, "Carrera a $1 puntos")

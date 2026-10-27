@@ -51,9 +51,9 @@ export interface IndexRunResult {
  */
 function kindOf(type: string | undefined): string {
   const t = type ?? "";
-  const period = /first_half/.test(t) ? "_1h" : /second_half/.test(t) ? "_2h" : (t.match(/^q([1-4])_/)?.[1] ? `_q${t.match(/^q([1-4])_/)![1]}` : "");
-  const base = t.replace(/^(first_half_|second_half_|q[1-4]_|soccer_first_half_|soccer_second_half_|soccer_)/, "").replace(/_first_half$|_second_half$|_points$/, "");
-  const map: Record<string, string> = { moneyline: "moneyline", spreads: "spread", totals: "total", team_totals: "team_total", both_teams_to_score: "btts" };
+  const period = /first_five/.test(t) ? "_f5" : /first_half/.test(t) ? "_1h" : /second_half/.test(t) ? "_2h" : (t.match(/^q([1-4])_/)?.[1] ? `_q${t.match(/^q([1-4])_/)![1]}` : "");
+  const base = t.replace(/^(first_half_|second_half_|q[1-4]_|soccer_first_half_|soccer_second_half_|soccer_|baseball_team_first_five_)/, "").replace(/_first_half$|_second_half$|_points$/, "");
+  const map: Record<string, string> = { moneyline: "moneyline", spreads: "spread", spread: "spread", totals: "total", total: "total", team_totals: "team_total", both_teams_to_score: "btts" };
   if (map[base]) return map[base] + period;
   if (/^(points|rebounds|assists|threes|steals|blocks)$/.test(base)) return `prop_${base}`;
   if (!t) return "other";

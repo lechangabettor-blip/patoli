@@ -26,6 +26,7 @@ export interface LiveScore {
 const ESPN_PATH: Record<LeagueId, string> = {
   nba: "basketball/nba",
   nfl: "football/nfl",
+  mlb: "baseball/mlb",
   ligamx: "soccer/mex.1",
   epl: "soccer/eng.1",
   laliga: "soccer/esp.1",

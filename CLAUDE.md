@@ -12,8 +12,10 @@ lechanga.com palette (tokens in `src/app/globals.css`). Five tabs, Instagram
 style bottom nav:
 
 1. **Inicio** — feed of other people's bets and results.
-2. **Deportes** — Polymarket game markets by league (Liga MX, NFL, NBA,
+2. **Deportes** — Polymarket game markets by league (Liga MX, NFL, NBA, MLB,
    Champions, Premier, La Liga): moneyline / spread / total, live CLOB prices.
+   MLB added 2026-10-27 (tag 100381, ESPN baseball/mlb, period "f5" = 1ras 5 entradas,
+   nicknames via TEAM_OVERRIDES).
    Soccer swaps the spread for "Ambos anotan" (both teams to score) — LeChanga, 2026-10-16.
 3. **Batalla** (center) — piedra-papel-tijera P2P, one $1 lobby, best of 3,
    winner takes $2, no house, no rake.
