@@ -170,21 +170,27 @@ async function attachWeekUnits(profiles: PublicProfile[]): Promise<PublicProfile
     .in("status", ["won", "lost"])
     .gte("settled_at", since);
   const units = new Map<string, number>();
+  const count = new Map<string, number>();
   for (const b of error ? [] : (data ?? [])) {
     const pid = b.profile_id as string;
     const price = Number(b.price);
     units.set(pid, (units.get(pid) ?? 0) + (b.status === "won" ? (price > 0 ? 1 / price - 1 : 0) : -1));
+    count.set(pid, (count.get(pid) ?? 0) + 1);
   }
-  for (const p of profiles) p.units7 = units.get(p.id) ?? 0;
+  for (const p of profiles) {
+    p.units7 = units.get(p.id) ?? 0;
+    p.settled7 = count.get(p.id) ?? 0;
+  }
   return profiles;
 }
 
 /**
  * Profiles for Buscar and the people rail. With a query: name matches. Without one (the rail):
- * everyone, best week first — Unidades settled in the last 7 days, then who has a pick riding,
- * then newest (LeChanga, 2026-10-26).
+ * everyone who had a sports pick settle in the last 7 days, best week first by Unidades
+ * (LeChanga, 2026-10-28: the rail is the week's table, not a sample of 8). When nobody has
+ * settled anything this week, fall back to the old top list so the rail is never empty.
  */
-export async function searchProfiles(q: string, limit = 20): Promise<PublicProfile[]> {
+export async function searchProfiles(q: string, limit = 20, rail = false): Promise<PublicProfile[]> {
   const db = supabaseAdmin();
   const needle = q.toLowerCase().replace(/[^a-z0-9_ ]/g, "");
   let query = db.from("profiles").select("id, handle, display_name, avatar, bio, is_verified, wallet, created_at").eq("is_banned", false).limit(needle ? limit : 200);
@@ -197,6 +203,10 @@ export async function searchProfiles(q: string, limit = 20): Promise<PublicProfi
   await Promise.all([attachBattleStats(out), attachWeekUnits(out)]);
   if (!needle) {
     out.sort((a, b) => (b.units7 ?? 0) - (a.units7 ?? 0) || b.record.open - a.record.open || b.createdAt.localeCompare(a.createdAt));
+    if (rail) {
+      const active = out.filter((p) => (p.settled7 ?? 0) > 0);
+      if (active.length) return active;
+    }
     return out.slice(0, limit);
   }
   return out;

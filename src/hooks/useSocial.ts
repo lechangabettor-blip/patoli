@@ -24,12 +24,12 @@ export function useFeed(scope: "all" | "following") {
   });
 }
 
-export function useUsers(q: string) {
+export function useUsers(q: string, scope?: "rail") {
   return useQuery({
-    queryKey: ["users", q],
+    queryKey: ["users", q, scope ?? null],
     staleTime: 20_000,
     queryFn: async (): Promise<{ items: PublicProfile[]; demo: boolean }> => {
-      const r = await fetch(`/api/users?q=${encodeURIComponent(q)}`);
+      const r = await fetch(`/api/users?q=${encodeURIComponent(q)}${scope ? `&scope=${scope}` : ""}`);
       if (!r.ok) throw new Error("users");
       return r.json();
     },

@@ -30,6 +30,8 @@ export interface PublicProfile {
   battles: { w: number; l: number; d: number; pnl: number };
   /** Unidades settled in the last 7 days (rolling) — the people rail sorts by this */
   units7?: number;
+  /** Sports picks settled in the last 7 days — the rail shows everyone with at least one */
+  settled7?: number;
   /** Rolling windows by settlement time (single-profile loads only) */
   windows?: Record<WindowKey, StatsWindow>;
   createdAt: string;

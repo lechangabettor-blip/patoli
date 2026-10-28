@@ -18,7 +18,7 @@ export default function HomeFeed() {
   const [ticket, setTicket] = useState<TicketData | null>(null);
   const { status } = useWallet();
   const feed = useFeed(tab);
-  const people = useUsers("");
+  const people = useUsers("", "rail");
 
   return (
     <>
@@ -43,7 +43,7 @@ export default function HomeFeed() {
 
       {/* People rail */}
       <section className="no-scrollbar flex gap-3 overflow-x-auto px-4 pt-4">
-        {(people.data?.items ?? []).slice(0, 8).map((u, i) => (
+        {(people.data?.items ?? []).map((u, i) => (
           <Link key={u.handle} href={`/u/${u.handle}`} className="rise flex w-16 shrink-0 flex-col items-center gap-1.5" style={{ animationDelay: `${i * 40}ms` }}>
             {/* Ring = this person has a pick riding right now (open or not yet settled). LeChanga, 2026-10-22. */}
             <span className={cn("rounded-full p-[2px]", u.record.open > 0 ? "bg-[conic-gradient(var(--accent),var(--accent-soft),var(--accent))]" : "bg-hairline")}>
