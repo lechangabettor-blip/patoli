@@ -226,6 +226,23 @@ src/components/            screens + UI primitives
 - Dynamic pages under (tabs) must wrap the `params` await in Suspense (cacheComponents), as
   `/u/[handle]` does, or the build fails at prerender.
 
+## Limit orders — Mercado | Límite (2026-10-28)
+
+- Toggle top-right of the bet sheet, prematch only (hidden once kickoff is < 3 min away or
+  the game is live). Mercado = the unchanged FOK path. Límite = Polymarket-style form:
+  `LimitBook` (top of the book from `GET /api/book?tokenId`, 2 asks over 2 bids, polled 3 s;
+  rows show ¢, net decimal odds — ask rows with taker fees, bid rows as maker: Patoli maker bps
+  and `fee.takerOnly` → $0 Polymarket — and USD resting; tapping a row sets the price), then
+  "Precio límite" with − / + per tick, "Shares" typed by the user (+10/+50/+100), and the money
+  box: shares × price, fees, **Apuestas** (total leaving the wallet) and **Si gana cobras**
+  (= shares). Default price = best bid. No free-text price.
+- `usePlaceBet.placeLimit` → `createAndPostOrder(…, GTD)` with `expiration` = kickoff (unix s),
+  size = shares (≥ market min, 5). A price at/above the best ask fills at once (`matched`) and
+  syncs like a market bet; otherwise "Orden puesta". Resting orders: `useOpenOrders`
+  (`clobClient.getOpenOrders`), cancel via `useCancelOrder`; listed in Perfil (`LimitOrders`,
+  labels from `POST /api/markets/lookup`) and inside the sheet when one exists on that token.
+  Fills reach the feed through the indexer like any other fill — nothing is public until it fills.
+
 ## Live bets (2026-10-21)
 
 - Board keeps in-play games until kickoff + max duration per sport (`MAX_GAME_MS` in gamma.ts:

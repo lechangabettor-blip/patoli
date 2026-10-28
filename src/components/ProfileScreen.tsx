@@ -25,6 +25,7 @@ import { POLYMARKET_PROFILE_URL } from "@/lib/polymarket/constants";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { cn } from "@/lib/cn";
 import FeedCard from "./FeedCard";
+import LimitOrders from "./LimitOrders";
 import HistoryTabs from "./HistoryTabs";
 import StatsWindows from "./StatsWindows";
 import { ticketFromItem, useMoney, useSyncBets, useUser } from "@/hooks/useSocial";
@@ -375,6 +376,8 @@ export default function ProfileScreen() {
             USDC, USDC.e o pUSD, siempre en red Polygon. Otra red se pierde. {!isReady ? "Activa tu cuenta antes de depositar." : ""}
           </p>
         </div>
+
+        <LimitOrders />
 
         {/* Open bets — from our DB, same cards as the feed */}
         <div className="mt-6 flex items-center justify-between">

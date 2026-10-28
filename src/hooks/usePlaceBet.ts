@@ -22,6 +22,22 @@ type PlaceBetResult =
   | { ok: true; orderId: string; txHashes: string[] }
   | { ok: false; reason: string; lineMoved?: boolean };
 
+interface PlaceLimitParams {
+  tokenId: string;
+  /** Limit price (0–1), already on the market's tick */
+  price: number;
+  /** Shares to buy (stake / price), ≥ the market's minimum */
+  shares: number;
+  negRisk: boolean;
+  tickSize: number;
+  /** Unix seconds; Polymarket cancels whatever is unfilled then (we use kickoff) */
+  expiresAt: number;
+}
+
+type PlaceLimitResult =
+  | { ok: true; orderId: string; matched: boolean; txHashes: string[] }
+  | { ok: false; reason: string };
+
 // Per-session memory so a 2nd bet skips the slow pre-checks (approvals on-chain, CLOB balance cache).
 // Cleared when an order fails for a reason those checks would have caught.
 let approvalsOk = false;
@@ -38,6 +54,84 @@ export function usePlaceBet() {
   const syncBets = useSyncBets();
   const [isPlacing, setPlacing] = useState(false);
 
+  /**
+   * Permissions can grow over time (neg-risk adapter was added after the first wallets were
+   * activated): top them up silently before an order if anything is missing. The CLOB also
+   * caches each wallet's collateral balance/allowance: a fresh Safe (or a fresh deposit) must be
+   * re-synced or orders get rejected with "not enough balance" even though the chain is fine.
+   * The refresh is async on their side: poll briefly, never block on it.
+   */
+  const prepare = useCallback(
+    async (stake: number) => {
+      if (!clobClient) return;
+      if (!approvalsOk) {
+        try {
+          const added = await ensureApprovals();
+          if (added) await new Promise((r) => setTimeout(r, 1500)); // let the CLOB see the new allowance
+          approvalsOk = true;
+        } catch (e) {
+          console.warn("[patoli] ensureApprovals failed", e);
+        }
+      }
+      if (!collateralSynced) {
+        try {
+          await clobClient.updateBalanceAllowance({ asset_type: AssetType.COLLATERAL });
+          for (let i = 0; i < 4; i++) {
+            const ba = await clobClient.getBalanceAllowance({ asset_type: AssetType.COLLATERAL });
+            const seen = Number(ba?.balance ?? 0) / 1e6;
+            if (seen >= stake) break;
+            await new Promise((r) => setTimeout(r, 800));
+          }
+        } catch (e) {
+          console.warn("[patoli] balance/allowance sync failed", e);
+        }
+      }
+    },
+    [clobClient, ensureApprovals],
+  );
+
+  /**
+   * Límite: a BUY order that rests on Polymarket's book at exactly `price` until filled or
+   * `expiresAt` (good-till-date). If it crosses the book it fills right away like a market order.
+   */
+  const placeLimit = useCallback(
+    async ({ tokenId, price, shares, negRisk, tickSize, expiresAt }: PlaceLimitParams): Promise<PlaceLimitResult> => {
+      if (!clobClient) return { ok: false, reason: "Primero activa tu cuenta de trading" };
+      if (!isBuilderCodeValid(PATOLI_BUILDER_CODE)) return { ok: false, reason: "Patoli aún no tiene su código de builder configurado. Pronto." };
+      setPlacing(true);
+      try {
+        await prepare(shares * price);
+        const px = Math.min(1 - tickSize, Math.max(tickSize, Math.round(price / tickSize) * tickSize));
+        const res = await clobClient.createAndPostOrder(
+          { tokenID: tokenId, price: Number(px.toFixed(4)), size: Math.floor(shares * 100) / 100, side: Side.BUY, expiration: expiresAt },
+          { tickSize: String(tickSize) as TickSize, negRisk },
+          OrderType.GTD,
+        );
+        if (!res?.success || !res.orderID) {
+          console.error("[patoli] limit order rejected", res);
+          const r = rejection(res);
+          return { ok: false, reason: r.ok ? "" : r.reason };
+        }
+        collateralSynced = true;
+        const matched = /matched/i.test(res.status ?? "") || (res.transactionsHashes?.length ?? 0) > 0;
+        qc.invalidateQueries({ queryKey: ["open-orders"] });
+        qc.invalidateQueries({ queryKey: ["balances"] });
+        if (matched) {
+          qc.invalidateQueries({ queryKey: ["positions"] });
+          void syncBets([1_500, 6_000, 15_000]);
+        }
+        return { ok: true, orderId: res.orderID, matched, txHashes: res.transactionsHashes ?? [] };
+      } catch (e) {
+        console.error("[patoli] limit order threw", e);
+        const r = rejection(e);
+        return { ok: false, reason: r.ok ? "" : r.reason };
+      } finally {
+        setPlacing(false);
+      }
+    },
+    [clobClient, qc, syncBets, prepare],
+  );
+
   const placeBet = useCallback(
     async ({ tokenId, stake, negRisk, tickSize, price }: PlaceBetParams): Promise<PlaceBetResult> => {
       if (!clobClient) return { ok: false, reason: "Primero activa tu cuenta de trading" };
@@ -46,35 +140,7 @@ export function usePlaceBet() {
       }
       setPlacing(true);
       try {
-        // Permissions can grow over time (neg-risk adapter was added after the first wallets
-        // were activated): top them up silently before the order if anything is missing.
-        if (!approvalsOk) {
-          try {
-            const added = await ensureApprovals();
-            if (added) await new Promise((r) => setTimeout(r, 1500)); // let the CLOB see the new allowance
-            approvalsOk = true;
-          } catch (e) {
-            console.warn("[patoli] ensureApprovals failed", e);
-          }
-        }
-        // The CLOB caches each wallet's collateral balance/allowance. A fresh
-        // Safe (or a fresh deposit) must be re-synced or orders get rejected
-        // with "not enough balance / allowance" even though the chain is fine.
-        // The refresh is async on their side: poll briefly, never block on it.
-        if (!collateralSynced) {
-          try {
-          await clobClient.updateBalanceAllowance({ asset_type: AssetType.COLLATERAL });
-          for (let i = 0; i < 4; i++) {
-            const ba = await clobClient.getBalanceAllowance({ asset_type: AssetType.COLLATERAL });
-            const seen = Number(ba?.balance ?? 0) / 1e6;
-            console.info("[patoli] CLOB sees collateral", ba);
-            if (seen >= stake) break;
-            await new Promise((r) => setTimeout(r, 800));
-          }
-          } catch (e) {
-            console.warn("[patoli] balance/allowance sync failed", e);
-          }
-        }
+        await prepare(stake);
 
         // Cap = the price on the button, snapped to the market's tick. Fill-or-kill at that price or
         // better; if the line moved against the user, the order is rejected and we re-quote instead
@@ -105,10 +171,10 @@ export function usePlaceBet() {
         setPlacing(false);
       }
     },
-    [clobClient, qc, syncBets, ensureApprovals],
+    [clobClient, qc, syncBets, prepare],
   );
 
-  return { placeBet, isPlacing };
+  return { placeBet, placeLimit, isPlacing };
 }
 
 /** Classify a failure; forget the session shortcuts when they could be the cause. */

@@ -31,6 +31,8 @@ interface OddsBreakdown {
 export interface FeeSchedule {
   rate: number;
   exponent: number;
+  /** Polymarket charges this fee only to the taker; a resting (maker) order pays 0 */
+  takerOnly?: boolean;
 }
 
 export const DEFAULT_FEE: FeeSchedule = { rate: POLYMARKET_SPORTS_FEE_RATE, exponent: 1 };
@@ -39,9 +41,11 @@ export function breakdown(
   price: number,
   fee: FeeSchedule = DEFAULT_FEE,
   builderBps = PATOLI_BUILDER_FEE_BPS,
+  /** The order rests on the book (limit order that does not cross): maker side */
+  maker = false,
 ): OddsBreakdown {
   const p = clamp(price, 0.001, 0.999);
-  const polymarketFee = fee.rate * Math.pow(p * (1 - p), fee.exponent || 1);
+  const polymarketFee = maker && fee.takerOnly ? 0 : fee.rate * Math.pow(p * (1 - p), fee.exponent || 1);
   const patoliFee = (p * builderBps) / 10_000;
   const costPerShare = p + polymarketFee + patoliFee;
   return {

@@ -12,5 +12,5 @@ export function useBuilderFee() {
       return r.ok ? r.json() : { takerBps: 0, makerBps: 0, targetBps: 0 };
     },
   });
-  return { takerBps: q.data?.takerBps ?? 0, targetBps: q.data?.targetBps ?? 0, isLoading: q.isLoading };
+  return { takerBps: q.data?.takerBps ?? 0, makerBps: q.data?.makerBps ?? 0, targetBps: q.data?.targetBps ?? 0, isLoading: q.isLoading };
 }
