@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/indexer/run",
-      "schedule": "0 6 * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/arena/settle",
-      "schedule": "0 7 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }
