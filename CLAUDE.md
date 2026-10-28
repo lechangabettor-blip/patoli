@@ -247,6 +247,12 @@ src/components/            screens + UI primitives
   labels from `POST /api/markets/lookup`) and inside the sheet when one exists on that token.
   Fills reach the feed through the indexer like any other fill — nothing is public until it fills.
 
+## Speed (2026-10-28)
+
+- Odds: src/lib/polymarket/price-socket.ts keeps ONE websocket to wss://ws-subscriptions-clob.polymarket.com/ws/market for every token any mounted component watches (ref-counted, reconnects with the full list, 250 ms debounce, PING every 10 s, backoff on close). usePrices overlays its best bid/ask (fresh < 60 s) on the REST poll, which slows to 20 s while the socket is open. Verified shapes: book snapshot on subscribe; price_change.price_changes[] with best_bid/best_ask per asset_id.
+- Game page prefetch: GameCard warms /api/games/[slug]/markets via IntersectionObserver after 400 ms on screen.
+- Clocks: Vercel Pro crons every minute (indexer + arena settle) are the primary clock since 2026-10-28; cron-job.org retired; GitHub Actions stays as backup. LeChanga rejected provisional results from ESPN finals: nothing shows as won until Polymarket pays.
+
 ## Live bets (2026-10-21)
 
 - Board keeps in-play games until kickoff + max duration per sport (`MAX_GAME_MS` in gamma.ts:

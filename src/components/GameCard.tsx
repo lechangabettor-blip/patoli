@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
+import { fetchGameDetail, gameDetailKey } from "@/hooks/useGames";
 import { ChevronRight } from "lucide-react";
 import type { Game, GameMarket, GameOutcome } from "@/lib/polymarket/gamma";
 import type { LiveScore } from "@/lib/scores";
@@ -35,6 +38,27 @@ export default function GameCard({
 }) {
   const now = useNow();
   const { takerBps } = useBuilderFee();
+  // Warm the game page while the card is on screen, so "Todos los mercados" opens instantly.
+  const qc = useQueryClient();
+  const rootRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && !timer) {
+        timer = setTimeout(() => void qc.prefetchQuery({ queryKey: gameDetailKey(game.slug), queryFn: () => fetchGameDetail(game.slug), staleTime: 30_000 }), 400);
+      } else if (!e.isIntersecting && timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    });
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      if (timer) clearTimeout(timer);
+    };
+  }, [game.slug, qc]);
   const ml = game.markets.find((m) => m.kind === "moneyline");
   const spread = game.markets.find((m) => m.kind === "spread");
   const btts = game.markets.find((m) => m.kind === "btts");
@@ -67,7 +91,7 @@ export default function GameCard({
   };
 
   return (
-    <article className={cn("card rise overflow-hidden", live && "card-live")} style={{ animationDelay: `${index * 40}ms` }}>
+    <article ref={rootRef} className={cn("card rise overflow-hidden", live && "card-live")} style={{ animationDelay: `${index * 40}ms` }}>
       <div className="px-4 pt-3">
         <div className="flex items-center gap-2 text-[11px] text-muted">
           {live ? (
