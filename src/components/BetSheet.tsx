@@ -343,8 +343,8 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
 
               {/* The money */}
               <div className="tnum mt-4 space-y-1.5 rounded-xl bg-surface/60 p-3 text-xs text-muted">
-                <Row k={`${formatUsd(limitShares, 0)} shares × ${cents}¢`} v={`${formatUsd(cost)}`} />
-                <Row k="Comisión" v={`${formatUsd(feesUsd)}`} />
+                <Row k={`${formatUsd(limitShares, 0)} shares × ${cents}¢`} v={`$${formatUsd(cost)}`} />
+                <Row k="Comisión" v={`$${formatUsd(feesUsd)}`} />
                 <div className="flex items-center justify-between border-t border-hairline pt-1.5 text-sm text-ink">
                   <span>Apuestas</span>
                   <span className="font-display text-base font-extrabold">${formatUsd(total)}</span>
