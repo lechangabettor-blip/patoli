@@ -91,17 +91,28 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const bps = maker ? makerBps : takerBps;
   const b = useMemo(() => breakdown(price, selection.market.fee, bps, maker), [price, selection.market.fee, bps, maker]);
 
-  // Mercado: the user types dollars → shares = stake / price. Límite: the user types shares → stake = shares × price.
-  // Polymarket spends the stake on shares and charges fees ON TOP (that is what leaves the wallet).
+  // Mercado: the user types dollars and that is what leaves the wallet — fees live inside the odds
+  // (shares = stake / all-in cost per share). Límite: the user types shares → cost = shares × price,
+  // fees shown as one line on top.
   const limitShares = Math.max(0, Math.floor(Number(sharesInput || 0) * 100) / 100);
-  const shares = isLimit ? limitShares : stake / b.price;
-  const cost = isLimit ? limitShares * b.price : stake;
-  const polymarketFeeUsd = shares * b.polymarketFee;
-  const patoliFeeUsd = shares * b.patoliFee;
-  const total = cost + polymarketFeeUsd + patoliFeeUsd;
+  const shares = isLimit ? limitShares : stake / b.costPerShare;
+  const cost = isLimit ? limitShares * b.price : shares * b.price;
+  const feesUsd = shares * (b.polymarketFee + b.patoliFee);
+  const total = cost + feesUsd;
   const payout = shares;
   const minShares = selection.market.minOrderSize || 5;
-  const minStake = Math.max(1, minShares * price);
+  const minStake = Math.max(1, minShares * b.costPerShare);
+  // "Panthers +3.5" → Panthers / +3.5 · Hándicap · "Más 44.5" → Más / 44.5 · Total · "Ambos anotan · Sí" → Sí / Ambos anotan
+  const headline = useMemo(() => {
+    const kindName = selection.market.label ?? MARKET_NAME[selection.market.kind];
+    const l = selection.outcome.label;
+    const sp = l.match(/^(.*?)\s([+-][\d.]+)$/);
+    const ou = l.match(/^(Más|Menos)\s([\d.]+)$/);
+    if (selection.market.kind === "spread" && sp) return { title: sp[1], sub: `${sp[2]} · ${kindName}` };
+    if (ou) return { title: ou[1], sub: `${ou[2]} · ${kindName}` };
+    if (l.includes(" · ")) return { title: l.split(" · ").slice(-1)[0], sub: l.split(" · ").slice(0, -1).join(" · ") };
+    return { title: l, sub: kindName };
+  }, [selection]);
   // Dollars really on offer near this price (game page passes it from the order book). Undefined = unknown.
   const available = selection.outcome.depth;
   const thin = !isLimit && available !== undefined && stake > available;
@@ -145,7 +156,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
     }
     const res = await placeBet({
       tokenId: selection.outcome.tokenId,
-      stake,
+      stake: Math.floor(cost * 100) / 100, // dollars that go to shares; Polymarket adds the fees → ≈ stake leaves
       negRisk: selection.market.negRisk,
       tickSize: tick,
       price,
@@ -163,7 +174,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
         selection: selection.outcome.label,
         market: selection.market.label ?? MARKET_NAME[selection.market.kind],
         odds: b.netOdds,
-        stake: total,
+        stake,
         payout,
         placedAt: new Date().toISOString(),
         status: "open",
@@ -192,7 +203,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
     busy ||
     thin ||
     (isLimit ? limitInvalid : stake < minStake) ||
-    (status === "connected" && isReady && (total > balance || !ATTRIBUTION_READY));
+    (status === "connected" && isReady && ((isLimit ? total : stake) > balance || !ATTRIBUTION_READY));
 
   return (
     <>
@@ -253,8 +264,11 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
             ) : null}
           </div>
           <div className="mt-1 flex items-end justify-between gap-3">
-            <div className="font-display text-2xl font-extrabold uppercase leading-none">{selection.outcome.label}</div>
-            <div className="tnum font-display text-3xl font-extrabold text-accent-soft">{formatOdds(b.netOdds)}</div>
+            <div className="min-w-0">
+              <div className="truncate font-display text-2xl font-extrabold uppercase leading-none">{headline.title}</div>
+              <div className="tnum mt-1 truncate text-sm text-muted">{headline.sub}</div>
+            </div>
+            <div className="tnum shrink-0 font-display text-3xl font-extrabold text-accent-soft">{formatOdds(b.netOdds)}</div>
           </div>
           {selection.source ? (
             <p className="mt-1.5 text-xs text-muted">
@@ -329,9 +343,8 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
 
               {/* The money */}
               <div className="tnum mt-4 space-y-1.5 rounded-xl bg-surface/60 p-3 text-xs text-muted">
-                <Row k={`${formatUsd(limitShares, 0)} shares × ${cents}¢`} v={`$${formatUsd(cost)}`} />
-                <Row k="Comisión Polymarket" v={b.polymarketFee > 0 ? `$${formatUsd(polymarketFeeUsd)}` : maker && selection.market.fee.takerOnly ? "$0.00 · tu orden espera, no paga" : "$0.00"} />
-                <Row k="Comisión Patoli" v={bps > 0 ? `$${formatUsd(patoliFeeUsd)}` : "$0.00 (beta)"} />
+                <Row k={`${formatUsd(limitShares, 0)} shares × ${cents}¢`} v={`${formatUsd(cost)}`} />
+                <Row k="Comisión" v={`${formatUsd(feesUsd)}`} />
                 <div className="flex items-center justify-between border-t border-hairline pt-1.5 text-sm text-ink">
                   <span>Apuestas</span>
                   <span className="font-display text-base font-extrabold">${formatUsd(total)}</span>
@@ -345,17 +358,6 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
             </>
           ) : (
             <>
-              {/* Price transparency — the whole point */}
-              <div className="tnum mt-4 space-y-1.5 rounded-xl bg-surface/60 p-3 text-xs text-muted">
-                <Row k="Precio de mercado (Polymarket)" v={formatOdds(b.marketOdds)} />
-                <Row k="Comisión Polymarket" v={b.polymarketFee > 0 ? `${formatUsd(polymarketFeeUsd)} (${((b.polymarketFee / b.price) * 100).toFixed(2)}%)` : "$0.00"} />
-                <Row k="Comisión Patoli" v={takerBps > 0 ? `${formatUsd(patoliFeeUsd)} (${((b.patoliFee / b.price) * 100).toFixed(2)}%)` : "$0.00 (beta)"} />
-                <div className="flex items-center justify-between border-t border-hairline pt-1.5 text-ink">
-                  <span>Tu precio</span>
-                  <span className="font-semibold">{formatOdds(b.netOdds)}</span>
-                </div>
-              </div>
-
               <div className="mt-4">
                 <div className="mb-2 flex items-center justify-between text-xs text-muted">
                   <span>Monto (USDC)</span>
@@ -390,13 +392,6 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
                   <span className="text-muted">Si gana cobras</span>
                   <span className="font-display text-lg font-extrabold text-win">${formatUsd(payout)}</span>
                 </div>
-                <div className="tnum mt-1 flex items-center justify-between text-xs text-muted">
-                  <span>Sale de tu saldo</span>
-                  <span>
-                    ${formatUsd(total)}
-                    {total > stake ? " · incluye comisiones" : ""}
-                  </span>
-                </div>
               </div>
             </>
           )}
@@ -418,7 +413,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
           </button>
           {thin ? (
             <p className="mt-2 text-center text-xs text-loss">A este precio solo hay ${formatUsd(available ?? 0, 0)} disponibles. Baja el monto o elige otra línea.</p>
-          ) : status === "connected" && isReady && total > balance ? (
+          ) : status === "connected" && isReady && (isLimit ? total : stake) > balance ? (
             <p className="mt-2 text-center text-xs text-muted">Te falta saldo. Deposita USDC en tu perfil.</p>
           ) : isLimit ? (
             <p className="mt-2 text-center text-[11px] text-muted-2">Orden límite · se cancela sola al inicio del partido · mínimo {minShares} shares</p>

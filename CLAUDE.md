@@ -235,7 +235,11 @@ src/components/            screens + UI primitives
   and `fee.takerOnly` → $0 Polymarket — and USD resting; tapping a row sets the price), then
   "Precio límite" with − / + per tick, "Shares" typed by the user (+10/+50/+100), and the money
   box: shares × price, fees, **Apuestas** (total leaving the wallet) and **Si gana cobras**
-  (= shares). Default price = best bid. No free-text price.
+  (= shares; one "Comisión" line = Polymarket + Patoli). Default price = best bid. No free-text
+  price. Book rows show **shares** resting, not dollars. **Mercado shows no fee lines at all**
+  (his call, 2026-10-28): the stake typed is what leaves the wallet, shares = stake / all-in cost
+  per share, so the net odds already carry both fees. The sheet headline is the side ("Panthers")
+  with the line + market under it ("+3.5 · Hándicap"); ladder buttons pass the full outcome.
 - `usePlaceBet.placeLimit` → `createAndPostOrder(…, GTD)` with `expiration` = kickoff (unix s),
   size = shares (≥ market min, 5). A price at/above the best ask fills at once (`matched`) and
   syncs like a market bet; otherwise "Orden puesta". Resting orders: `useOpenOrders`

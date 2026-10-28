@@ -257,7 +257,7 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
 /* ───────────────────────────── bodies ───────────────────────────── */
 
 function SectionBody({ s, rows, game, prices, takerBps, onPick }: { s: Section; rows: DetailMarket[]; game: Game; prices: PriceMap | undefined; takerBps: number; onPick: (sel: Selection) => void }) {
-  const Btn = ({ m, o, main = false, compact = false }: { m: GameMarket; o: GameOutcome; main?: boolean; compact?: boolean }) => {
+  const Btn = ({ m, o, display, main = false, compact = false }: { m: GameMarket; o: GameOutcome; display?: string; main?: boolean; compact?: boolean }) => {
     const liveP = prices?.[o.tokenId]?.ask ?? null;
     const p = liveP ?? (o.price > 0 && o.price < 1 ? o.price : null);
     // ≤1¢ or ≥99¢ means nobody is really quoting that line: show it as unavailable instead of "995".
@@ -273,7 +273,7 @@ function SectionBody({ s, rows, game, prices, takerBps, onPick }: { s: Section; 
           dead ? "border-hairline bg-surface/40 text-muted-2" : main ? "border-[rgba(255,61,23,.45)] bg-surface active:bg-[rgba(255,61,23,.12)]" : "border-hairline bg-surface active:border-accent active:bg-[rgba(255,61,23,.12)]",
         )}
       >
-        <span className="min-w-0 truncate text-[12px] text-muted">{o.label}</span>
+        <span className="min-w-0 truncate text-[12px] text-muted">{display ?? o.label}</span>
         <span className={cn("tnum shrink-0 font-display font-extrabold", compact ? "text-[15px]" : "text-base", dead ? "" : "text-accent-soft")}>{odds ? formatOdds(odds) : "—"}</span>
       </button>
     );
@@ -304,7 +304,7 @@ function SectionBody({ s, rows, game, prices, takerBps, onPick }: { s: Section; 
           {rows.map((m) => (
             <div key={m.id} className="grid grid-cols-2 gap-2">
               {m.outcomes.slice(0, 2).map((o) => (
-                <Btn key={o.tokenId} m={m} o={{ ...o, label: ladderLabel(o.label, m) }} main={m.id === s.mainId} compact />
+                <Btn key={o.tokenId} m={m} o={o} display={ladderLabel(o.label, m)} main={m.id === s.mainId} compact />
               ))}
             </div>
           ))}
@@ -322,7 +322,7 @@ function SectionBody({ s, rows, game, prices, takerBps, onPick }: { s: Section; 
               {m.subject} <span className="tnum text-muted">{m.line}</span>
             </span>
             {m.outcomes.slice(0, 2).map((o) => (
-              <Btn key={o.tokenId} m={m} o={{ ...o, label: o.label.replace(/\s[\d.]+$/, "") }} compact />
+              <Btn key={o.tokenId} m={m} o={o} display={o.label.replace(/\s[\d.]+$/, "")} compact />
             ))}
           </div>
         ))}

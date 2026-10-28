@@ -8,7 +8,7 @@ import type { BookTop } from "@/hooks/useOrders";
  * The top of the book as four tappable rows: two asks (what you can buy right now) above two
  * bids (where buyers are waiting). The spread is usually one cent, so the user simply picks a
  * row: an ask fills now, a bid rests until someone sells there. Each row shows the price in
- * cents, the decimal odds net of fees for that case, and the dollars resting at the level.
+ * cents, the decimal odds net of fees for that case, and the shares resting at the level.
  */
 export default function LimitBook({
   book,
@@ -54,7 +54,7 @@ export default function LimitBook({
             <span className={cn("w-8 font-display text-[10px] font-extrabold uppercase tracking-wide", r.side === "ask" ? "text-loss" : "text-win")}>{r.side}</span>
             <span className={cn("tnum w-12 font-display text-lg font-extrabold", on ? "text-accent-soft" : "text-ink")}>{Math.round(r.price * 100)}¢</span>
             <span className="tnum font-display text-base font-extrabold text-accent-soft">{formatOdds(odds)}</span>
-            <span className="tnum ml-auto text-xs text-muted">${r.usd.toLocaleString("es-MX")}</span>
+            <span className="tnum ml-auto text-xs text-muted">{Math.round(r.size).toLocaleString("es-MX")} shares</span>
           </button>
         );
       })}
