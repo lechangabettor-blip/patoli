@@ -23,7 +23,12 @@ function getAdmin(): Magic {
   return admin;
 }
 
-export async function verifyDidToken(didToken: string | null | undefined): Promise<MagicIdentity | null> {
+/**
+ * `validate` + `getIssuer` + `getPublicAddress` are pure (signature and expiry checks, no network).
+ * The email needs Magic's admin API (one HTTP call), so it is fetched only when a caller asks for
+ * it — profile creation — and never on polled routes (feed, arena, sign).
+ */
+export async function verifyDidToken(didToken: string | null | undefined, opts: { withEmail?: boolean } = {}): Promise<MagicIdentity | null> {
   if (!didToken) return null;
   try {
     const m = getAdmin();
@@ -31,11 +36,13 @@ export async function verifyDidToken(didToken: string | null | undefined): Promi
     const issuer = m.token.getIssuer(didToken);
     const eoa = m.token.getPublicAddress(didToken).toLowerCase() as `0x${string}`;
     let email: string | null = null;
-    try {
-      const meta = await m.users.getMetadataByIssuer(issuer);
-      email = meta.email ?? null;
-    } catch {
-      /* metadata is optional */
+    if (opts.withEmail) {
+      try {
+        const meta = await m.users.getMetadataByIssuer(issuer);
+        email = meta.email ?? null;
+      } catch {
+        /* metadata is optional */
+      }
     }
     return { issuer, eoa, email };
   } catch {

@@ -5,6 +5,7 @@ import { Chain as ClobChain, ClobClient, SignatureTypeV2 } from "@polymarket/clo
 import { BuilderConfig } from "@polymarket/builder-signing-sdk";
 import { RelayClient, RelayerTransactionState } from "@polymarket/builder-relayer-client";
 import { useWallet } from "./WalletContext";
+import { getMagic } from "@/lib/magic";
 import {
   CLOB_API_URL,
   PATOLI_BUILDER_CODE,
@@ -95,7 +96,18 @@ export function useTrading() {
   return ctx;
 }
 
-const builderConfig = () => new BuilderConfig({ remoteBuilderConfig: { url: REMOTE_SIGNING_URL() } });
+// /api/polymarket/sign only answers logged-in users: the SDK reads `remoteBuilderConfig.token` on
+// every signing request, so a getter hands it the latest Magic DID token (refreshed below).
+let signingToken: string | undefined;
+const builderConfig = () =>
+  new BuilderConfig({
+    remoteBuilderConfig: {
+      url: REMOTE_SIGNING_URL(),
+      get token() {
+        return signingToken;
+      },
+    },
+  });
 
 /** Turn SDK/axios failures into something a player can act on. */
 function friendlyError(e: unknown): Error {
@@ -114,6 +126,29 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   const [step, setStep] = useState<SessionStep>("idle");
   const [error, setError] = useState<Error | null>(null);
   const [derivedWallet, setDerivedWallet] = useState<{ eoa: string; address: `0x${string}` } | null>(null);
+
+  // Keep a DID token ready for the remote signer while logged in (15-min lifespan, refreshed every 10).
+  useEffect(() => {
+    if (!eoaAddress) {
+      signingToken = undefined;
+      return;
+    }
+    let alive = true;
+    const mint = async () => {
+      try {
+        const t = await getMagic()?.user.getIdToken({ lifespan: 900 });
+        if (alive && t) signingToken = t;
+      } catch {
+        /* next refresh will retry */
+      }
+    };
+    void mint();
+    const timer = setInterval(() => void mint(), 10 * 60_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [eoaAddress]);
 
   const stored = useMemo(() => (eoaAddress ? loadSession(eoaAddress) : null), [eoaAddress]);
   const session = eoaAddress && override?.eoa === eoaAddress ? override.session : stored;

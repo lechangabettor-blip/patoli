@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured() || !isMagicAdminConfigured()) {
     return NextResponse.json({ error: "backend no configurado" }, { status: 503 });
   }
-  const id = await verifyDidToken(bearer(req));
+  const id = await verifyDidToken(bearer(req), { withEmail: true });
   if (!id) return NextResponse.json({ error: "sesión inválida" }, { status: 401 });
   const body = (await req.json().catch(() => ({}))) as { walletAddress?: string; handle?: string };
   const wallet = (body.walletAddress ?? "").toLowerCase();
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   await connection();
   if (!isSupabaseConfigured() || !isMagicAdminConfigured()) return NextResponse.json(null, { status: 503 });
-  const id = await verifyDidToken(bearer(req));
+  const id = await verifyDidToken(bearer(req), { withEmail: true });
   if (!id) return NextResponse.json(null, { status: 401 });
   const db = supabaseAdmin();
   const { data: priv } = await db.from("profile_private").select("profile_id").eq("issuer", id.issuer).maybeSingle();
