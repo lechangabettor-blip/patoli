@@ -159,8 +159,15 @@ async function indexOnce(opts: { maxPages?: number }): Promise<IndexRunResult> {
     else res.betsUpserted = betRows.length;
   }
 
-  // 5. Resolve markets whose game should be over and settle their bets (one settler at a time)
-  const settled = await withJobLock("indexer_settle", 55, () => settleResolvedMarkets(res.errors));
+  // 5. Resolve markets whose game should be over and settle their bets (one settler at a time).
+  //    A lock-table error must not abort the run: the fills above are already saved, and the
+  //    bookkeeping + alert below are exactly what should report it.
+  let settled: number | undefined;
+  try {
+    settled = await withJobLock("indexer_settle", 55, () => settleResolvedMarkets(res.errors));
+  } catch (e) {
+    res.errors.push(e instanceof Error ? e.message : String(e));
+  }
   if (settled === undefined) res.skipped = true;
   else res.settled = settled;
 
@@ -274,12 +281,11 @@ async function settleResolvedMarkets(errors: string[]): Promise<number> {
     .lt("game_start", cutoff)
     .order("game_start")
     .limit(50);
-  if (!due?.length) return 0;
 
   // 1. Chain first (instant). 2. Gamma for whatever the chain could not decide.
   const resolved: { condition_id: string; winning_index: number; resolved_at: string }[] = [];
   const pending: string[] = [];
-  for (const d of due) {
+  for (const d of due ?? []) {
     const cid = d.condition_id as string;
     const n = Array.isArray(d.outcomes) ? (d.outcomes as unknown[]).length : 2;
     try {
@@ -302,22 +308,26 @@ async function settleResolvedMarkets(errors: string[]): Promise<number> {
 
   // Settle EVERY open bet whose market is resolved — the ones resolved just now, markets that arrived
   // from Gamma already resolved (a refetched stub, a fill first indexed after its game ended) and
-  // anything an earlier run left behind. Self-healing by construction.
+  // anything an earlier run left behind. Runs on every pass, whether or not something was due.
   const { data: bets, error: betsErr } = await db
     .from("bets")
-    .select("id, outcome_index, size, usdc, fee_usdc, side, markets!bets_condition_id_fkey!inner(winning_index)")
+    .select("id, outcome_index, size, usdc, fee_usdc, side, markets!bets_condition_id_fkey!inner(winning_index, outcomes)")
     .eq("status", "open")
     .not("markets.winning_index", "is", null)
     .limit(500);
   if (betsErr) errors.push(`open bets: ${betsErr.message}`);
   let n = 0;
   for (const b of bets ?? []) {
-    const winningIndex = Number((b.markets as unknown as { winning_index: number }).winning_index);
+    const m = b.markets as unknown as { winning_index: number; outcomes: unknown };
+    const winningIndex = Number(m.winning_index);
     let status: "won" | "lost" | "void";
     let pnl: number;
     if (winningIndex === -1) {
+      // Void (split payout): every share redeems 1/n of a dollar, so the money result is real —
+      // a favourite bought at 80¢ loses 30¢ a share. Unidades stay 0 (a push), the P&L does not.
+      const outcomeCount = Array.isArray(m.outcomes) && m.outcomes.length > 0 ? m.outcomes.length : 2;
       status = "void";
-      pnl = 0;
+      pnl = b.side === "BUY" ? Number(b.size) / outcomeCount - paidOf(b) : 0;
     } else if (b.side === "BUY") {
       const won = b.outcome_index === winningIndex;
       // Polymarket's feeUsdc already includes the builder fee: adding builder_fee again here

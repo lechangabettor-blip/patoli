@@ -1,5 +1,6 @@
 import "server-only";
 import { randomBytes } from "crypto";
+import { after } from "next/server";
 import type { Hex } from "viem";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { parseEventLogs } from "viem";
@@ -399,8 +400,9 @@ async function settleRound(id: string, round: number, outcome: "a" | "b" | "tie"
       .update({ score_a: scoreA, score_b: scoreB, status: complete ? "ready" : "finished", winner_eoa: winner, finished_at: nowIso() })
       .eq("id", id)
       .eq("status", "playing");
-    // don't wait for the cron: start the on-chain settlement right away (serialized by the operator queue)
-    if (complete) void settleReady().catch((e) => console.error("[arena] instant settle", e instanceof Error ? e.message : e));
+    // don't wait for the cron: settle on-chain right away. `after` keeps the function alive past the
+    // response (a frozen instance would otherwise orphan the settle lease for its whole TTL).
+    if (complete) after(() => settleReady().catch((e) => console.error("[arena] instant settle", e instanceof Error ? e.message : e)));
   } else {
     await db.from("arena_matches").update({ score_a: scoreA, score_b: scoreB, round: round + 1 }).eq("id", id).eq("status", "playing");
     await openRound(id, round + 1);
@@ -549,9 +551,14 @@ export async function proposeRematch(id: string, me: ArenaIdentity): Promise<Mat
  * instant settle at match end and the cron can no longer both send the same batch. Whoever
  * waits out the lease re-reads `ready`, so a batch already sent is not sent twice.
  */
-async function settleReady(limit = 25): Promise<{ sent: number; tx: string | null; error?: string }> {
-  const out = await withJobLock("arena_settle", 170, () => settleReadyLocked(limit), 45_000);
-  return out ?? { sent: 0, tx: null, error: "otra liquidación en curso" };
+async function settleReady(limit = 25, waitMs = 30_000): Promise<{ sent: number; tx: string | null; error?: string }> {
+  try {
+    const out = await withJobLock("arena_settle", 170, () => settleReadyLocked(limit), waitMs);
+    return out ?? { sent: 0, tx: null, error: "otra liquidación en curso" };
+  } catch (e) {
+    // A lock-table error is reported through the sweep's alert instead of killing the whole run.
+    return { sent: 0, tx: null, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 async function settleReadyLocked(limit: number): Promise<{ sent: number; tx: string | null; error?: string }> {
@@ -606,6 +613,16 @@ const OPERATOR_GAS_FLOOR_POL = 0.5;
  * instances (job lease); a second caller skips and the next minute's run picks up the rest.
  */
 export async function sweep(): Promise<{ ticked: number; settled: { sent: number; tx: string | null; error?: string }; skipped?: boolean }> {
+  try {
+    return await sweepLocked();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await alertOps("arena-sweep", msg);
+    throw e;
+  }
+}
+
+async function sweepLocked(): Promise<{ ticked: number; settled: { sent: number; tx: string | null; error?: string }; skipped?: boolean }> {
   // TTL covers the worst case (claim + finalize + settle, each waiting up to 120 s for a receipt) and
   // matches the function's own time limit; the lease is released as soon as the sweep ends anyway.
   const out = await withJobLock("arena_sweep", 300, async () => {
@@ -619,7 +636,8 @@ export async function sweep(): Promise<{ ticked: number; settled: { sent: number
     await db.from("arena_lobby").delete().lt("expires_at", nowIso());
     await fileClaims();
     await finalizeClaims();
-    const settled = await settleReady();
+    // Short wait: if an instant settle holds the lease, the next minute's run takes over instead of blocking.
+    const settled = await settleReady(25, 5_000);
     // Awaited: a function may be frozen the moment the response goes out, and a fire-and-forget alert would be lost while its throttle still counted it as sent.
     if (settled.error && !/omitidas|en curso/.test(settled.error)) await alertOps("arena-settle", settled.error);
     try {

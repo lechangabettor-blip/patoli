@@ -6,6 +6,7 @@ import type { ClobClient, TickSize } from "@polymarket/clob-client-v2";
 import { useTrading } from "@/providers/TradingProvider";
 import { useWallet } from "@/providers/WalletContext";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
+import { clobCache } from "@/lib/polymarket/clob-cache";
 import { useSyncBets } from "@/hooks/useSocial";
 
 interface PlaceBetParams {
@@ -38,11 +39,9 @@ type PlaceLimitResult =
   | { ok: true; orderId: string; matched: boolean; txHashes: string[] }
   | { ok: false; reason: string };
 
-// Per-session memory so a 2nd bet skips the slow pre-checks (approvals on-chain, CLOB balance cache).
-// Cleared when an order fails for a reason those checks would have caught.
-let approvalsOk = false;
-let collateralSynced = false;
-
+// Per-session memory (lib/polymarket/clob-cache.ts) so a 2nd bet skips the slow pre-checks
+// (approvals on-chain, CLOB balance cache). Cleared when an order fails for a reason those
+// checks would have caught, and by the provider whenever a wrap or redeem changes the balance.
 const NOT_READY = "Primero activa tu cuenta de trading";
 
 /**
@@ -70,16 +69,16 @@ export function usePlaceBet() {
     async (client: ClobClient, stake: number) => {
       if (!sdk) return;
       const { AssetType } = sdk.clob;
-      if (!approvalsOk) {
+      if (!clobCache.approvalsOk) {
         try {
           const added = await ensureApprovals();
           if (added) await new Promise((r) => setTimeout(r, 1500)); // let the CLOB see the new allowance
-          approvalsOk = true;
+          clobCache.approvalsOk = true;
         } catch (e) {
           console.warn("[patoli] ensureApprovals failed", e);
         }
       }
-      if (!collateralSynced) {
+      if (!clobCache.collateralSynced) {
         try {
           await client.updateBalanceAllowance({ asset_type: AssetType.COLLATERAL });
           for (let i = 0; i < 4; i++) {
@@ -105,6 +104,9 @@ export function usePlaceBet() {
       const client = getClobClient();
       if (!client || !sdk) return { ok: false, reason: NOT_READY };
       if (!isBuilderCodeValid(PATOLI_BUILDER_CODE)) return { ok: false, reason: "Patoli aún no tiene su código de builder configurado. Pronto." };
+      // Polymarket: a GTD expiration must be ≥ 3 minutes ahead and the order dies one minute before it
+      // (docs, 2026-10-29). Fail here with a clear message instead of a bare "invalid expiration".
+      if (expiresAt - Math.floor(Date.now() / 1000) < 185) return { ok: false, reason: "Faltan menos de 3 minutos para el partido: Polymarket ya no acepta órdenes límite. Usa Mercado." };
       const { Side, OrderType } = sdk.clob;
       setPlacing(true);
       try {
@@ -120,7 +122,7 @@ export function usePlaceBet() {
           const r = rejection(res);
           return { ok: false, reason: r.ok ? "" : r.reason };
         }
-        collateralSynced = true;
+        clobCache.collateralSynced = true;
         const matched = /matched/i.test(res.status ?? "") || (res.transactionsHashes?.length ?? 0) > 0;
         qc.invalidateQueries({ queryKey: ["open-orders"] });
         qc.invalidateQueries({ queryKey: ["balances"] });
@@ -167,7 +169,7 @@ export function usePlaceBet() {
           console.error("[patoli] order rejected", res);
           return rejection(res);
         }
-        collateralSynced = true;
+        clobCache.collateralSynced = true;
         qc.invalidateQueries({ queryKey: ["positions"] });
         qc.invalidateQueries({ queryKey: ["balances"] });
         // Index the fill into our DB (Perfil/feed read from there). Polymarket's
@@ -190,8 +192,8 @@ export function usePlaceBet() {
 /** Classify a failure; forget the session shortcuts when they could be the cause. */
 function rejection(res: unknown): PlaceBetResult {
   const text = rawError(res);
-  if (/not enough balance|insufficient|allowance/i.test(text)) collateralSynced = false;
-  if (/allowance|approv/i.test(text)) approvalsOk = false;
+  if (/not enough balance|insufficient|allowance/i.test(text)) clobCache.collateralSynced = false;
+  if (/allowance|approv/i.test(text)) clobCache.approvalsOk = false;
   const lineMoved = /fok|fill or kill|fully filled|not filled|no liquidity|unmatched|no match|price/i.test(text) && !/min.*size|minimum/i.test(text);
   return { ok: false, reason: describeRejection(res), lineMoved };
 }

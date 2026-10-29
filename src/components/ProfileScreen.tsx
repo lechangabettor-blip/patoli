@@ -184,7 +184,8 @@ export default function ProfileScreen() {
   }
 
   const handle = me?.handle ?? ((email ?? "usuario").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "usuario");
-  const redeemables = (positions.data ?? []).filter((p) => p.redeemable && p.size > 0);
+  // Only positions with value (winners pay $1, a void pays 1/n): lost positions are worth $0 and are left alone.
+  const redeemables = (positions.data ?? []).filter((p) => p.redeemable && p.size > 0 && p.curPrice > 0.01);
   const redeemableUsd = redeemables.reduce((s, p) => s + (p.curPrice >= 0.99 ? p.size : 0), 0);
   // P&L = settled record from the indexer — exactly what everyone else sees on your profile
   const totalPnl = me?.pnl ?? 0;
@@ -285,8 +286,8 @@ export default function ProfileScreen() {
               <div className="flex-1">
                 <div className="font-display text-sm font-extrabold uppercase">Llegaron ${formatUsd(pendingUsdc)} USDC</div>
                 <p className="mt-1 text-xs text-muted">Polymarket opera con pUSD (dólar 1 a 1). Se convierten solos en unos segundos; si no, toca Convertir. Sin gas, sin costo.</p>
-                <button onClick={() => run("wrap")} disabled={busy !== null} className="btn-accent mt-3 w-full py-2.5 text-xs">
-                  {busy === "wrap" ? "Convirtiendo…" : `Convertir a pUSD`}
+                <button onClick={() => run("wrap")} disabled={busy !== null || activating} className="btn-accent mt-3 w-full py-2.5 text-xs">
+                  {busy === "wrap" ? "Convirtiendo…" : activating ? "Activando tu cuenta…" : `Convertir a pUSD`}
                 </button>
               </div>
             </div>
@@ -303,8 +304,8 @@ export default function ProfileScreen() {
                 <p className="mt-1 text-xs text-muted">
                   Son USDC de Circle, no USDC.e. No se pierden: los convertimos a pUSD por el puente de Polymarket. Sin gas, sin costo.
                 </p>
-                <button onClick={() => run("rescue")} disabled={busy !== null} className="btn-accent mt-3 w-full py-2.5 text-xs">
-                  {busy === "rescue" ? "Convirtiendo…" : "Convertir a pUSD"}
+                <button onClick={() => run("rescue")} disabled={busy !== null || activating} className="btn-accent mt-3 w-full py-2.5 text-xs">
+                  {busy === "rescue" ? "Convirtiendo…" : activating ? "Activando tu cuenta…" : "Convertir a pUSD"}
                 </button>
               </div>
             </div>

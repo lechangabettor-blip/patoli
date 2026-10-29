@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { sweep } from "@/lib/arena/engine";
 import { isOperatorConfigured } from "@/lib/arena/server";
+import { alertOps } from "@/lib/alert";
 
 /** Cron / manual: time out stuck matches and settle ready ones on-chain. Same auth as the indexer. */
 async function handle(req: NextRequest) {
@@ -16,7 +17,9 @@ async function handle(req: NextRequest) {
   try {
     return NextResponse.json(await sweep());
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "sweep failed" }, { status: 500 });
+    const msg = e instanceof Error ? e.message : "sweep failed";
+    await alertOps("arena-sweep", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 export const GET = handle;

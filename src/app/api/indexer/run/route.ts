@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { runIndexer } from "@/lib/indexer";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
+import { alertOps } from "@/lib/alert";
 
 /**
  * POST /api/indexer/run  (header: x-indexer-secret)
@@ -20,7 +21,10 @@ async function handle(req: NextRequest) {
     const result = await runIndexer();
     return NextResponse.json(result);
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "indexer failed" }, { status: 500 });
+    // Anything that escaped the run (a timed-out fetch, a parse error) still reaches LeChanga's Telegram.
+    const msg = e instanceof Error ? e.message : "indexer failed";
+    await alertOps("indexer", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 

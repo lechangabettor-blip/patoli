@@ -158,8 +158,8 @@ function withOperator<T>(fn: () => Promise<T>): Promise<T> {
 async function locked<T>(fn: () => Promise<T>): Promise<T> {
   // The lease only needs to cover the send (nonce assignment + broadcast), not the confirmation.
   const out = await withJobLock("arena_operator", 30, fn, 25_000);
-  // `status` lets the route helper answer 503 with this message instead of a masked 500.
-  if (out === undefined) throw Object.assign(new Error("El operador está ocupado. Intenta de nuevo en unos segundos."), { status: 503 });
+  // `userFacing` + `status` let the route helper answer 503 with this message instead of a masked 500.
+  if (out === undefined) throw Object.assign(new Error("El operador está ocupado. Intenta de nuevo en unos segundos."), { status: 503, userFacing: true });
   return out;
 }
 

@@ -63,7 +63,9 @@ const AUTH_FLAG = "patoli.auth";
 
 export function hasAuthFlag(): boolean {
   try {
-    if (localStorage.getItem(AUTH_FLAG) === "1") return true;
+    const flag = localStorage.getItem(AUTH_FLAG);
+    if (flag === "1") return true;
+    if (flag === "0") return false; // an explicit logout beats the session-key heuristic below
     // Accounts from before the flag existed: an activated trading session (lib/polymarket/session.ts) proves a login.
     for (let i = 0; i < localStorage.length; i++) if (localStorage.key(i)?.startsWith("patoli.session.")) return true;
     return false;
@@ -74,8 +76,7 @@ export function hasAuthFlag(): boolean {
 
 export function setAuthFlag(on: boolean): void {
   try {
-    if (on) localStorage.setItem(AUTH_FLAG, "1");
-    else localStorage.removeItem(AUTH_FLAG);
+    localStorage.setItem(AUTH_FLAG, on ? "1" : "0");
   } catch {
     /* private mode */
   }

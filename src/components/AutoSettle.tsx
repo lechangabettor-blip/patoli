@@ -61,7 +61,9 @@ export default function AutoSettle() {
   }, [dueOpen, now, syncBets]);
 
   // 2. Winnings ready → collect them. Keyed by the set of markets so one attempt covers a poll cycle.
-  const redeemables = (positions.data ?? []).filter((p) => p.redeemable && p.size > 0);
+  //    `redeemable` also covers LOST positions (Data API v2); those are worth $0 and burning them would
+  //    spend a relayer transaction for nothing (100/day on the Unverified tier), so only value is collected.
+  const redeemables = (positions.data ?? []).filter((p) => p.redeemable && p.size > 0 && p.curPrice > 0.01);
   const key = redeemables.map((p) => p.conditionId).sort().join(",");
   const usd = redeemables.reduce((s, p) => s + (p.curPrice >= 0.99 ? p.size : 0), 0);
   const negRisk = redeemables.filter((p) => p.negativeRisk).map((p) => p.conditionId).join(",");

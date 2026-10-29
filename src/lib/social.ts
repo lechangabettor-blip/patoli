@@ -116,7 +116,7 @@ const WINDOW_MS: Record<WindowKey, number> = { d7: 7 * 86_400_000, d30: 30 * 86_
 async function loadWindows(profileId: string): Promise<Record<WindowKey, StatsWindow> | undefined> {
   const db = supabaseAdmin();
   const [{ data: bets, error: betsError }, { data: matches }] = await Promise.all([
-    db.from("bets").select("status, side, size, price, usdc, fee_usdc, settled_at").eq("profile_id", profileId).neq("status", "open"),
+    db.from("bets").select("status, side, size, price, usdc, fee_usdc, pnl, settled_at").eq("profile_id", profileId).neq("status", "open"),
     db
       .from("arena_matches")
       .select("player_a, eoa_a, eoa_b, stake, winner_eoa, finished_at, created_at")
@@ -148,7 +148,12 @@ async function loadWindows(profileId: string): Promise<Record<WindowKey, StatsWi
         s.units -= 1;
         s.pnl -= paid;
         s.staked += paid;
-      } else s.v++;
+      } else {
+        // void = push for Unidades, but the money moved (a split payout returns 1/n per share)
+        s.v++;
+        s.pnl += Number(b.pnl ?? 0);
+        s.staked += paid;
+      }
     }
   }
   for (const m of matches ?? []) {

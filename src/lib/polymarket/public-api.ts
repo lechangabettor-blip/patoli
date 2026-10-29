@@ -85,19 +85,28 @@ export function pricesFrom(tokenIds: string[], asks: PricesResponse, bids: Price
   return out;
 }
 
+/** Max entries per POST /prices (Polymarket: 500) → 250 tokens × 2 sides per request. */
+const PRICES_CHUNK = 250;
+
+/** Both sides of every token in as few requests as possible (mixed sides in one body are accepted — verified 2026-10-29). */
+export async function fetchPricesDirect(tokenIds: string[], base = CLOB_API_URL): Promise<PriceMap> {
+  const out: PriceMap = {};
+  for (let i = 0; i < tokenIds.length; i += PRICES_CHUNK) {
+    const chunk = tokenIds.slice(i, i + PRICES_CHUNK);
+    const body = JSON.stringify(chunk.flatMap((token_id) => [{ token_id, side: "SELL" }, { token_id, side: "BUY" }]));
+    const r = await fetch(`${base}/prices`, { method: "POST", headers: json, body, signal: timeout(6_000) });
+    if (!r.ok) throw new Error("prices");
+    const j = (await r.json()) as PricesResponse;
+    Object.assign(out, pricesFrom(chunk, j, j));
+  }
+  return out;
+}
+
 export async function fetchPrices(tokenIds: string[]): Promise<PriceMap> {
   if (tokenIds.length === 0) return {};
   return direct(
     "clob",
-    async () => {
-      const body = (side: "SELL" | "BUY") => JSON.stringify(tokenIds.map((token_id) => ({ token_id, side })));
-      const [a, b] = await Promise.all([
-        fetch(`${CLOB_API_URL}/prices`, { method: "POST", headers: json, body: body("SELL"), signal: timeout(6_000) }),
-        fetch(`${CLOB_API_URL}/prices`, { method: "POST", headers: json, body: body("BUY"), signal: timeout(6_000) }),
-      ]);
-      if (!a.ok || !b.ok) throw new Error("prices");
-      return pricesFrom(tokenIds, (await a.json()) as PricesResponse, (await b.json()) as PricesResponse);
-    },
+    () => fetchPricesDirect(tokenIds),
     async () => {
       const r = await fetch("/api/prices", { method: "POST", headers: json, body: JSON.stringify({ tokenIds }) });
       return r.ok ? r.json() : {};

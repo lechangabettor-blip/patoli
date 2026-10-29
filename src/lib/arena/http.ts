@@ -3,11 +3,11 @@ import { ArenaError } from "./engine";
 import { arenaIdentity, type ArenaIdentity } from "./server";
 import { isArenaConfigured } from "./typed-data";
 
-/** Error → HTTP. ArenaError (or any Error tagged with a `status`) carries a user-facing message; anything else is logged and masked. */
+/** Error → HTTP. ArenaError (or an Error tagged `userFacing` with a `status`) carries a user-facing message; anything else — viem/RPC errors included — is logged and masked. */
 export function fail(e: unknown) {
   if (e instanceof ArenaError) return NextResponse.json({ error: e.message }, { status: e.status });
-  const tagged = e instanceof Error ? (e as Error & { status?: unknown }).status : undefined;
-  if (typeof tagged === "number") return NextResponse.json({ error: e instanceof Error ? e.message : "error" }, { status: tagged });
+  const tagged = e instanceof Error ? (e as Error & { status?: unknown; userFacing?: unknown }) : null;
+  if (tagged?.userFacing === true && typeof tagged.status === "number") return NextResponse.json({ error: tagged.message }, { status: tagged.status });
   console.error("[arena]", e);
   return NextResponse.json({ error: "Algo falló de nuestro lado. Intenta de nuevo." }, { status: 500 });
 }

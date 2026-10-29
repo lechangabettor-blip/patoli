@@ -31,13 +31,32 @@ before adding features); decision history in `MVP-PLAN.md` next to it.
   string). `metadataBase` = https://patoli.bet in the root layout.
 - Fee rule: Polymarket's `feeUsdc` INCLUDES the builder fee. Cost of a bet = `usdc + fee_usdc`
   everywhere (indexer P&L, feed stake/odds, rolling windows, `profile_stats.staked`). Migration
-  0012 backfilled settled P&L.
+  0012 backfilled settled P&L. A void (split payout) pays 1/n per share, so void BUY rows carry
+  that real P&L (Unidades stay 0); migration 0013 counts voids in `staked`.
+- Relayer batches: every `resp.wait()` goes through `confirmed()` in TradingProvider (undefined =
+  reverted or unconfirmed → throw); wraps are coalesced per (wallet, amount) so AutoSettle, the
+  sheets and Convertir share one batch; after any wrap/redeem/withdraw/tip
+  `forgetCollateralSync()` (lib/polymarket/clob-cache.ts) makes the next order re-sync the CLOB
+  balance. The bet sheet's whole submit is one in-flight unit (`sending`).
+- Settlement sweep: every pass settles ALL open bets whose market has a `winning_index`
+  (embedded inner-join filter), not only markets resolved in that run. Lock-table errors are
+  pushed to `errors` + alerted, never fatal; the instant Arena settle runs inside `after()`.
 - One clock: Vercel crons every minute, serialized by `job_locks` leases (`src/lib/job-lock.ts`:
   indexer, arena sweep, every operator send). Ops alerts to Telegram once
   `ALERT_TELEGRAM_BOT_TOKEN` + `ALERT_TELEGRAM_CHAT_ID` exist (indexer errors, settle errors,
   operator POL below 0.5).
 - `/terminos` exists; `error.tsx` / `global-error.tsx` show "Reintentar"; iOS top safe area
   (`--safe-t`); sheets scroll internally; the feed paginates on scroll; search is debounced.
+- Verified Polymarket facts (2026-10-29, `LeChangaHQ/5-lechanga-bet/PATOLI-RESEARCH-2026-10-29.md`):
+  both SDKs we use are DEPRECATED in favour of `@polymarket/client` (viem); Protocol V2 markets
+  (`version: "v2"`, `positionIds`) tentatively become the default for NEW markets on 2026-11-02
+  and our normalisers skip them until a v2 path exists (next job); GTD expiration ≥ 3 min ahead
+  (guarded in `placeLimit`); `POST /prices` takes mixed sides in one body; the market websocket
+  takes `{operation: subscribe|unsubscribe}` frames (price-socket no longer reconnects); Data API
+  v2 `redeemable` includes LOST positions (auto-cobro redeems only value); Unverified builders get
+  100 relayer txs/day (429 `quota exceeded`); builder fees pay out daily (previous UTC day, min
+  $0.10) to the builder-profile wallet; Magic email/Google linking is contradictory in Magic's
+  docs — test before relying on one wallet per person.
 - Full audit and plan: `LeChangaHQ/5-lechanga-bet/PATOLI-AUDIT-2026-10-28.md` (§9 = what shipped).
 
 ## What this is (v1 scope — the contract)

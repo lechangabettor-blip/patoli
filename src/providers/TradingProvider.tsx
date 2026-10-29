@@ -34,6 +34,7 @@ import {
 } from "@/lib/polymarket/v2";
 import { ARENA_ADDRESS, ARENA_ROUTER_ADDRESS, isArenaConfigured, isRouterConfigured } from "@/lib/arena/typed-data";
 import { arenaAbi, routerAbi } from "@/lib/arena/abi";
+import { forgetCollateralSync } from "@/lib/polymarket/clob-cache";
 import {
   SESSION_VERSION,
   clearSession,
@@ -128,6 +129,17 @@ function makeClobClient(sdk: Sdk, signer: Signer, funder: `0x${string}`, creds: 
   });
 }
 
+/**
+ * The relayer's `wait()` resolves to undefined both when the batch REVERTED (STATE_FAILED) and when
+ * it is still unconfirmed after its polling budget: neither is success, and the one-tap flows
+ * (wrap → bet, wrap → tip, auto-cobro) must never continue past a batch that did not land.
+ */
+async function confirmed(resp: { wait: () => Promise<unknown> }, what: string): Promise<{ transactionHash?: string }> {
+  const r = (await resp.wait()) as { transactionHash?: string } | undefined;
+  if (!r) throw new Error(`${what} no se confirmó en Polygon. Revisa tu saldo en unos segundos antes de reintentar.`);
+  return r;
+}
+
 /** Turn SDK/axios failures into something a player can act on. */
 function friendlyError(e: unknown): Error {
   const raw = e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e ?? {});
@@ -135,6 +147,8 @@ function friendlyError(e: unknown): Error {
     return new Error("Patoli aún no está conectado a Polymarket (faltan las credenciales de builder). Pronto.");
   }
   if (/user denied|rejected|closed-by-user/i.test(raw)) return new Error("Cancelaste la firma.");
+  // Builder Program daily relayer quota (100/day while Unverified): everything gasless pauses until the next UTC day.
+  if (/quota exceeded|429|too many requests/i.test(raw)) return new Error("Polymarket limitó las transacciones gratis de hoy. Intenta más tarde.");
   if (/network|timeout|fetch/i.test(raw)) return new Error("Sin conexión con Polygon. Intenta de nuevo.");
   return e instanceof Error ? e : new Error("Algo falló. Intenta de nuevo.");
 }
@@ -147,6 +161,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   const [derivedWallet, setDerivedWallet] = useState<{ eoa: string; address: `0x${string}` } | null>(null);
   // Always the latest order client, including the one built inside `setupTrading` before any re-render.
   const clientRef = useRef<ClobClient | null>(null);
+  // One wrap batch per (wallet, amount) at a time: AutoSettle, the bet sheet, the tip sheet and the
+  // Convertir card can all ask for the same USDC.e within a second of each other.
+  const wrapInFlight = useRef<{ key: string; p: Promise<void> } | null>(null);
 
   // Keep a DID token ready for the remote signer while logged in (15-min lifespan, refreshed every 10).
   useEffect(() => {
@@ -234,7 +251,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       let approved = await checkV2Approvals(wallet);
       if (!approved) {
         const resp = await relayClient.executeDepositWalletBatch(buildV2ApprovalCalls(), wallet, batchDeadline());
-        await resp.wait();
+        await confirmed(resp, "El permiso de trading");
         approved = true;
       }
 
@@ -264,15 +281,24 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
     if (await checkV2Approvals(walletAddress)) return false;
     const resp = await relayClient.executeDepositWalletBatch(buildV2ApprovalCalls(), walletAddress, batchDeadline());
-    await resp.wait();
+    await confirmed(resp, "El permiso de trading");
     return true;
   }, [relayClient, walletAddress]);
 
   const wrapUsdc = useCallback(
     async (amount: bigint) => {
       if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
-      const resp = await relayClient.executeDepositWalletBatch(buildWrapCalls(walletAddress, amount), walletAddress, batchDeadline());
-      await resp.wait();
+      const key = `${walletAddress.toLowerCase()}:${amount}`;
+      if (wrapInFlight.current?.key === key) return wrapInFlight.current.p; // everyone awaits the same batch
+      const p = (async () => {
+        const resp = await relayClient.executeDepositWalletBatch(buildWrapCalls(walletAddress, amount), walletAddress, batchDeadline());
+        await confirmed(resp, "La conversión a pUSD");
+        forgetCollateralSync(); // the CLOB caches balances: the next order re-syncs before sending
+      })().finally(() => {
+        if (wrapInFlight.current?.p === p) wrapInFlight.current = null;
+      });
+      wrapInFlight.current = { key, p };
+      return p;
     },
     [relayClient, walletAddress],
   );
@@ -283,7 +309,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       if (amount <= 0n) throw new Error("Nada que convertir");
       if (!(await isWrapPaused(USDC_NATIVE_ADDRESS))) {
         const resp = await relayClient.executeDepositWalletBatch(buildWrapCalls(walletAddress, amount, USDC_NATIVE_ADDRESS), walletAddress, batchDeadline());
-        await resp.wait();
+        await confirmed(resp, "La conversión a pUSD");
+        forgetCollateralSync();
         return "wrap";
       }
       // Onramp paused for native USDC → forward to the user's own Polymarket bridge
@@ -300,7 +327,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
         walletAddress,
         batchDeadline(),
       );
-      await resp.wait();
+      await confirmed(resp, "El envío al puente");
       return "bridge";
     },
     [relayClient, walletAddress],
@@ -311,8 +338,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
       if (amount <= 0n) throw new Error("Monto inválido");
       const resp = await relayClient.executeDepositWalletBatch(buildUnwrapCalls(to, amount), walletAddress, batchDeadline());
-      const result = await resp.wait();
-      return (result as { transactionHash?: string } | undefined)?.transactionHash;
+      const result = await confirmed(resp, "El retiro");
+      forgetCollateralSync();
+      return result.transactionHash;
     },
     [relayClient, walletAddress],
   );
@@ -324,8 +352,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       if (amount > BigInt(TIP_MAX_USD) * 10n ** BigInt(PUSD_DECIMALS)) throw new Error(`El tip máximo es ${TIP_MAX_USD}`);
       if (to.toLowerCase() === walletAddress.toLowerCase()) throw new Error("No te puedes dar tip a ti mismo");
       const resp = await relayClient.executeDepositWalletBatch([buildErc20TransferCall(PUSD_ADDRESS, to, amount)], walletAddress, batchDeadline());
-      const result = await resp.wait();
-      return (result as { transactionHash?: string } | undefined)?.transactionHash;
+      const result = await confirmed(resp, "El tip");
+      forgetCollateralSync();
+      return result.transactionHash;
     },
     [relayClient, walletAddress],
   );
@@ -339,7 +368,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       if (paused) throw new Error("La arena no acepta depósitos por ahora. Intenta más tarde.");
       const forwarder = await publicClient.readContract({ address: ARENA_ROUTER_ADDRESS, abi: routerAbi, functionName: "forwarderOf", args: [eoaAddress as `0x${string}`] });
       const resp = await relayClient.executeDepositWalletBatch(buildArenaDepositCalls(forwarder, amount), walletAddress, batchDeadline());
-      await resp.wait();
+      await confirmed(resp, "El depósito a la arena");
+      forgetCollateralSync();
     },
     [relayClient, walletAddress, eoaAddress],
   );
@@ -350,8 +380,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       if (targets.length === 0) return undefined;
       const calls = await buildRedeemCalls(walletAddress, targets);
       const resp = await relayClient.executeDepositWalletBatch(calls, walletAddress, batchDeadline());
-      const result = await resp.wait();
-      return (result as { transactionHash?: string } | undefined)?.transactionHash;
+      const result = await confirmed(resp, "El cobro");
+      forgetCollateralSync();
+      return result.transactionHash;
     },
     [relayClient, walletAddress],
   );

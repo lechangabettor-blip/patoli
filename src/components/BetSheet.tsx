@@ -57,6 +57,9 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const [stake, setStake] = useState(10);
   const [done, setDone] = useState<TicketData | null>(null);
   const [fail, setFail] = useState<string | null>(null);
+  // The whole submit (activation → wrap → order) is one in-flight unit: a second tap while the
+  // wrap batch is mining must not start a second wrap and a second order.
+  const [sending, setSending] = useState(false);
   const handle = me?.handle ?? ((email ?? "tú").split("@")[0].replace(/[^a-z0-9_]/gi, "").toLowerCase() || "tú");
 
   // Mercado = today's fill-or-kill at the price on screen. Límite = a resting order at the
@@ -127,6 +130,16 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   };
 
   async function submit() {
+    if (sending) return;
+    setSending(true);
+    try {
+      await submitInner();
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function submitInner() {
     setFail(null);
     if (status !== "connected") {
       // Keep the pick: the game page reopens this sheet on the same outcome after login.
@@ -205,7 +218,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
     }
   }
 
-  const busy = isPlacing || (step !== "idle" && step !== "complete");
+  const busy = sending || isPlacing || (step !== "idle" && step !== "complete");
   const cents = Math.round(price * 100);
   const cta =
     status !== "connected"

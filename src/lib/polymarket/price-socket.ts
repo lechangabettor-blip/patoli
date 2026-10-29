@@ -9,6 +9,9 @@
  * Verified against the live feed (2026-10-28): on subscribe a `book` snapshot per asset
  * (bids/asks arrays), then `price_change` messages whose `price_changes[]` carry
  * `best_bid` / `best_ask` per `asset_id` (both tokens of the market arrive).
+ * Tokens are added/removed on the open socket with `{operation: "subscribe"|"unsubscribe"}`
+ * frames (docs + live check 2026-10-29: new book ~200 ms after the frame), so changing the
+ * watched set never reconnects.
  */
 
 const WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market";
@@ -23,6 +26,7 @@ export interface LiveQuote {
 }
 
 const wanted = new Map<string, number>(); // tokenId → refcount
+const subscribed = new Set<string>(); // what the open socket streams right now
 const quotes = new Map<string, LiveQuote>();
 const listeners = new Set<() => void>();
 let version = 0;
@@ -96,6 +100,8 @@ function connect(ids: string[]) {
     open = true;
     backoffMs = 1_000;
     socket.send(JSON.stringify({ assets_ids: ids, type: "market" }));
+    subscribed.clear();
+    for (const id of ids) subscribed.add(id);
     if (pingTimer) clearInterval(pingTimer);
     pingTimer = setInterval(() => socket.readyState === 1 && socket.send("PING"), 10_000);
     console.info(`[patoli] prices socket open · ${ids.length} tokens`);
@@ -104,6 +110,7 @@ function connect(ids: string[]) {
   socket.onclose = () => {
     if (ws !== socket) return;
     open = false;
+    subscribed.clear();
     if (pingTimer) clearInterval(pingTimer);
     pingTimer = null;
     ws = null;
@@ -121,6 +128,21 @@ function scheduleSync() {
   syncTimer = setTimeout(() => {
     syncTimer = null;
     const ids = [...wanted.keys()].slice(0, MAX_ASSETS).sort();
+    if (ids.length === 0) {
+      connect([]);
+      return;
+    }
+    // Open socket: adjust the subscription in place instead of reconnecting.
+    if (ws && open && ws.readyState === 1) {
+      const add = ids.filter((id) => !subscribed.has(id));
+      const remove = [...subscribed].filter((id) => !wanted.has(id));
+      if (add.length) ws.send(JSON.stringify({ operation: "subscribe", assets_ids: add }));
+      if (remove.length) ws.send(JSON.stringify({ operation: "unsubscribe", assets_ids: remove }));
+      for (const id of add) subscribed.add(id);
+      for (const id of remove) subscribed.delete(id);
+      connectedKey = [...subscribed].sort().join(",");
+      return;
+    }
     const key = ids.join(",");
     if (key !== connectedKey) connect(ids);
   }, 250); // many components mount at once: one connection for all of them

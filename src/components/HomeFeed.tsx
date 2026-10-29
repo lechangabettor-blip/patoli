@@ -82,7 +82,7 @@ export default function HomeFeed() {
 
         {feed.isLoading ? (
           Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-40 w-full" />)
-        ) : feed.isError ? (
+        ) : feed.isError && items.length === 0 ? (
           <div className="card p-6 text-center text-sm text-muted">No pudimos cargar el feed.</div>
         ) : items.length === 0 ? (
           <div className="card p-6 text-center">
