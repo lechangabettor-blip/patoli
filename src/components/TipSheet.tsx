@@ -23,8 +23,8 @@ export default function TipSheet({ to, open, onClose }: { to: Pick<PublicProfile
   const router = useRouter();
   const { status } = useWallet();
   const { getToken } = useMe();
-  const { isReady, setupTrading, tip } = useTrading();
-  const { balance, refetch } = useUsdcBalance();
+  const { isReady, setupTrading, wrapUsdc, tip } = useTrading();
+  const { balance, pendingUsdc, pendingUsdcRaw, refetch } = useUsdcBalance();
   const [amount, setAmount] = useState("");
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -33,9 +33,10 @@ export default function TipSheet({ to, open, onClose }: { to: Pick<PublicProfile
 
   const amt = Number(amount);
   const tooMuch = amt > TIP_MAX_USD;
-  const noFunds = amt > balance + 1e-9;
+  const available = balance + pendingUsdc; // USDC.e that landed is wrapped on the way if the tip needs it
+  const noFunds = amt > available + 1e-9;
   const valid = Number.isFinite(amt) && amt >= 1 && !tooMuch && !noFunds;
-  const gated = status !== "connected" || !isReady;
+  const gated = status !== "connected";
 
   async function send() {
     setErr(null);
@@ -45,10 +46,9 @@ export default function TipSheet({ to, open, onClose }: { to: Pick<PublicProfile
     }
     setBusy(true);
     try {
-      if (!isReady) {
-        await setupTrading();
-        return;
-      }
+      // First money action on a fresh account: set up the trading account on the way, then tip in the same tap.
+      if (!isReady) await setupTrading();
+      if (amt > balance && pendingUsdcRaw > 0n) await wrapUsdc(pendingUsdcRaw);
       const hash = await tip(to.wallet as `0x${string}`, parseUnits(amt.toFixed(6), PUSD_DECIMALS));
       setTx(hash ?? null);
       void refetch();
@@ -84,7 +84,7 @@ export default function TipSheet({ to, open, onClose }: { to: Pick<PublicProfile
     onClose();
   }
 
-  const cta = status !== "connected" ? "Entrar para dar tip" : !isReady ? "Activar cuenta (1 vez)" : confirm ? `Confirmar $${formatUsd(amt)}` : "Dar tip";
+  const cta = status !== "connected" ? "Entrar para dar tip" : confirm ? `Confirmar $${formatUsd(amt)}` : "Dar tip";
 
   return (
     <Sheet open={open} onClose={close} title="Tip">
@@ -129,7 +129,7 @@ export default function TipSheet({ to, open, onClose }: { to: Pick<PublicProfile
           </div>
           <div className="tnum mt-1.5 flex justify-between text-xs text-muted">
             <span>Mínimo $1 · máximo ${TIP_MAX_USD}</span>
-            <span>Saldo ${formatUsd(balance)}</span>
+            <span>Saldo ${formatUsd(available)}</span>
           </div>
           {tooMuch ? <p className="mt-1 text-xs text-loss">El tip máximo es ${TIP_MAX_USD}.</p> : null}
           {noFunds && !tooMuch && amt > 0 ? <p className="mt-1 text-xs text-loss">No te alcanza el saldo.</p> : null}

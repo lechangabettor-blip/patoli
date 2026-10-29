@@ -5,32 +5,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { OpenOrder } from "@polymarket/clob-client-v2";
 import { useTrading } from "@/providers/TradingProvider";
 import type { MarketInfo } from "@/app/api/markets/lookup/route";
+import { fetchBook, type BookLevel, type BookTop } from "@/lib/polymarket/public-api";
 
-export interface BookLevel {
-  price: number; // 0–1
-  size: number; // shares
-  usd: number; // price × size, rounded
-}
+export type { BookLevel, BookTop };
 
-export interface BookTop {
-  asks: BookLevel[]; // cheapest first
-  bids: BookLevel[]; // best first
-  tickSize: number;
-  minOrderSize: number;
-}
-
-/** Top of the book for one outcome (2 asks, 2 bids), every 3 s while the Límite view is open. */
+/** Top of the book for one outcome (2 asks, 2 bids), every 3 s while the Límite view is open. Read from the CLOB directly. */
 export function useBook(tokenId: string, enabled: boolean) {
   return useQuery({
     queryKey: ["book", tokenId],
     enabled: enabled && !!tokenId,
     refetchInterval: enabled ? 3_000 : false,
     staleTime: 2_000,
-    queryFn: async (): Promise<BookTop> => {
-      const r = await fetch(`/api/book?tokenId=${encodeURIComponent(tokenId)}`);
-      if (!r.ok) throw new Error("book");
-      return r.json();
-    },
+    queryFn: () => fetchBook(tokenId),
   });
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getMagic } from "@/lib/magic";
+import { loadSdk, setAuthFlag } from "@/lib/sdk";
 
 /** Google OAuth lands here; Magic finishes the login, we send the user on. */
 export default function OAuthCallbackPage() {
@@ -10,14 +10,14 @@ export default function OAuthCallbackPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    const magic = getMagic();
-    if (!magic) {
-      router.replace("/entrar");
-      return;
-    }
-    magic.oauth2
-      .getRedirectResult()
-      .then(() => {
+    loadSdk()
+      .then(async (s) => {
+        if (!s.magic) {
+          router.replace("/entrar");
+          return;
+        }
+        await s.magic.oauth2.getRedirectResult();
+        setAuthFlag(true);
         const next = sessionStorage.getItem("patoli.next") || "/perfil";
         sessionStorage.removeItem("patoli.next");
         window.location.replace(next); // full reload so WalletProvider hydrates the session

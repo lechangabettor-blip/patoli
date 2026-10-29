@@ -24,6 +24,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/users/[handl
     loadFeed({ scope: "profile", profileId: profile.id, limit: 50 }),
     loadBattles({ scope: "profile", profileId: profile.id, limit: 50 }),
   ]);
-  const items = await attachLive(await attachFire(mergeFeed(bets, battles, 100), viewerId));
+  const items = mergeFeed(bets, battles, 100);
+  await Promise.all([attachFire(items, viewerId), attachLive(items)]);
   return NextResponse.json({ profile, bets: items, demo: false }, { headers: { "Cache-Control": "no-store" } });
 }

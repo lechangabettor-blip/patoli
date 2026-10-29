@@ -11,11 +11,16 @@ export default function LoginScreen() {
   const router = useRouter();
   const sp = useSearchParams();
   const next = sp.get("next") || "/perfil";
-  const { status, loginWithEmail, loginWithGoogle, isDemo } = useWallet();
+  const { status, warmUp, loginWithEmail, loginWithGoogle, isDemo } = useWallet();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState<"email" | "google" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [agree, setAgree] = useState(false);
+
+  // Download the wallet SDK while the user reads the page; an existing Magic session logs in by itself.
+  useEffect(() => {
+    void warmUp().catch(() => undefined);
+  }, [warmUp]);
 
   useEffect(() => {
     if (status === "connected") router.replace(next);
@@ -49,7 +54,7 @@ export default function LoginScreen() {
   const valid = /.+@.+\..+/.test(email) && agree;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-10 pt-4">
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-10" style={{ paddingTop: "calc(16px + var(--safe-t))" }}>
       <Link href="/" className="btn-ghost inline-flex w-fit items-center gap-1 px-3 py-1.5 text-xs">
         <ArrowLeft className="h-3.5 w-3.5" /> Volver
       </Link>
@@ -79,7 +84,7 @@ export default function LoginScreen() {
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 accent-[var(--accent)]" />
           <span>
             Tengo 18 años o más y acepto los{" "}
-            <Link href="/terminos" className="text-accent-soft underline">
+            <Link href="/terminos" target="_blank" rel="noreferrer" className="text-accent-soft underline">
               términos
             </Link>
             . Las apuestas se liquidan con las reglas de Polymarket.

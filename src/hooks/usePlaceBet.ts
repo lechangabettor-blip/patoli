@@ -2,9 +2,9 @@
 
 import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AssetType, OrderType, Side } from "@polymarket/clob-client-v2";
-import type { TickSize } from "@polymarket/clob-client-v2";
+import type { ClobClient, TickSize } from "@polymarket/clob-client-v2";
 import { useTrading } from "@/providers/TradingProvider";
+import { useWallet } from "@/providers/WalletContext";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { useSyncBets } from "@/hooks/useSocial";
 
@@ -43,13 +43,18 @@ type PlaceLimitResult =
 let approvalsOk = false;
 let collateralSynced = false;
 
+const NOT_READY = "Primero activa tu cuenta de trading";
+
 /**
  * Places a BUY market order (fill-or-kill, capped at the price the user saw) for `stake` USDC on `tokenId`.
- * The user signs with their embedded wallet; funds move from their own Safe;
+ * The user signs with their embedded wallet; funds move from their own deposit wallet;
  * Patoli's builder code rides inside the signed order. We never touch money.
+ * The client is read at call time (`getClobClient`), so a first bet can activate the account and
+ * place the order in the same tap.
  */
 export function usePlaceBet() {
-  const { clobClient, ensureApprovals } = useTrading();
+  const { getClobClient, ensureApprovals } = useTrading();
+  const { sdk } = useWallet();
   const qc = useQueryClient();
   const syncBets = useSyncBets();
   const [isPlacing, setPlacing] = useState(false);
@@ -57,13 +62,14 @@ export function usePlaceBet() {
   /**
    * Permissions can grow over time (neg-risk adapter was added after the first wallets were
    * activated): top them up silently before an order if anything is missing. The CLOB also
-   * caches each wallet's collateral balance/allowance: a fresh Safe (or a fresh deposit) must be
+   * caches each wallet's collateral balance/allowance: a fresh wallet (or a fresh deposit) must be
    * re-synced or orders get rejected with "not enough balance" even though the chain is fine.
    * The refresh is async on their side: poll briefly, never block on it.
    */
   const prepare = useCallback(
-    async (stake: number) => {
-      if (!clobClient) return;
+    async (client: ClobClient, stake: number) => {
+      if (!sdk) return;
+      const { AssetType } = sdk.clob;
       if (!approvalsOk) {
         try {
           const added = await ensureApprovals();
@@ -75,9 +81,9 @@ export function usePlaceBet() {
       }
       if (!collateralSynced) {
         try {
-          await clobClient.updateBalanceAllowance({ asset_type: AssetType.COLLATERAL });
+          await client.updateBalanceAllowance({ asset_type: AssetType.COLLATERAL });
           for (let i = 0; i < 4; i++) {
-            const ba = await clobClient.getBalanceAllowance({ asset_type: AssetType.COLLATERAL });
+            const ba = await client.getBalanceAllowance({ asset_type: AssetType.COLLATERAL });
             const seen = Number(ba?.balance ?? 0) / 1e6;
             if (seen >= stake) break;
             await new Promise((r) => setTimeout(r, 800));
@@ -87,7 +93,7 @@ export function usePlaceBet() {
         }
       }
     },
-    [clobClient, ensureApprovals],
+    [sdk, ensureApprovals],
   );
 
   /**
@@ -96,13 +102,15 @@ export function usePlaceBet() {
    */
   const placeLimit = useCallback(
     async ({ tokenId, price, shares, negRisk, tickSize, expiresAt }: PlaceLimitParams): Promise<PlaceLimitResult> => {
-      if (!clobClient) return { ok: false, reason: "Primero activa tu cuenta de trading" };
+      const client = getClobClient();
+      if (!client || !sdk) return { ok: false, reason: NOT_READY };
       if (!isBuilderCodeValid(PATOLI_BUILDER_CODE)) return { ok: false, reason: "Patoli aún no tiene su código de builder configurado. Pronto." };
+      const { Side, OrderType } = sdk.clob;
       setPlacing(true);
       try {
-        await prepare(shares * price);
+        await prepare(client, shares * price);
         const px = Math.min(1 - tickSize, Math.max(tickSize, Math.round(price / tickSize) * tickSize));
-        const res = await clobClient.createAndPostOrder(
+        const res = await client.createAndPostOrder(
           { tokenID: tokenId, price: Number(px.toFixed(4)), size: Math.floor(shares * 100) / 100, side: Side.BUY, expiration: expiresAt },
           { tickSize: String(tickSize) as TickSize, negRisk },
           OrderType.GTD,
@@ -129,25 +137,27 @@ export function usePlaceBet() {
         setPlacing(false);
       }
     },
-    [clobClient, qc, syncBets, prepare],
+    [getClobClient, sdk, qc, syncBets, prepare],
   );
 
   const placeBet = useCallback(
     async ({ tokenId, stake, negRisk, tickSize, price }: PlaceBetParams): Promise<PlaceBetResult> => {
-      if (!clobClient) return { ok: false, reason: "Primero activa tu cuenta de trading" };
+      const client = getClobClient();
+      if (!client || !sdk) return { ok: false, reason: NOT_READY };
       if (!isBuilderCodeValid(PATOLI_BUILDER_CODE)) {
         return { ok: false, reason: "Patoli aún no tiene su código de builder configurado. Pronto." };
       }
+      const { Side, OrderType } = sdk.clob;
       setPlacing(true);
       try {
-        await prepare(stake);
+        await prepare(client, stake);
 
         // Cap = the price on the button, snapped to the market's tick. Fill-or-kill at that price or
         // better; if the line moved against the user, the order is rejected and we re-quote instead
         // of filling at a price they never saw.
         const cap = Math.min(1 - tickSize, Math.max(tickSize, Math.round(price / tickSize) * tickSize));
 
-        const res = await clobClient.createAndPostMarketOrder(
+        const res = await client.createAndPostMarketOrder(
           { tokenID: tokenId, amount: stake, side: Side.BUY, orderType: OrderType.FOK, price: Number(cap.toFixed(4)) },
           { tickSize: String(tickSize) as TickSize, negRisk },
           OrderType.FOK,
@@ -171,7 +181,7 @@ export function usePlaceBet() {
         setPlacing(false);
       }
     },
-    [clobClient, qc, syncBets, prepare],
+    [getClobClient, sdk, qc, syncBets, prepare],
   );
 
   return { placeBet, placeLimit, isPlacing };
@@ -194,14 +204,7 @@ function rawError(res: unknown): string {
 
 /** V2 returns `{ success, errorMsg, orderID }`; thrown ApiErrors carry a message. */
 function describeRejection(res: unknown): string {
-  const r = (res ?? {}) as { errorMsg?: string; message?: string; error?: unknown; status?: number | string };
-  const nested = r.error as { error?: string; message?: string } | string | undefined;
-  const raw =
-    r.errorMsg ||
-    r.message ||
-    (typeof nested === "string" ? nested : nested?.error || nested?.message) ||
-    (r.error ? JSON.stringify(r.error) : "");
-  const text = String(raw || "");
+  const text = rawError(res);
   const friendly = /not enough balance|insufficient/i.test(text)
     ? "Saldo insuficiente en tu bóveda para esta apuesta."
     : /fok|fill or kill|couldn't be fully filled|not filled|no liquidity|unmatched/i.test(text)

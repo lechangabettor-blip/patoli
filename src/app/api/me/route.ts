@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, connection } from "next/server";
 import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
 import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase/server";
 import { isOwnedDepositWallet } from "@/lib/polymarket/wallet-derive";
-import { loadProfile } from "@/lib/social";
+import { loadProfile, loadTipsReceived } from "@/lib/social";
 
 /**
  * POST /api/me { walletAddress }  (Bearer <Magic DID token>)
@@ -43,8 +43,9 @@ export async function POST(req: NextRequest) {
     await db.from("profiles").update({ wallet, eoa: id.eoa }).eq("id", profileId);
   }
 
-  const profile = await loadProfile({ id: profileId }, profileId);
-  return NextResponse.json({ ...profile, email: id.email });
+  // The app only ever POSTs (MeProvider.refresh), so the owner-only extras ride along here too.
+  const [profile, tipsReceived] = await Promise.all([loadProfile({ id: profileId }, profileId), loadTipsReceived(profileId)]);
+  return NextResponse.json({ ...profile, email: id.email, tipsReceived });
 }
 
 export async function GET(req: NextRequest) {
@@ -55,10 +56,8 @@ export async function GET(req: NextRequest) {
   const db = supabaseAdmin();
   const { data: priv } = await db.from("profile_private").select("profile_id").eq("issuer", id.issuer).maybeSingle();
   if (!priv) return NextResponse.json(null, { status: 404 });
-  const profile = await loadProfile({ id: priv.profile_id as string }, priv.profile_id as string);
+  const [profile, tipsReceived] = await Promise.all([loadProfile({ id: priv.profile_id as string }, priv.profile_id as string), loadTipsReceived(priv.profile_id as string)]);
   if (!profile) return NextResponse.json(null);
-  const { data: tips } = await db.from("tips").select("amount").eq("to_profile", priv.profile_id as string);
-  const tipsReceived = (tips ?? []).reduce((s, t) => s + Number(t.amount), 0);
   return NextResponse.json({ ...profile, email: id.email, tipsReceived });
 }
 

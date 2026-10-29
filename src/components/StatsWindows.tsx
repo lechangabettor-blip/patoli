@@ -14,13 +14,25 @@ const WINDOWS: { key: WindowKey; label: string; hint: string }[] = [
 const signed = (n: number, digits = 1, suffix = "") => `${n > 0 ? "+" : n < 0 ? "-" : ""}${Math.abs(n).toFixed(digits)}${suffix}`;
 const tone = (n: number) => (n > 0 ? "text-win" : n < 0 ? "text-loss" : "");
 
+/** Open on the first window with something in it (week → month → all time) instead of an empty 0-0 week. */
+function firstActive(p: PublicProfile): WindowKey {
+  const w = p.windows;
+  if (!w) return "d7";
+  for (const k of ["d7", "d30", "all"] as WindowKey[]) {
+    const s = w[k].sports;
+    const b = w[k].battles;
+    if (s.w + s.l + s.v + b.w + b.l + b.d > 0) return k;
+  }
+  return "d7";
+}
+
 /**
  * Sports record and Batalla record over a rolling window (7 days, 30 days, all time), counted by
  * the moment each bet or battle settled. Sports and Batalla are two separate records, never mixed.
  * Falls back to the all-time numbers on the profile when windows are not present (lists).
  */
 export default function StatsWindows({ profile, compact = false }: { profile: PublicProfile; compact?: boolean }) {
-  const [key, setKey] = useState<WindowKey>("d7");
+  const [key, setKey] = useState<WindowKey>(() => firstActive(profile));
   const w: StatsWindow = profile.windows?.[key] ?? {
     sports: { w: profile.record.w, l: profile.record.l, v: profile.record.v, units: profile.units, pnl: profile.pnl, staked: profile.staked, roi: profile.roi },
     battles: profile.battles,

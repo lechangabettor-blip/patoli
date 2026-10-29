@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePositions } from "@/hooks/usePositions";
 import { useNow } from "@/hooks/useNow";
-import type { AutoRedeemNote } from "@/components/AutoSettle";
+import type { AutoRedeemNote, AutoWrapNote } from "@/components/AutoSettle";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownToLine, ArrowUpFromLine, Copy, ExternalLink, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 import TopBar from "./TopBar";
@@ -93,8 +93,10 @@ export default function ProfileScreen() {
   // on-chain truth from Polymarket's Data API: used for Cobrar and as a lag detector
   const positions = usePositions();
   const autoNote = useQuery<AutoRedeemNote | null>({ queryKey: ["autoRedeem"], queryFn: () => null, staleTime: Infinity });
+  const wrapNote = useQuery<AutoWrapNote | null>({ queryKey: ["autoWrap"], queryFn: () => null, staleTime: Infinity });
   const nowMs = useNow()?.getTime() ?? 0;
   const justCollected = autoNote.data && nowMs - autoNote.data.at < 60_000 ? autoNote.data : null;
+  const justWrapped = wrapNote.data && nowMs - wrapNote.data.at < 60_000 ? wrapNote.data : null;
 
   // Indexer behind? (Polymarket shows more live positions than our DB has open bets.)
   const livePositions = (positions.data ?? []).filter((p) => !p.redeemable && p.size > 0).length;
@@ -120,6 +122,8 @@ export default function ProfileScreen() {
     setOpError(null);
     setBusy(kind);
     try {
+      // Money that landed in a never-activated account: activate on the way (silent), then convert.
+      if (kind !== "redeem" && !isReady) await setupTrading();
       if (kind === "wrap") await wrapUsdc(pendingUsdcRaw);
       else if (kind === "rescue") {
         const path = await rescueNativeUsdc(nativeUsdcRaw);
@@ -229,9 +233,10 @@ export default function ProfileScreen() {
 
         {justCollected && redeemables.length === 0 ? (
           <div className="card mt-3 p-3 text-xs text-win">
-            {justCollected.usd > 0 ? `Cobrado: ${formatUsd(justCollected.usd)} ya están en tu saldo.` : "Tus apuestas resueltas ya se cerraron."}
+            {justCollected.usd > 0 ? `Cobrado: $${formatUsd(justCollected.usd)} ya están en tu saldo.` : "Tus apuestas resueltas ya se cerraron."}
           </div>
         ) : null}
+        {justWrapped && pendingUsdc <= 0 ? <div className="card mt-3 p-3 text-xs text-win">Convertido: ${formatUsd(justWrapped.usd)} USDC ya son pUSD en tu saldo.</div> : null}
         {/* Winnings ready to collect — shown first, one tap */}
         {isReady && redeemables.length > 0 ? (
           <div className="card-hot card mt-3 p-4">
@@ -272,14 +277,14 @@ export default function ProfileScreen() {
           </div>
         ) : null}
 
-        {/* Funds waiting to be converted */}
-        {isReady && pendingUsdc > 0 ? (
+        {/* Funds waiting to be converted (also for accounts not activated yet: the button activates on the way) */}
+        {pendingUsdc > 0 ? (
           <div className="card-hot card mt-3 p-4">
             <div className="flex items-start gap-3">
               <ArrowDownToLine className="mt-0.5 h-5 w-5 shrink-0 text-accent-soft" />
               <div className="flex-1">
                 <div className="font-display text-sm font-extrabold uppercase">Llegaron ${formatUsd(pendingUsdc)} USDC</div>
-                <p className="mt-1 text-xs text-muted">Polymarket opera con pUSD (dólar 1 a 1). Conviértelos para poder apostar. Sin gas, sin costo.</p>
+                <p className="mt-1 text-xs text-muted">Polymarket opera con pUSD (dólar 1 a 1). Se convierten solos en unos segundos; si no, toca Convertir. Sin gas, sin costo.</p>
                 <button onClick={() => run("wrap")} disabled={busy !== null} className="btn-accent mt-3 w-full py-2.5 text-xs">
                   {busy === "wrap" ? "Convirtiendo…" : `Convertir a pUSD`}
                 </button>
@@ -289,7 +294,7 @@ export default function ProfileScreen() {
         ) : null}
 
         {/* Native USDC sent by mistake — rescue it instead of letting it sit there */}
-        {isReady && nativeUsdc > 0 ? (
+        {nativeUsdc > 0 ? (
           <div className="card-hot card mt-3 p-4">
             <div className="flex items-start gap-3">
               <ArrowDownToLine className="mt-0.5 h-5 w-5 shrink-0 text-accent-soft" />

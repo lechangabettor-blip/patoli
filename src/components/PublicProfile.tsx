@@ -8,6 +8,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import Avatar from "./Avatar";
 import HistoryTabs from "./HistoryTabs";
 import BottomNav from "./BottomNav";
+import BetSheetHost from "./BetSheetHost";
 import Sheet from "./Sheet";
 import TicketShare from "./TicketShare";
 import TipSheet from "./TipSheet";
@@ -45,7 +46,7 @@ export default function PublicProfile({ handle }: { handle: string }) {
 
   return (
     <>
-      <main className="mx-auto min-h-dvh max-w-md px-4 pb-28 pt-4">
+      <main className="mx-auto min-h-dvh max-w-md px-4 pb-28" style={{ paddingTop: "calc(16px + var(--safe-t))" }}>
         <Link href="/" className="btn-ghost inline-flex items-center gap-1 px-3 py-1.5 text-xs">
           <ArrowLeft className="h-3.5 w-3.5" /> Inicio
         </Link>
@@ -130,6 +131,7 @@ export default function PublicProfile({ handle }: { handle: string }) {
         )}
       </main>
       <BottomNav />
+      <BetSheetHost />
       <Sheet open={!!ticket} onClose={() => setTicket(null)} title="Boleto">
         {ticket ? <TicketShare data={ticket} onDone={() => setTicket(null)} /> : null}
       </Sheet>

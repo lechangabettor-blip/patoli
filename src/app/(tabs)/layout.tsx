@@ -1,5 +1,6 @@
 import BottomNav from "@/components/BottomNav";
 import AutoSettle from "@/components/AutoSettle";
+import BetSheetHost from "@/components/BetSheetHost";
 
 export default function TabsLayout({ children }: LayoutProps<"/">) {
   return (
@@ -9,6 +10,7 @@ export default function TabsLayout({ children }: LayoutProps<"/">) {
       </main>
       <BottomNav />
       <AutoSettle />
+      <BetSheetHost />
     </>
   );
 }

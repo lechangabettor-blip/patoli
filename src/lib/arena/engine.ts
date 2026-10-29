@@ -4,11 +4,14 @@ import type { Hex } from "viem";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { parseEventLogs } from "viem";
 import { arenaAbi } from "./abi";
+import { withJobLock } from "@/lib/job-lock";
+import { alertOps } from "@/lib/alert";
 import {
   arenaBalance,
   arenaLimits,
   arenaSettledEvent,
   arenaPendingWithdraw,
+  operatorGasBalance,
   readClaim,
   sendClaim,
   sendFinalize,
@@ -541,7 +544,17 @@ export async function proposeRematch(id: string, me: ArenaIdentity): Promise<Mat
 
 /** ------------------------------------------------------------ settlement */
 
+/**
+ * Settle every `ready` match in one batch. One settler at a time across instances (lease): the
+ * instant settle at match end and the cron can no longer both send the same batch. Whoever
+ * waits out the lease re-reads `ready`, so a batch already sent is not sent twice.
+ */
 async function settleReady(limit = 25): Promise<{ sent: number; tx: string | null; error?: string }> {
+  const out = await withJobLock("arena_settle", 170, () => settleReadyLocked(limit), 45_000);
+  return out ?? { sent: 0, tx: null, error: "otra liquidación en curso" };
+}
+
+async function settleReadyLocked(limit: number): Promise<{ sent: number; tx: string | null; error?: string }> {
   const db = supabaseAdmin();
   const { data: rows } = await db.from("arena_matches").select(MATCH_COLS).eq("status", "ready").order("finished_at").limit(limit);
   const ready = (rows ?? []) as MatchRow[];
@@ -585,20 +598,39 @@ async function settleReady(limit = 25): Promise<{ sent: number; tx: string | nul
   }
 }
 
-/** Cron sweep: time out stuck matches, then settle what's ready. */
-export async function sweep(): Promise<{ ticked: number; settled: { sent: number; tx: string | null; error?: string } }> {
-  const db = supabaseAdmin();
-  const { data: open } = await db.from("arena_matches").select("id").in("status", ["signing", "playing"]).limit(100);
-  let ticked = 0;
-  for (const row of open ?? []) {
-    await tick(row.id as string);
-    ticked++;
-  }
-  await db.from("arena_lobby").delete().lt("expires_at", nowIso());
-  await fileClaims();
-  await finalizeClaims();
-  const settled = await settleReady();
-  return { ticked, settled };
+/** POL floor for the operator EOA before LeChanga gets a Telegram nudge. */
+const OPERATOR_GAS_FLOOR_POL = 0.5;
+
+/**
+ * Cron sweep: time out stuck matches, then settle what's ready. One sweep at a time across
+ * instances (job lease); a second caller skips and the next minute's run picks up the rest.
+ */
+export async function sweep(): Promise<{ ticked: number; settled: { sent: number; tx: string | null; error?: string }; skipped?: boolean }> {
+  // TTL covers the worst case (claim + finalize + settle, each waiting up to 120 s for a receipt) and
+  // matches the function's own time limit; the lease is released as soon as the sweep ends anyway.
+  const out = await withJobLock("arena_sweep", 300, async () => {
+    const db = supabaseAdmin();
+    const { data: open } = await db.from("arena_matches").select("id").in("status", ["signing", "playing"]).limit(100);
+    let ticked = 0;
+    for (const row of open ?? []) {
+      await tick(row.id as string);
+      ticked++;
+    }
+    await db.from("arena_lobby").delete().lt("expires_at", nowIso());
+    await fileClaims();
+    await finalizeClaims();
+    const settled = await settleReady();
+    // Awaited: a function may be frozen the moment the response goes out, and a fire-and-forget alert would be lost while its throttle still counted it as sent.
+    if (settled.error && !/omitidas|en curso/.test(settled.error)) await alertOps("arena-settle", settled.error);
+    try {
+      const pol = await operatorGasBalance();
+      if (pol < OPERATOR_GAS_FLOOR_POL) await alertOps("arena-gas", `El operador tiene ${pol.toFixed(3)} POL; recarga gas.`, 6 * 3600_000);
+    } catch {
+      /* a failed read is not worth an alert */
+    }
+    return { ticked, settled };
+  });
+  return out ?? { ticked: 0, settled: { sent: 0, tx: null }, skipped: true };
 }
 
 /** A finished match whose loser never signed, past Match.deadline → operator files the claim with all evidence. */

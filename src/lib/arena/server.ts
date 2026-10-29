@@ -9,6 +9,7 @@ import { ARENA_ADDRESS,
 import { POLYGON_RPC_URL } from "@/lib/polymarket/constants";
 import { bearer, isMagicAdminConfigured, verifyDidToken } from "@/lib/magic-admin";
 import { isSupabaseConfigured, supabaseAdmin } from "@/lib/supabase/server";
+import { withJobLock } from "@/lib/job-lock";
 
 /** Chain + clients ------------------------------------------------------- */
 
@@ -142,12 +143,31 @@ export async function arenaIdentity(req: NextRequest): Promise<ArenaIdentity | n
 /** Transactions ------------------------------------------------------------ */
 
 // All operator writes go through one queue: a single EOA sending concurrent txs (sweep +
-// settle cron + withdraw relay) would race on the nonce and drop transactions.
+// settle cron + withdraw relay) would race on the nonce and drop transactions. The in-process
+// queue covers one instance; the `arena_operator` lease (job_locks) covers the others, since on
+// Vercel the cron, a user's sweep and a withdrawal can each run on a different instance.
 let opQueue: Promise<unknown> = Promise.resolve();
 function withOperator<T>(fn: () => Promise<T>): Promise<T> {
-  const run = opQueue.then(fn, fn);
+  const run = opQueue.then(
+    () => locked(fn),
+    () => locked(fn),
+  );
   opQueue = run.catch(() => undefined);
   return run;
+}
+async function locked<T>(fn: () => Promise<T>): Promise<T> {
+  // The lease only needs to cover the send (nonce assignment + broadcast), not the confirmation.
+  const out = await withJobLock("arena_operator", 30, fn, 25_000);
+  // `status` lets the route helper answer 503 with this message instead of a masked 500.
+  if (out === undefined) throw Object.assign(new Error("El operador está ocupado. Intenta de nuevo en unos segundos."), { status: 503 });
+  return out;
+}
+
+/** POL left in the operator EOA, in whole units (it pays gas for every settle, claim and relayed withdrawal). */
+export async function operatorGasBalance(): Promise<number> {
+  const account = privateKeyToAccount(process.env.ARENA_OPERATOR_KEY as Hex);
+  const wei = await arenaPublic.getBalance({ address: account.address });
+  return Number(wei) / 1e18;
 }
 
 export interface ClaimCommit { round: number; player: Hex; hash: Hex; sig: Hex; opSig: Hex }

@@ -1,11 +1,10 @@
 "use client";
 
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Chain as ClobChain, ClobClient, SignatureTypeV2 } from "@polymarket/clob-client-v2";
-import { BuilderConfig } from "@polymarket/builder-signing-sdk";
-import { RelayClient, RelayerTransactionState } from "@polymarket/builder-relayer-client";
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { ClobClient } from "@polymarket/clob-client-v2";
+import type { RelayClient } from "@polymarket/builder-relayer-client";
 import { useWallet } from "./WalletContext";
-import { getMagic } from "@/lib/magic";
+import { getMagic, type Sdk } from "@/lib/sdk";
 import {
   CLOB_API_URL,
   PATOLI_BUILDER_CODE,
@@ -50,7 +49,7 @@ import {
  *   1. derive the user's deposit wallet from their embedded-wallet EOA
  *   2. deploy it gaslessly through Polymarket's relayer (our builder key signs)
  *   3. derive/create the user's CLOB API credentials (EOA signature, no server)
- *   4. set the six V2 approvals in one gasless WALLET batch
+ *   4. set the V2 approvals in one gasless WALLET batch
  * Afterwards a ClobClient (V2 orders, signature type 3, deposit wallet as
  * maker, our builder code embedded) places orders.
  *
@@ -58,6 +57,8 @@ import {
  *  - Relayer calls authenticate OUR builder API key via HMAC headers signed
  *    server-side at /api/polymarket/sign.
  *  - Order attribution is the 32-byte builder CODE inside each signed order.
+ *
+ * The SDK classes come from the lazily loaded bundle (lib/sdk.ts) through WalletContext.
  */
 
 interface TradingContextType {
@@ -68,6 +69,8 @@ interface TradingContextType {
   /** Deposit wallet = where the user's money lives and the maker of orders */
   walletAddress: `0x${string}` | undefined;
   clobClient: ClobClient | null;
+  /** The order client at call time — valid right after `setupTrading` resolves, before React re-rendered (first bet in one tap). */
+  getClobClient: () => ClobClient | null;
   relayClient: RelayClient | null;
   setupTrading: () => Promise<void>;
   /** Wrap USDC.e sitting in the deposit wallet into pUSD (gasless). */
@@ -76,7 +79,6 @@ interface TradingContextType {
   ensureApprovals: () => Promise<boolean>;
   /** Native USDC sent by mistake → pUSD (direct wrap if allowed, else via Polymarket's bridge). Returns the path used. */
   rescueNativeUsdc: (amount: bigint) => Promise<"wrap" | "bridge">;
-  /** Move USDC.e parked in the v1 Safe into the deposit wallet (gasless). */
   /** Withdraw: pUSD → USDC.e sent to `to` on Polygon (gasless). Returns tx hash if known. */
   withdraw: (to: `0x${string}`, amount: bigint) => Promise<string | undefined>;
   /** Tip: plain pUSD transfer to another user's deposit wallet (gasless; ≤ TIP_MAX_USD). Returns tx hash. */
@@ -96,11 +98,14 @@ export function useTrading() {
   return ctx;
 }
 
+type Signer = NonNullable<ReturnType<typeof useWallet>["ethersSigner"]>;
+type RelayBuilderConfig = ConstructorParameters<Sdk["relay"]["RelayClient"]>[3];
+
 // /api/polymarket/sign only answers logged-in users: the SDK reads `remoteBuilderConfig.token` on
 // every signing request, so a getter hands it the latest Magic DID token (refreshed below).
 let signingToken: string | undefined;
-const builderConfig = () =>
-  new BuilderConfig({
+const builderConfig = (sdk: Sdk) =>
+  new sdk.signing.BuilderConfig({
     remoteBuilderConfig: {
       url: REMOTE_SIGNING_URL(),
       get token() {
@@ -108,6 +113,20 @@ const builderConfig = () =>
       },
     },
   });
+
+/** A V2 order client: deposit wallet as maker/funder, the EOA signs (EIP-1271), Patoli's code inside every order. */
+function makeClobClient(sdk: Sdk, signer: Signer, funder: `0x${string}`, creds: ApiCreds): ClobClient {
+  return new sdk.clob.ClobClient({
+    host: CLOB_API_URL,
+    chain: sdk.clob.Chain.POLYGON,
+    signer,
+    creds,
+    signatureType: sdk.clob.SignatureTypeV2.POLY_1271,
+    funderAddress: funder,
+    builderConfig: isBuilderCodeValid(PATOLI_BUILDER_CODE) ? { builderCode: PATOLI_BUILDER_CODE } : undefined,
+    useServerTime: true,
+  });
+}
 
 /** Turn SDK/axios failures into something a player can act on. */
 function friendlyError(e: unknown): Error {
@@ -121,11 +140,13 @@ function friendlyError(e: unknown): Error {
 }
 
 export function TradingProvider({ children }: { children: ReactNode }) {
-  const { eoaAddress, ethersSigner } = useWallet();
+  const { eoaAddress, ethersSigner, sdk } = useWallet();
   const [override, setOverride] = useState<{ eoa: string; session: TradingSession | null } | null>(null);
   const [step, setStep] = useState<SessionStep>("idle");
   const [error, setError] = useState<Error | null>(null);
   const [derivedWallet, setDerivedWallet] = useState<{ eoa: string; address: `0x${string}` } | null>(null);
+  // Always the latest order client, including the one built inside `setupTrading` before any re-render.
+  const clientRef = useRef<ClobClient | null>(null);
 
   // Keep a DID token ready for the remote signer while logged in (15-min lifespan, refreshed every 10).
   useEffect(() => {
@@ -156,16 +177,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   // Pure constructor: safe to derive. The relayer client bundles its own copy of
   // builder-signing-sdk; runtime shape is identical, only private types differ.
   const relayClient = useMemo(() => {
-    if (!ethersSigner) return null;
-    return new RelayClient(
-      RELAYER_URL,
-      POLYGON_CHAIN_ID,
-      ethersSigner,
-      builderConfig() as unknown as ConstructorParameters<typeof RelayClient>[3],
-      undefined,
-      { chain: polygonChain },
-    );
-  }, [ethersSigner]);
+    if (!ethersSigner || !sdk) return null;
+    return new sdk.relay.RelayClient(RELAYER_URL, POLYGON_CHAIN_ID, ethersSigner, builderConfig(sdk) as unknown as RelayBuilderConfig, undefined, { chain: polygonChain });
+  }, [ethersSigner, sdk]);
 
   // Deposit wallet address: async (asks the factory which proxy flavour it mints)
   useEffect(() => {
@@ -189,7 +203,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   const storedCreds = session?.apiCredentials;
 
   const setupTrading = useCallback(async () => {
-    if (!eoaAddress || !ethersSigner || !relayClient) throw new Error("Primero inicia sesión");
+    if (!eoaAddress || !ethersSigner || !relayClient || !sdk) throw new Error("Primero inicia sesión");
     setError(null);
     setStep("checking");
     try {
@@ -199,14 +213,10 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       // 2. Deploy if needed (relayer, builder-sponsored)
       if (!(await isDeployed(wallet))) {
         setStep("deploying");
+        const { RelayerTransactionState: S } = sdk.relay;
         const resp = await relayClient.deployDepositWallet();
-        const result = await relayClient.pollUntilState(
-          resp.transactionID,
-          [RelayerTransactionState.STATE_MINED, RelayerTransactionState.STATE_CONFIRMED, RelayerTransactionState.STATE_FAILED],
-          "60",
-          3000,
-        );
-        if (!result || result.state === RelayerTransactionState.STATE_FAILED) {
+        const result = await relayClient.pollUntilState(resp.transactionID, [S.STATE_MINED, S.STATE_CONFIRMED, S.STATE_FAILED], "60", 3000);
+        if (!result || result.state === S.STATE_FAILED) {
           throw new Error("No se pudo crear tu bóveda. Intenta de nuevo.");
         }
       }
@@ -215,7 +225,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       let creds: ApiCreds | undefined = storedCreds;
       if (!creds?.key || !creds?.secret || !creds?.passphrase) {
         setStep("credentials");
-        const temp = new ClobClient({ host: CLOB_API_URL, chain: ClobChain.POLYGON, signer: ethersSigner });
+        const temp = new sdk.clob.ClobClient({ host: CLOB_API_URL, chain: sdk.clob.Chain.POLYGON, signer: ethersSigner });
         creds = await temp.createOrDeriveApiKey();
       }
 
@@ -239,6 +249,8 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       };
       saveSession(next);
       setOverride({ eoa: eoaAddress, session: next });
+      // The order the user is placing right now can go out before React re-renders.
+      clientRef.current = makeClobClient(sdk, ethersSigner, wallet, creds);
       setStep("complete");
     } catch (e) {
       const err = friendlyError(e);
@@ -246,7 +258,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       setStep("idle");
       throw err;
     }
-  }, [eoaAddress, ethersSigner, relayClient, storedCreds]);
+  }, [eoaAddress, ethersSigner, relayClient, storedCreds, sdk]);
 
   const ensureApprovals = useCallback(async () => {
     if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
@@ -349,27 +361,23 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       clearSession(eoaAddress);
       setOverride({ eoa: eoaAddress, session: null });
     }
+    clientRef.current = null;
     setStep("idle");
     setError(null);
   }, [eoaAddress]);
 
-  const fundingWallet = session?.walletAddress;
+  const fundingWallet = session?.walletAddress as `0x${string}` | undefined;
   const isReady = !!(session?.version === SESSION_VERSION && session.isDeployed && session.hasApprovals && storedCreds && fundingWallet);
 
   const clobClient = useMemo(() => {
-    if (!isReady || !ethersSigner || !fundingWallet || !storedCreds) return null;
-    return new ClobClient({
-      host: CLOB_API_URL,
-      chain: ClobChain.POLYGON,
-      signer: ethersSigner,
-      creds: storedCreds,
-      // Deposit wallet: the wallet is the maker, the EOA signs (EIP-1271 flow)
-      signatureType: SignatureTypeV2.POLY_1271,
-      funderAddress: fundingWallet,
-      builderConfig: isBuilderCodeValid(PATOLI_BUILDER_CODE) ? { builderCode: PATOLI_BUILDER_CODE } : undefined,
-      useServerTime: true,
-    });
-  }, [isReady, ethersSigner, fundingWallet, storedCreds]);
+    if (!isReady || !ethersSigner || !fundingWallet || !storedCreds || !sdk) return null;
+    return makeClobClient(sdk, ethersSigner, fundingWallet, storedCreds);
+  }, [isReady, ethersSigner, fundingWallet, storedCreds, sdk]);
+
+  useEffect(() => {
+    clientRef.current = clobClient;
+  }, [clobClient]);
+  const getClobClient = useCallback(() => clientRef.current, []);
 
   const value = useMemo<TradingContextType>(
     () => ({
@@ -379,6 +387,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       isReady,
       walletAddress,
       clobClient,
+      getClobClient,
       relayClient,
       setupTrading,
       wrapUsdc,
@@ -390,7 +399,7 @@ export function TradingProvider({ children }: { children: ReactNode }) {
       redeem,
       resetTrading,
     }),
-    [session, step, error, isReady, walletAddress, clobClient, relayClient, setupTrading, wrapUsdc, ensureApprovals, rescueNativeUsdc, withdraw, tip, depositArena, redeem, resetTrading],
+    [session, step, error, isReady, walletAddress, clobClient, getClobClient, relayClient, setupTrading, wrapUsdc, ensureApprovals, rescueNativeUsdc, withdraw, tip, depositArena, redeem, resetTrading],
   );
 
   return <TradingContext.Provider value={value}>{children}</TradingContext.Provider>;

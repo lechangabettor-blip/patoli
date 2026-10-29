@@ -24,6 +24,7 @@ import { useNow } from "@/hooks/useNow";
 import { isLive, kickoffLabel } from "@/lib/format";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
+import { pickReturnPath, stashPick } from "@/lib/pending-pick";
 import { cn } from "@/lib/cn";
 
 const MARKET_NAME: Record<MarketKind, string> = { moneyline: "Ganador", spread: "Hándicap", total: "Total", btts: "Ambos anotan", team_total: "Total por equipo", prop: "Prop de jugador", yesno: "Mercado" };
@@ -46,10 +47,12 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const router = useRouter();
   const { status, isDemo, email } = useWallet();
   const { me } = useMe();
-  const { isReady, step, setupTrading, error } = useTrading();
+  const { isReady, step, setupTrading, wrapUsdc, error } = useTrading();
   const { placeBet, placeLimit, isPlacing } = usePlaceBet();
   const recordTail = useRecordTail();
-  const { balance } = useUsdcBalance();
+  const { balance, pendingUsdc, pendingUsdcRaw } = useUsdcBalance();
+  // USDC.e that landed but is not pUSD yet still counts: it is wrapped on the way when this bet needs it.
+  const funds = balance + pendingUsdc;
   const { takerBps, makerBps } = useBuilderFee();
   const [stake, setStake] = useState(10);
   const [done, setDone] = useState<TicketData | null>(null);
@@ -126,16 +129,31 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   async function submit() {
     setFail(null);
     if (status !== "connected") {
-      router.push("/entrar?next=/deportes");
+      // Keep the pick: the game page reopens this sheet on the same outcome after login.
+      stashPick(selection);
+      onClose(); // the sheet must not follow the user to the login page
+      router.push(`/entrar?next=${encodeURIComponent(pickReturnPath(selection))}`);
       return;
     }
     if (!isReady) {
+      // First bet: the trading account (deposit wallet, API keys, approvals) is set up on the way,
+      // then the order goes out in the same tap — no separate "Activar" step.
       try {
         await setupTrading();
       } catch (e) {
         setFail(e instanceof Error ? e.message : "No se pudo activar tu cuenta");
+        return;
       }
-      return;
+    }
+    // A deposit that is still USDC.e (fresh account, or before the auto-wrap got to it): wrap it now
+    // so the order has pUSD behind it. Same gasless batch as the Convertir card.
+    if ((isLimit ? total : stake) > balance && pendingUsdcRaw > 0n) {
+      try {
+        await wrapUsdc(pendingUsdcRaw);
+      } catch {
+        setFail("No se pudieron convertir tus USDC a pUSD. Inténtalo desde Perfil.");
+        return;
+      }
     }
     if (isLimit) {
       const lim = await placeLimit({
@@ -192,18 +210,16 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
   const cta =
     status !== "connected"
       ? "Entrar para apostar"
-      : !isReady
-        ? "Activar cuenta (1 vez)"
-        : isLimit
-          ? crosses
-            ? `Comprar a ${cents}¢`
-            : `Poner orden a ${cents}¢`
-          : `Apostar $${formatUsd(stake, 0)}`;
+      : isLimit
+        ? crosses
+          ? `Comprar a ${cents}¢`
+          : `Poner orden a ${cents}¢`
+        : `Apostar $${formatUsd(stake, 0)}`;
   const disabled =
     busy ||
     thin ||
     (isLimit ? limitInvalid : stake < minStake) ||
-    (status === "connected" && isReady && ((isLimit ? total : stake) > balance || !ATTRIBUTION_READY));
+    (status === "connected" && ((isLimit ? total : stake) > funds || !ATTRIBUTION_READY));
 
   return (
     <>
@@ -302,7 +318,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
               <div className="mt-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold">Shares</div>
-                  <div className="tnum text-xs text-muted">${formatUsd(balance)} disponibles · mínimo {minShares}</div>
+                  <div className="tnum text-xs text-muted">${formatUsd(funds)} disponibles · mínimo {minShares}</div>
                 </div>
                 <div className="flex items-center rounded-xl border border-hairline bg-surface px-3">
                   <input
@@ -361,7 +377,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
               <div className="mt-4">
                 <div className="mb-2 flex items-center justify-between text-xs text-muted">
                   <span>Monto (USDC)</span>
-                  {status === "connected" ? <span className="tnum">Saldo ${formatUsd(balance)}</span> : null}
+                  {status === "connected" ? <span className="tnum">Saldo ${formatUsd(funds)}</span> : null}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex flex-1 items-center rounded-xl border border-hairline bg-surface px-3">
@@ -413,8 +429,10 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
           </button>
           {thin ? (
             <p className="mt-2 text-center text-xs text-loss">A este precio solo hay ${formatUsd(available ?? 0, 0)} disponibles. Baja el monto o elige otra línea.</p>
-          ) : status === "connected" && isReady && (isLimit ? total : stake) > balance ? (
+          ) : status === "connected" && (isLimit ? total : stake) > funds ? (
             <p className="mt-2 text-center text-xs text-muted">Te falta saldo. Deposita USDC en tu perfil.</p>
+          ) : status === "connected" && !isReady ? (
+            <p className="mt-2 text-center text-[11px] text-muted-2">Primera apuesta: activamos tu cuenta de trading en el camino. Una vez, sin gas, sin costo.</p>
           ) : isLimit ? (
             <p className="mt-2 text-center text-[11px] text-muted-2">Orden límite · se cancela sola al inicio del partido · mínimo {minShares} shares</p>
           ) : (

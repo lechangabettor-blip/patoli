@@ -30,6 +30,8 @@
   --nav-h: 64px;
   --top-h: 56px;
   --safe-b: env(safe-area-inset-bottom, 0px);
+  /* iPhone home-screen app (black-translucent status bar): the page starts under the notch */
+  --safe-t: env(safe-area-inset-top, 0px);
 }
 
 @theme inline {

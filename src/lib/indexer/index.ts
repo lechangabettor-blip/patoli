@@ -3,15 +3,17 @@ import type { GammaMarket } from "@/lib/polymarket/gamma-raw";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { CLOB_API_URL, GAMMA_API_URL, PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { LEAGUES } from "@/lib/polymarket/leagues";
-import { parseAbi, type Hex } from "viem";
+import { parseAbi, type ContractFunctionParameters, type Hex } from "viem";
 import { publicClient } from "@/lib/polymarket/v2";
 import { CTF_ADDRESS } from "@/lib/polymarket/constants";
+import { withJobLock } from "@/lib/job-lock";
+import { alertOps } from "@/lib/alert";
 
 /**
  * The indexer: turns Polymarket's public builder-trades feed (every fill that
  * carries Patoli's code) into `bets`, caches market metadata from Gamma into
  * `markets`, and settles bets once markets resolve. Idempotent; safe to run
- * every few minutes. Everything here is rebuildable from public data.
+ * every minute. Everything here is rebuildable from public data.
  */
 
 interface BuilderTrade {
@@ -29,11 +31,11 @@ interface BuilderTrade {
   maker: string;
   transactionHash?: string;
   matchTime: string; // unix seconds
+  /** Total fee charged on the fill. INCLUDES `builderFee` (verified on the live feed, 2026-10-28). */
   feeUsdc?: string;
   builderFee?: string;
   builderCode?: string;
 }
-
 
 export interface IndexRunResult {
   tradesSeen: number;
@@ -42,7 +44,12 @@ export interface IndexRunResult {
   settled: number;
   unknownWallets: string[];
   errors: string[];
+  /** Settlement was skipped because another run held its lease (fills were still indexed; the cron settles within the minute). */
+  skipped?: boolean;
 }
+
+/** What a BUY fill took out of the wallet: shares × price plus Polymarket's fee, which already contains ours. */
+export const paidOf = (b: { usdc: unknown; fee_usdc?: unknown }) => Number(b.usdc) + Number(b.fee_usdc ?? 0);
 
 /**
  * Our market kind from Polymarket's sportsMarketType: base kind + period suffix.
@@ -60,12 +67,21 @@ function kindOf(type: string | undefined): string {
   return "yesno" + period;
 }
 
+const empty = (): IndexRunResult => ({ tradesSeen: 0, betsUpserted: 0, marketsUpserted: 0, settled: 0, unknownWallets: [], errors: [] });
+
+/**
+ * Steps 1–4 (fetch fills, upsert markets and bets) are idempotent upserts that never touch
+ * status/pnl, so they may run concurrently: a user's post-bet sync always lands its fill, even
+ * while the cron is busy. Settlement (step 5) writes won/lost and runs under a lease — one
+ * settler at a time across instances; the others skip it and the cron picks it up within the minute.
+ */
 export async function runIndexer(opts: { maxPages?: number } = {}): Promise<IndexRunResult> {
-  const res: IndexRunResult = { tradesSeen: 0, betsUpserted: 0, marketsUpserted: 0, settled: 0, unknownWallets: [], errors: [] };
-  if (!isBuilderCodeValid(PATOLI_BUILDER_CODE)) {
-    res.errors.push("builder code not configured");
-    return res;
-  }
+  if (!isBuilderCodeValid(PATOLI_BUILDER_CODE)) return { ...empty(), errors: ["builder code not configured"] };
+  return indexOnce(opts);
+}
+
+async function indexOnce(opts: { maxPages?: number }): Promise<IndexRunResult> {
+  const res = empty();
   const db = supabaseAdmin();
 
   // 1. Pull trades (newest first, paginated)
@@ -76,7 +92,7 @@ export async function runIndexer(opts: { maxPages?: number } = {}): Promise<Inde
     u.searchParams.set("builder_code", PATOLI_BUILDER_CODE);
     u.searchParams.set("limit", "100");
     if (cursor) u.searchParams.set("next_cursor", cursor);
-    const r = await fetch(u, { cache: "no-store" });
+    const r = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
     if (!r.ok) {
       res.errors.push(`builder/trades ${r.status}`);
       break;
@@ -90,10 +106,11 @@ export async function runIndexer(opts: { maxPages?: number } = {}): Promise<Inde
   res.tradesSeen = trades.length;
   const confirmed = trades.filter((t) => /CONFIRMED|MINED/i.test(t.status) || !t.status);
 
-  // 2. Markets we don't know yet
+  // 2. Markets we don't know yet. A stub (Gamma hiccup → question "Mercado", no outcomes) counts as
+  //    unknown, so it is fetched again on every run until Gamma answers and the row gets its data.
   const conditionIds = [...new Set(confirmed.map((t) => t.market.toLowerCase()))];
-  const { data: known } = await db.from("markets").select("condition_id").in("condition_id", conditionIds);
-  const knownSet = new Set((known ?? []).map((m) => m.condition_id as string));
+  const { data: known } = await db.from("markets").select("condition_id, outcomes").in("condition_id", conditionIds);
+  const knownSet = new Set((known ?? []).filter((m) => Array.isArray(m.outcomes) && (m.outcomes as unknown[]).length > 0).map((m) => m.condition_id as string));
   const missing = conditionIds.filter((c) => !knownSet.has(c));
   if (missing.length) {
     const rows = await fetchMarkets(missing);
@@ -142,10 +159,13 @@ export async function runIndexer(opts: { maxPages?: number } = {}): Promise<Inde
     else res.betsUpserted = betRows.length;
   }
 
-  // 5. Resolve markets whose game should be over
-  res.settled = await settleResolvedMarkets(res.errors);
+  // 5. Resolve markets whose game should be over and settle their bets (one settler at a time)
+  const settled = await withJobLock("indexer_settle", 55, () => settleResolvedMarkets(res.errors));
+  if (settled === undefined) res.skipped = true;
+  else res.settled = settled;
 
   await db.from("indexer_state").upsert({ key: "last_run", value: { at: new Date().toISOString(), ...res } }, { onConflict: "key" });
+  if (res.errors.length) await alertOps("indexer", res.errors.join(" · ")); // awaited: the function may be frozen right after the response
   return res;
 }
 
@@ -164,8 +184,8 @@ async function fetchMarkets(conditionIds: string[]): Promise<MarketRow[]> {
       const u = new URL(`${GAMMA_API_URL}/markets`);
       for (const c of chunk) u.searchParams.append("condition_ids", c);
       u.searchParams.set("closed", closed);
-      const r = await fetch(u, { cache: "no-store" });
-      if (!r.ok) continue;
+      const r = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+      if (!r?.ok) continue;
       const ms = (await r.json()) as GammaMarket[];
       for (const m of ms) {
         const row = toMarketRow(m);
@@ -224,15 +244,19 @@ const ctfAbi = parseAbi([
 /**
  * Resolution straight from the Conditional Tokens contract: the oracle writes the payout
  * vector the moment a market resolves — the same instant Polymarket lets the user redeem —
- * so bets flip to won/lost without waiting for Gamma to catch up. null = not resolved yet.
+ * so bets flip to won/lost without waiting for Gamma to catch up. One multicall per market
+ * (denominator + every numerator). null = not resolved yet.
  */
 async function resolveOnChain(conditionId: string, outcomeCount: number): Promise<number | null> {
   const id = conditionId as Hex;
-  const den = await publicClient.readContract({ address: CTF_ADDRESS, abi: ctfAbi, functionName: "payoutDenominator", args: [id] });
+  const contracts: ContractFunctionParameters<typeof ctfAbi>[] = [
+    { address: CTF_ADDRESS, abi: ctfAbi, functionName: "payoutDenominator", args: [id] },
+    ...Array.from({ length: outcomeCount }, (_, i) => ({ address: CTF_ADDRESS, abi: ctfAbi, functionName: "payoutNumerators" as const, args: [id, BigInt(i)] as const })),
+  ];
+  const out = (await publicClient.multicall({ contracts, allowFailure: false })) as bigint[];
+  const den = out[0];
   if (den === 0n) return null;
-  const nums = await Promise.all(
-    Array.from({ length: outcomeCount }, (_, i) => publicClient.readContract({ address: CTF_ADDRESS, abi: ctfAbi, functionName: "payoutNumerators", args: [id, BigInt(i)] })),
-  );
+  const nums = out.slice(1);
   const win = nums.findIndex((n) => n === den);
   if (win >= 0) return win;
   if (nums.every((n) => n === nums[0])) return -1; // split payout = void
@@ -271,33 +295,43 @@ async function settleResolvedMarkets(errors: string[]): Promise<number> {
       if (r.winning_index != null) resolved.push({ condition_id: r.condition_id, winning_index: r.winning_index, resolved_at: r.resolved_at! });
     }
   }
-  if (!resolved.length) return 0;
   for (const r of resolved) {
     const { error } = await db.from("markets").update({ winning_index: r.winning_index, closed: true, resolved_at: r.resolved_at }).eq("condition_id", r.condition_id);
     if (error) errors.push(`markets resolve: ${error.message}`);
   }
+
+  // Settle EVERY open bet whose market is resolved — the ones resolved just now, markets that arrived
+  // from Gamma already resolved (a refetched stub, a fill first indexed after its game ended) and
+  // anything an earlier run left behind. Self-healing by construction.
+  const { data: bets, error: betsErr } = await db
+    .from("bets")
+    .select("id, outcome_index, size, usdc, fee_usdc, side, markets!bets_condition_id_fkey!inner(winning_index)")
+    .eq("status", "open")
+    .not("markets.winning_index", "is", null)
+    .limit(500);
+  if (betsErr) errors.push(`open bets: ${betsErr.message}`);
   let n = 0;
-  for (const r of resolved) {
-    const { data: bets } = await db.from("bets").select("id, outcome_index, size, usdc, fee_usdc, builder_fee, side").eq("condition_id", r.condition_id).eq("status", "open");
-    for (const b of bets ?? []) {
-      let status: "won" | "lost" | "void";
-      let pnl: number;
-      if (r.winning_index === -1) {
-        status = "void";
-        pnl = 0;
-      } else if (b.side === "BUY") {
-        const won = b.outcome_index === r.winning_index;
-        const paid = Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0);
-        status = won ? "won" : "lost";
-        pnl = won ? Number(b.size) - paid : -paid;
-      } else {
-        // SELL = closed a position early; realized P&L lives on the BUY row. Mark void for the record.
-        status = "void";
-        pnl = 0;
-      }
-      const { error: e2 } = await db.from("bets").update({ status, pnl, settled_at: new Date().toISOString() }).eq("id", b.id);
-      if (!e2) n++;
+  for (const b of bets ?? []) {
+    const winningIndex = Number((b.markets as unknown as { winning_index: number }).winning_index);
+    let status: "won" | "lost" | "void";
+    let pnl: number;
+    if (winningIndex === -1) {
+      status = "void";
+      pnl = 0;
+    } else if (b.side === "BUY") {
+      const won = b.outcome_index === winningIndex;
+      // Polymarket's feeUsdc already includes the builder fee: adding builder_fee again here
+      // overstated every loss and understated every win by ~0.5% (fixed 2026-10-29, backfilled by 0012).
+      const paid = paidOf(b);
+      status = won ? "won" : "lost";
+      pnl = won ? Number(b.size) - paid : -paid;
+    } else {
+      // SELL = closed a position early; realized P&L lives on the BUY row. Mark void for the record.
+      status = "void";
+      pnl = 0;
     }
+    const { error: e2 } = await db.from("bets").update({ status, pnl, settled_at: new Date().toISOString() }).eq("id", b.id);
+    if (!e2) n++;
   }
   return n;
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { toBlob } from "html-to-image";
 import { Download, Share2 } from "lucide-react";
 import Ticket, { type TicketData } from "./Ticket";
 
@@ -13,8 +12,8 @@ export default function TicketShare({ data, onDone }: { data: TicketData; onDone
 
   async function render(): Promise<Blob | null> {
     if (!ref.current) return null;
-    // Wait a frame so fonts/emoji are painted
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    // The renderer loads only when someone actually shares (it is not needed to read the feed).
+    const [{ toBlob }] = await Promise.all([import("html-to-image"), new Promise((r) => requestAnimationFrame(() => r(null)))]);
     return toBlob(ref.current, { pixelRatio: 3, cacheBust: true, backgroundColor: "transparent" });
   }
 

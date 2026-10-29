@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import TopBar from "./TopBar";
 import FeedCard from "./FeedCard";
 import Sheet from "./Sheet";
 import TicketShare from "./TicketShare";
 import type { TicketData } from "./Ticket";
-import { useFeed, useUsers, ticketFromItem } from "@/hooks/useSocial";
+import { flattenFeed, useFeed, useUsers, ticketFromItem } from "@/hooks/useSocial";
 import { useWallet } from "@/providers/WalletContext";
 import { cn } from "@/lib/cn";
 
@@ -19,6 +19,21 @@ export default function HomeFeed() {
   const { status } = useWallet();
   const feed = useFeed(tab);
   const people = useUsers("", "rail");
+  const items = flattenFeed(feed.data?.pages);
+
+  // Older picks load as the end of the list comes into view. After a failed page the sentinel
+  // stops (no tight retry loop) and a Reintentar button takes over.
+  const sentinel = useRef<HTMLDivElement>(null);
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = feed;
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasNextPage || isFetchNextPageError || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && !isFetchingNextPage) void fetchNextPage();
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage, items.length]);
 
   return (
     <>
@@ -41,7 +56,7 @@ export default function HomeFeed() {
         }
       />
 
-      {/* People rail */}
+      {/* People rail = the week's table: everyone who settled a pick in the last 7 days, best Unidades first */}
       <section className="no-scrollbar flex gap-3 overflow-x-auto px-4 pt-4">
         {(people.data?.items ?? []).map((u, i) => (
           <Link key={u.handle} href={`/u/${u.handle}`} className="rise flex w-16 shrink-0 flex-col items-center gap-1.5" style={{ animationDelay: `${i * 40}ms` }}>
@@ -69,7 +84,7 @@ export default function HomeFeed() {
           Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-40 w-full" />)
         ) : feed.isError ? (
           <div className="card p-6 text-center text-sm text-muted">No pudimos cargar el feed.</div>
-        ) : (feed.data?.items ?? []).length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="card p-6 text-center">
             <h2 className="text-xl">{tab === "following" ? "Aún no sigues a nadie" : "Nada todavía"}</h2>
             <p className="mt-2 text-sm text-muted">
@@ -84,14 +99,20 @@ export default function HomeFeed() {
             </Link>
           </div>
         ) : (
-          feed.data!.items.map((item, i) => <FeedCard key={item.id} item={item} index={i} onTicket={(it) => setTicket(ticketFromItem(it))} />)
+          items.map((item, i) => <FeedCard key={item.id} item={item} index={Math.min(i, 8)} onTicket={(it) => setTicket(ticketFromItem(it))} />)
         )}
 
-        {feed.data?.demo ? (
-          <p className="pb-2 pt-4 text-center text-[11px] text-muted-2">Vista previa con datos de ejemplo. Los picks reales se leen de la blockchain.</p>
-        ) : (
-          <p className="pb-2 pt-4 text-center text-[11px] text-muted-2">Cada pick es una apuesta real, verificable en Polygon.</p>
-        )}
+        <div ref={sentinel} className="h-px" />
+        {isFetchingNextPage ? <div className="skeleton h-24 w-full" /> : null}
+        {isFetchNextPageError ? (
+          <button onClick={() => void fetchNextPage()} className="btn-ghost mx-auto block px-4 py-2 font-display text-xs font-bold uppercase">
+            No se pudieron cargar más · Reintentar
+          </button>
+        ) : null}
+
+        <p className="pb-2 pt-4 text-center text-[11px] text-muted-2">
+          {hasNextPage ? "Cargando más picks al bajar…" : "Cada pick es una apuesta real, verificable en Polygon."}
+        </p>
       </section>
 
       <Sheet open={!!ticket} onClose={() => setTicket(null)} title="Boleto">

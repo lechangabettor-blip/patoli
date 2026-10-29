@@ -2,9 +2,14 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useDragControls } from "motion/react";
 import { X } from "lucide-react";
 
+/**
+ * Bottom sheet. Drag the handle/title down to close; the body scrolls on its own when the content
+ * is taller than the screen (the Límite form on a small phone), so the close button and the CTA
+ * never end up off-screen.
+ */
 export default function Sheet({
   open,
   onClose,
@@ -19,6 +24,7 @@ export default function Sheet({
   // Portal to <body>: a sheet rendered inside an animated card (transform → containing block
   // for position:fixed) would open inside the card instead of over the whole screen.
   const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
+  const drag = useDragControls();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -47,25 +53,29 @@ export default function Sheet({
             key="sheet"
             role="dialog"
             aria-modal="true"
-            className="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-md rounded-t-[26px] border-t border-line bg-bg-2 px-4 pt-3 shadow-[0_-20px_60px_rgba(0,0,0,.5)]"
-            style={{ paddingBottom: "calc(16px + var(--safe-b))" }}
+            className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-w-md flex-col rounded-t-[26px] border-t border-line bg-bg-2 px-4 pt-3 shadow-[0_-20px_60px_rgba(0,0,0,.5)]"
+            style={{ paddingBottom: "calc(16px + var(--safe-b))", maxHeight: "92dvh" }}
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 420, damping: 40 }}
             drag="y"
+            dragListener={false}
+            dragControls={drag}
             dragConstraints={{ top: 0 }}
             dragElastic={0.08}
             onDragEnd={(_, info) => info.offset.y > 120 && onClose()}
           >
-            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-surface-2" />
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg">{title}</h2>
-              <button onClick={onClose} aria-label="Cerrar" className="btn-ghost p-2">
-                <X className="h-4 w-4" />
-              </button>
+            <div onPointerDown={(e) => drag.start(e)} style={{ touchAction: "none" }} className="shrink-0 cursor-grab">
+              <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-surface-2" />
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg">{title}</h2>
+                <button onClick={onClose} onPointerDown={(e) => e.stopPropagation()} aria-label="Cerrar" className="btn-ghost p-2">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-            {children}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
           </motion.div>
         </>
       ) : null}

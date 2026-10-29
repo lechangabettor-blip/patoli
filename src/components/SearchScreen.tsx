@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQueries } from "@tanstack/react-query";
 import { Search } from "lucide-react";
@@ -18,10 +18,20 @@ const norm = (s: string) =>
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "");
 
+/** The value once the user pauses typing (one request per pause instead of one per keystroke). */
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
 export default function SearchScreen() {
   const [q, setQ] = useState("");
   const now = useNow();
-  const nq = norm(q.trim());
+  const nq = useDebounced(norm(q.trim()), 250);
 
   const gameQueries = useQueries({
     queries: LEAGUES.map((l) => ({

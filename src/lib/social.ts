@@ -8,6 +8,19 @@ import type { FeedItem, PublicProfile, StatsWindow, WindowKey } from "@/types/so
 
 /** Read models for profiles and the feed. Server-only. */
 
+/**
+ * What a BUY fill took out of the wallet: shares × price + Polymarket's fee. That fee already
+ * contains Patoli's builder fee (live feed, 2026-10-28), so `builder_fee` is informational and
+ * must never be added again. Same definition as the indexer's P&L and the SQL view's `staked`.
+ */
+const paidOf = (b: { usdc: unknown; fee_usdc?: unknown }) => Number(b.usdc) + Number(b.fee_usdc ?? 0);
+
+/** pUSD received as tips, all time. Private: only the owner's own /api/me reads it. */
+export async function loadTipsReceived(profileId: string): Promise<number> {
+  const { data } = await supabaseAdmin().from("tips").select("amount").eq("to_profile", profileId);
+  return (data ?? []).reduce((s, t) => s + Number(t.amount), 0);
+}
+
 interface ProfileRow {
   id: string;
   handle: string;
@@ -77,17 +90,19 @@ export async function loadProfile(by: { id?: string; handle?: string }, viewerId
   q = by.id ? q.eq("id", by.id) : q.eq("handle", (by.handle ?? "").toLowerCase());
   const { data: p } = await q.maybeSingle<ProfileRow>();
   if (!p) return null;
-  const { data: s } = await db.from("profile_stats").select("*").eq("profile_id", p.id).maybeSingle<StatsRow>();
-  const battleStats = attachBattleStats; // (applied below once the profile object exists)
+  // Everything below depends only on the profile row: one round trip instead of four in a row.
+  const isMe = !!viewerId && viewerId === p.id;
+  const [{ data: s }, windows, { data: f }] = await Promise.all([
+    db.from("profile_stats").select("*").eq("profile_id", p.id).maybeSingle<StatsRow>(),
+    loadWindows(p.id),
+    viewerId && !isMe ? db.from("follows").select("follower_id").eq("follower_id", viewerId).eq("followee_id", p.id).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
   const profile = toProfile(p, s ?? undefined);
-  await battleStats([profile]);
-  profile.windows = await loadWindows(profile.id);
+  await attachBattleStats([profile]);
+  profile.windows = windows;
   if (viewerId) {
-    profile.isMe = viewerId === p.id;
-    if (!profile.isMe) {
-      const { data: f } = await db.from("follows").select("follower_id").eq("follower_id", viewerId).eq("followee_id", p.id).maybeSingle();
-      profile.isFollowing = !!f;
-    }
+    profile.isMe = isMe;
+    if (!isMe) profile.isFollowing = !!f;
   }
   return profile;
 }
@@ -101,12 +116,12 @@ const WINDOW_MS: Record<WindowKey, number> = { d7: 7 * 86_400_000, d30: 30 * 86_
 async function loadWindows(profileId: string): Promise<Record<WindowKey, StatsWindow> | undefined> {
   const db = supabaseAdmin();
   const [{ data: bets, error: betsError }, { data: matches }] = await Promise.all([
-    db.from("bets").select("status, side, size, price, usdc, fee_usdc, builder_fee, settled_at").eq("profile_id", profileId).neq("status", "open"),
+    db.from("bets").select("status, side, size, price, usdc, fee_usdc, settled_at").eq("profile_id", profileId).neq("status", "open"),
     db
       .from("arena_matches")
       .select("player_a, eoa_a, eoa_b, stake, winner_eoa, finished_at, created_at")
       .or(`player_a.eq.${profileId},player_b.eq.${profileId}`)
-      .in("status", ["finished", "ready", "settled"]),
+      .in("status", ["finished", "ready", "settled", "disputed"]), // same set as loadBattles
   ]);
   // Until migration 0009 (settled_at) is applied the bets query fails: fall back to all-time numbers.
   if (betsError) return undefined;
@@ -119,7 +134,7 @@ async function loadWindows(profileId: string): Promise<Record<WindowKey, StatsWi
   };
   for (const b of bets ?? []) {
     if (b.side !== "BUY") continue;
-    const paid = Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0);
+    const paid = paidOf(b);
     const price = Number(b.price);
     for (const k of keys(b.settled_at as string | null)) {
       const s = out[k].sports;
@@ -258,13 +273,14 @@ export async function loadFeed(opts: { scope: "all" | "following" | "profile"; v
   let q = db
     .from("bets")
     .select(
-      "id, profile_id, outcome, outcome_index, side, size, price, usdc, fee_usdc, builder_fee, status, pnl, tx_hash, matched_at, token_id, markets!bets_condition_id_fkey(question, event_title, event_slug, league, kind, line, game_start, outcomes), profiles!bets_profile_id_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
+      "id, profile_id, outcome, outcome_index, side, size, price, usdc, fee_usdc, builder_fee, status, pnl, tx_hash, matched_at, token_id, markets!bets_condition_id_fkey(question, event_title, event_slug, league, kind, line, game_start, outcomes), profiles!bets_profile_id_fkey!inner(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)",
     )
     .eq("side", "BUY")
     .not("profile_id", "is", null)
+    .eq("profiles.is_banned", false) // a banned author's picks leave the feed with them
     .order("matched_at", { ascending: false })
     .limit(opts.limit ?? 30);
-  if (opts.before) q = q.lt("matched_at", opts.before);
+  if (opts.before) q = q.lte("matched_at", opts.before); // inclusive: same-second fills are never skipped (the client drops repeats by id)
   if (opts.scope === "profile" && opts.profileId) q = q.eq("profile_id", opts.profileId);
   if (opts.scope === "following" && opts.viewerId) {
     const { data: f } = await db.from("follows").select("followee_id").eq("follower_id", opts.viewerId);
@@ -303,7 +319,7 @@ interface BattleRow {
 }
 
 const BATTLE_COLS =
-  "id, player_a, player_b, eoa_a, eoa_b, stake, status, score_a, score_b, winner_eoa, settle_tx, finished_at, created_at, pa:profiles!arena_matches_player_a_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at), pb:profiles!arena_matches_player_b_fkey(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)";
+  "id, player_a, player_b, eoa_a, eoa_b, stake, status, score_a, score_b, winner_eoa, settle_tx, finished_at, created_at, pa:profiles!arena_matches_player_a_fkey!inner(id, handle, display_name, avatar, bio, is_verified, wallet, created_at), pb:profiles!arena_matches_player_b_fkey!inner(id, handle, display_name, avatar, bio, is_verified, wallet, created_at)";
 
 /**
  * Finished Arena matches as feed items. Perspective = the winner (draw → player A), or the
@@ -316,9 +332,11 @@ export async function loadBattles(opts: { scope: "all" | "following" | "profile"
     .from("arena_matches")
     .select(BATTLE_COLS)
     .in("status", ["finished", "ready", "settled", "disputed"])
+    .eq("pa.is_banned", false)
+    .eq("pb.is_banned", false)
     .order("finished_at", { ascending: false })
     .limit(opts.limit ?? 30);
-  if (opts.before) q = q.lt("finished_at", opts.before);
+  if (opts.before) q = q.lte("finished_at", opts.before);
   if (opts.scope === "profile" && opts.profileId) q = q.or(`player_a.eq.${opts.profileId},player_b.eq.${opts.profileId}`);
   if (opts.scope === "following" && opts.viewerId) {
     const { data: f } = await db.from("follows").select("followee_id").eq("follower_id", opts.viewerId);
@@ -488,9 +506,9 @@ function toFeedItem(b: BetRow, s: StatsRow | undefined): FeedItem {
     eventSlug: m?.event_slug ?? null,
     selection,
     market: MARKET_LABEL[kind] ?? "Otro",
-    // What left the wallet (shares + Polymarket fee + Patoli fee) → effective odds = payout / that.
-    odds: Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0) > 0 ? Number(b.size) / (Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0)) : 0,
-    stake: Number(b.usdc) + Number(b.fee_usdc ?? 0) + Number(b.builder_fee ?? 0),
+    // What left the wallet (shares + fees; Polymarket's fee already includes ours) → effective odds = payout / that.
+    odds: paidOf(b) > 0 ? Number(b.size) / paidOf(b) : 0,
+    stake: paidOf(b),
     payout: Number(b.size),
     status: b.status,
     pnl: b.pnl == null ? null : Number(b.pnl),

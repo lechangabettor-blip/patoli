@@ -3,17 +3,16 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { TrendingDown, TrendingUp } from "lucide-react";
-import BetSheet from "./BetSheet";
-import type { Selection } from "./GameCard";
 import { fetchGameDetail, gameDetailKey } from "@/hooks/useGames";
 import { useMe } from "@/providers/MeProvider";
+import { openBet } from "@/lib/bet-store";
 import { cn } from "@/lib/cn";
 import type { FeedItem } from "@/types/social";
 
 type Side = "tail" | "fade";
 
 /**
- * SÚBASEEE / BÁJESEEE on someone's open sports pick: opens the regular bet sheet on the same side
+ * SÚBASEEE / BÁJESEEE on someone's open sports pick: opens the app's bet sheet on the same side
  * (tail) or the opposite token of the same Polymarket market (fade). On a soccer 1X2 pick the fade
  * is the No side, i.e. "Rival o Empate", so it is an exact hedge with the same liquidity.
  * The count under each button = people who really placed that bet from this card.
@@ -21,7 +20,6 @@ type Side = "tail" | "fade";
 export default function TailButtons({ item }: { item: FeedItem }) {
   const { me } = useMe();
   const qc = useQueryClient();
-  const [sel, setSel] = useState<Selection | null>(null);
   const [busy, setBusy] = useState<Side | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -41,7 +39,7 @@ export default function TailButtons({ item }: { item: FeedItem }) {
       const hit = detail?.markets.flatMap((m) => m.outcomes.map((o) => ({ m, o }))).find(({ o }) => o.tokenId === target);
       if (!detail || !hit || !hit.m.acceptingOrders) throw new Error("Mercado cerrado");
       if (!(hit.o.price > 0) || hit.o.price >= 0.99) throw new Error("Sin liquidez en este momento");
-      setSel({ game: { ...detail.game, markets: [] }, market: hit.m, outcome: hit.o, price: hit.o.price, source: { betId: item.id, side, handle: item.user.handle } });
+      openBet({ game: { ...detail.game, markets: [] }, market: hit.m, outcome: hit.o, price: hit.o.price, source: { betId: item.id, side, handle: item.user.handle } });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "No se pudo abrir");
       setTimeout(() => setErr(null), 3000);
@@ -77,7 +75,6 @@ export default function TailButtons({ item }: { item: FeedItem }) {
         </button>
       </div>
       {err ? <p className="mt-1.5 text-center text-[11px] text-loss">{err}</p> : null}
-      <BetSheet selection={sel} onClose={() => setSel(null)} />
     </>
   );
 }

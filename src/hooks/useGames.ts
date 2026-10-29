@@ -5,8 +5,11 @@ import type { GameDetail } from "@/lib/polymarket/game-detail";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getFreshQuote, getServerVersion, getVersion, isOpen, onChange, subscribe } from "@/lib/polymarket/price-socket";
+import { fetchPrices, type PriceMap } from "@/lib/polymarket/public-api";
 import type { Game } from "@/lib/polymarket/gamma";
 import type { LeagueId } from "@/lib/polymarket/leagues";
+
+export type { PriceMap };
 
 export function useGames(league: LeagueId) {
   return useQuery({
@@ -20,8 +23,6 @@ export function useGames(league: LeagueId) {
     refetchInterval: 60_000,
   });
 }
-
-export type PriceMap = Record<string, { bid: number | null; ask: number | null; mid: number | null }>;
 
 export const gameDetailKey = (slug: string) => ["game-detail", slug] as const;
 
@@ -76,15 +77,7 @@ export function usePrices(tokenIds: string[], intervalMs = 5_000) {
     enabled: tokenIds.length > 0,
     refetchInterval: live ? Math.max(intervalMs, 20_000) : intervalMs,
     staleTime: Math.min(3_000, intervalMs - 500),
-    queryFn: async (): Promise<PriceMap> => {
-      const r = await fetch("/api/prices", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tokenIds }),
-      });
-      if (!r.ok) return {};
-      return r.json();
-    },
+    queryFn: () => fetchPrices(tokenIds), // straight from the CLOB; our proxy is the fallback
   });
   const data = useMemo(() => {
     if (!key) return q.data;

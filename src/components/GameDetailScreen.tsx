@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronLeft } from "lucide-react";
 import TopBar from "./TopBar";
-import BetSheet from "./BetSheet";
 import type { Selection } from "./GameCard";
+import { openBet } from "@/lib/bet-store";
+import { clearPick, peekPick } from "@/lib/pending-pick";
+import { useWallet } from "@/providers/WalletContext";
 import type { Game, GameMarket, GameOutcome, Period } from "@/lib/polymarket/gamma";
 import type { DetailMarket } from "@/lib/polymarket/game-detail";
 import { LEAGUE_BY_ID } from "@/lib/polymarket/leagues";
@@ -140,7 +142,19 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
   const { takerBps } = useBuilderFee();
   const [chip, setChip] = useState("todos");
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
-  const [sel, setSel] = useState<Selection | null>(null);
+
+  // A pick tapped before logging in comes back here (lib/pending-pick): reopen it once the session is live.
+  const { status } = useWallet();
+  useEffect(() => {
+    if (!detail || status !== "connected") return;
+    const p = peekPick(slug);
+    if (!p) return;
+    clearPick();
+    const m = detail.markets.find((x) => x.id === p.marketId);
+    const o = m?.outcomes.find((x) => x.tokenId === p.tokenId);
+    if (!m || !o || !m.acceptingOrders || !(o.price > 0) || o.price >= 0.99) return;
+    openBet({ game: { ...detail.game, markets: [] }, market: m, outcome: o, price: o.price, source: p.source });
+  }, [detail, status, slug]);
 
   const sections = useMemo(() => (detail ? buildSections(detail.markets) : []), [detail]);
   const chips = useMemo(() => CHIPS.filter((c) => c.id === "todos" || sections.some((s) => s.markets.some(c.test))), [sections]);
@@ -206,7 +220,7 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
             </h1>
           </header>
 
-          <div className="sticky z-20 mt-3 border-b border-hairline bg-[rgba(31,31,41,0.85)] backdrop-blur-xl" style={{ top: "var(--top-h)" }}>
+          <div className="sticky z-20 mt-3 border-b border-hairline bg-[rgba(31,31,41,0.85)] backdrop-blur-xl" style={{ top: "calc(var(--top-h) + var(--safe-t))" }}>
             <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-2.5">
               {chips.map((c) => (
                 <button
@@ -238,7 +252,7 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
                   </button>
                   {open ? (
                     <div className="px-3 pb-3">
-                      <SectionBody s={s} rows={rows} game={game} prices={prices.data} takerBps={takerBps} onPick={setSel} />
+                      <SectionBody s={s} rows={rows} game={game} prices={prices.data} takerBps={takerBps} onPick={openBet} />
                     </div>
                   ) : null}
                 </article>
@@ -248,8 +262,6 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
           </section>
         </>
       )}
-
-      <BetSheet selection={sel} onClose={() => setSel(null)} />
     </>
   );
 }

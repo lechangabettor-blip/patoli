@@ -5,6 +5,38 @@ context: `Desktop\LeChangaHQ\CLAUDE.md`; the product plan is
 `Desktop\LeChangaHQ\5-lechanga-bet\PLAN.md` v2.0 (read §2 product and §5 roadmap
 before adding features); decision history in `MVP-PLAN.md` next to it.
 
+## Current state (2026-10-29) — read this before the older sections
+
+- LIVE at https://patoli.bet on Vercel Pro; Supabase wired; Arena v2 live; 0.5% builder fee live.
+- Wallet SDKs (Magic, ethers v5, Polymarket clients) are lazy: `src/lib/sdk.ts` loads them only
+  on the login pages or for a remembered login (`patoli.auth` flag in localStorage). Anonymous
+  readers download ~1.1 MB of JS instead of 3.9 MB. Everything else imports only TYPES from
+  those packages — keep it that way.
+- Prices, order book, builder fee and positions (Data API v2) are read straight from Polymarket
+  in the browser (`src/lib/polymarket/public-api.ts`, CORS is open); `/api/prices`, `/api/book`,
+  `/api/polymarket/fees`, `/api/positions` remain only as fallbacks.
+- One bet sheet per page: `src/lib/bet-store.ts` + `BetSheetHost` (tabs layout and public
+  profiles). Any button calls `openBet(selection)`.
+- First bet in one tap: the sheet runs `setupTrading` and then the order in the same tap
+  (`getClobClient()` returns the client built inside activation, before React re-renders). A pick
+  tapped while logged out is stashed (`src/lib/pending-pick.ts`) and reopened on the game page
+  after login. USDC that lands is wrapped to pUSD automatically (`AutoSettle`; a never-activated
+  account that receives money is activated first, silently); the sheet, the tip sheet and the
+  Convertir card wrap on the way too, so "deposit, then bet" is one tap. The Convertir card stays
+  as the fallback.
+- Feed paging: `/api/feed` returns `nextBefore` computed from its two sources' tails (inclusive
+  cursor, client drops repeats by id); never derive the cursor from the merged list.
+- Fee rule: Polymarket's `feeUsdc` INCLUDES the builder fee. Cost of a bet = `usdc + fee_usdc`
+  everywhere (indexer P&L, feed stake/odds, rolling windows, `profile_stats.staked`). Migration
+  0012 backfilled settled P&L.
+- One clock: Vercel crons every minute, serialized by `job_locks` leases (`src/lib/job-lock.ts`:
+  indexer, arena sweep, every operator send). Ops alerts to Telegram once
+  `ALERT_TELEGRAM_BOT_TOKEN` + `ALERT_TELEGRAM_CHAT_ID` exist (indexer errors, settle errors,
+  operator POL below 0.5).
+- `/terminos` exists; `error.tsx` / `global-error.tsx` show "Reintentar"; iOS top safe area
+  (`--safe-t`); sheets scroll internally; the feed paginates on scroll; search is debounced.
+- Full audit and plan: `LeChangaHQ/5-lechanga-bet/PATOLI-AUDIT-2026-10-28.md` (§9 = what shipped).
+
 ## What this is (v1 scope — the contract)
 
 Mobile-first PWA, Spanish (es-MX, "banda" tone), decimal odds, brand = the
@@ -23,10 +55,11 @@ style bottom nav:
 5. **Perfil** — record, open bets, deposit address, account activation.
 
 Non-custodial by design: users log in with email/Google (Magic), get an
-embedded EOA + a Safe on Polygon (deployed gaslessly by Polymarket's relayer),
-and place orders themselves with our **builder code** attached (fee up to 1%).
-We never hold funds or keys. PvP will use the "Arena" contract (off-chain
-signed moves, batched settlement) — not built yet.
+embedded EOA + a Polymarket deposit wallet on Polygon (deployed gaslessly by
+Polymarket's relayer), and place orders themselves with our **builder code**
+attached (0.5% builder fee live since 2026-10-24, max 1%). We never hold funds
+or keys. PvP runs on the "Arena" contract (off-chain signed moves, batched
+settlement) — live since 2026-10-20 (v2).
 
 OUT of v1: own order book, hedging, fiat, token, comments/DMs, native apps,
 live betting, picks marketplace.
@@ -38,7 +71,9 @@ TypeScript · Tailwind v4 (tokens via `@theme inline`) · TanStack Query ·
 motion · lucide-react · Magic SDK (+ OAuth2 ext) · ethers v5 (what
 Polymarket's SDKs expect) + viem · `@polymarket/clob-client-v2` (V2 orders; the old `clob-client` is rejected with "invalid order version"),
 `@polymarket/builder-relayer-client`, `@polymarket/builder-signing-sdk` ·
-Supabase (not wired yet).
+Supabase (Postgres through PostgREST, service role from server code only; migrations in
+`supabase/migrations`, applied by LeChanga in the SQL editor — the code must tolerate the
+newest one not being applied yet).
 
 ## Layout
 
@@ -49,8 +84,13 @@ src/app/u/[handle]         public profile
 src/app/api/games          Gamma → normalized games (server)
 src/app/api/games/[slug]   one game
 src/app/api/prices         CLOB bid/ask proxy (POST tokenIds)
-src/app/api/positions      Data API positions proxy
-src/app/api/polymarket/sign  builder HMAC signing (secret stays server-side)
+src/app/api/positions      Data API v2 positions (fallback; the browser reads Polymarket directly)
+src/app/api/polymarket/sign  builder HMAC signing (secret stays server-side; logged-in users only)
+src/lib/sdk.ts             lazy loader for Magic + ethers + Polymarket clients (+ the auth flag)
+src/lib/polymarket/public-api.ts  direct-from-browser reads: prices, book, builder fee, positions v2
+src/lib/bet-store.ts       the single bet sheet (openBet / BetSheetHost)
+src/lib/pending-pick.ts    the pick kept across login
+src/lib/job-lock.ts        Postgres lease locks (job_locks) · src/lib/alert.ts  Telegram ops alerts
 src/providers/             WalletProvider (Magic→ethers signer), TradingProvider
                            (Safe deploy, API creds, approvals, ClobClient)
 src/lib/polymarket/        constants, leagues (tag ids), gamma (board), game-detail
@@ -65,8 +105,11 @@ src/components/            screens + UI primitives
 
 - Audience copy in es-MX, short, no exclamation marks; numbers `tnum`.
 - Never hardcode fees: `PATOLI_BUILDER_FEE_BPS` / `POLYMARKET_SPORTS_FEE_RATE`.
-- Prices shown = Polymarket market price, Polymarket fee, Patoli fee, your
-  price — always separately (see `BetSheet`). Never hide a bad spread.
+- Odds shown are net of BOTH fees (Polymarket's per-market fee + Patoli's builder fee).
+  Mercado shows no fee lines (LeChanga, 2026-10-28: the typed stake is what leaves the
+  wallet); Límite shows one "Comisión" line. Orders are capped at the on-screen price.
+- Money math: Polymarket's `feeUsdc` on a fill ALREADY includes the builder fee. What a bet
+  cost = `usdc + fee_usdc`; never add `builder_fee` on top (fixed 2026-10-29, migration 0012).
 - Demo data must stay obviously fake; never present it as real records.
 - Secrets only in `.env.local` (see `.env.example`). Builder secret never
   reaches the client. Never reuse ArbClaude's wallet or keys.
@@ -187,7 +230,8 @@ src/components/            screens + UI primitives
 - **Private:** never a feed item. `POST /api/tip {txHash, to}` reads the receipt on Polygon and
   records the tip only if it finds a pUSD Transfer from the viewer's wallet to the recipient's
   (`tips` table, migration 0011, RLS with no public policy). The owner sees their own total via
-  `/api/me` → `MeProfile.tipsReceived` ("tips recibidos" line in Perfil).
+  `/api/me` → `MeProfile.tipsReceived` ("tips recibidos" line in Perfil; returned by POST and GET
+  since 2026-10-29 — the app only ever POSTs).
 - **Dinero tab (own Perfil → Historial, 2026-10-27):** `GET /api/me/money` → `loadMoney`
   (`src/lib/money.ts`) reads every USDC.e/USDC/pUSD transfer of the deposit wallet through
   Alchemy `alchemy_getAssetTransfers` (both directions, ≤3 pages, 30 s cache) and keeps only
@@ -203,7 +247,7 @@ src/components/            screens + UI primitives
   `finished_at`). Sports (récord, Unidades, P&L, ROI) and Batalla (w-l-d, P&L) are separate
   records — never mixed (LeChanga's rule). Computed from rows on every single-profile load; no
   snapshots. Lists (search, people rail) still use the all-time `profile_stats` view.
-- Unidades = Σ won (1/price − 1) − lost (migration 0008). P&L counts Polymarket + Patoli fees.
+- Unidades = Σ won (1/price − 1) − lost (migration 0008). P&L = payout − (usdc + fee_usdc); Polymarket's fee already contains Patoli's (0012).
 - Avatar ring on Inicio = has an open sports bet (`record.open > 0`), not ROI.
 - Leaderboard ("Tabla") deliberately NOT built yet; when built: same three windows, min 3 settled
   picks in the window to rank.
@@ -251,7 +295,7 @@ src/components/            screens + UI primitives
 
 - Odds: src/lib/polymarket/price-socket.ts keeps ONE websocket to wss://ws-subscriptions-clob.polymarket.com/ws/market for every token any mounted component watches (ref-counted, reconnects with the full list, 250 ms debounce, PING every 10 s, backoff on close). usePrices overlays its best bid/ask (fresh < 60 s) on the REST poll, which slows to 20 s while the socket is open. Verified shapes: book snapshot on subscribe; price_change.price_changes[] with best_bid/best_ask per asset_id.
 - Game page prefetch: GameCard warms /api/games/[slug]/markets via IntersectionObserver after 400 ms on screen.
-- Clocks: Vercel Pro crons every minute (indexer + arena settle) are the primary clock since 2026-10-28; cron-job.org retired; GitHub Actions stays as backup. LeChanga rejected provisional results from ESPN finals: nothing shows as won until Polymarket pays.
+- Clocks: Vercel Pro crons every minute (indexer + arena settle) are the ONLY clock since 2026-10-29 (cron-job.org retired 2026-10-28, the GitHub Actions workflow deleted 2026-10-29). Overlapping runs are serialized by Postgres leases (`job_locks`, migration 0012, `src/lib/job-lock.ts`). LeChanga rejected provisional results from ESPN finals: nothing shows as won until Polymarket pays.
 
 ## Live bets (2026-10-21)
 
@@ -272,9 +316,9 @@ src/components/            screens + UI primitives
   displayName/short/name/location, same-day window. Fallback = Polymarket's own event score
   (`Game.pmScore` from the embedded event: score/elapsed/period/live/ended, ~45 s behind).
   Score is shown in title order (first-named team first); Polymarket's "74-68" is title order too.
-- Not built: CLOB WebSocket (sub-second prices).
+- CLOB WebSocket for odds: built 2026-10-28 (see Speed).
 
-## Arena — PvP piedra·papel·tijera (built 2026-10-17, NOT deployed yet)
+## Arena — PvP piedra·papel·tijera (built 2026-10-17, LIVE v2 since 2026-10-20)
 
 > **2026-10-21 — settlement reconcile.** Instant settle and the cron sweep can run the same
 > batch twice; the second run sees no `Settled` event and used to demote the match to
@@ -349,17 +393,17 @@ src/components/            screens + UI primitives
 
 ## Deployment (2026-10-20)
 
-- **Vercel** project `patoli` (team `lechangabettor-gmailcoms-projects`, Hobby plan), linked
+- **Vercel** project `patoli` (team `lechangabettor-gmailcoms-projects`, Pro plan since 2026-10-28), linked
   from this folder (`.vercel/` ignored). Production: https://patoli.vercel.app → custom
   domain `patoli.bet` + `www` attached; DNS at Wix must point A `@` → `216.198.79.1` and
   `64.29.17.1`, CNAME `www` → `13e4e9175fae5c3d.vercel-dns-017.com`. Deploy = push to
   `main` (Git integration) or `npx vercel --prod`. Env vars pushed from `.env.local` with
   `vercel env add` (strip `\r`; `NEXT_PUBLIC_MAGIC_API_KEY` / `…SUPABASE_ANON_KEY` need
   `--type config`). `CRON_SECRET` set.
-- **Crons:** Hobby allows only daily → `vercel.json` runs indexer 06:00 / arena 07:00 UTC.
-  `.github/workflows/cron.yml` (backup clock; PRIMARY clock since 2026-10-21 = cron-job.org, LeChanga's account: two jobs every 5 min, GET `/api/arena/settle` + `/api/indexer/run` with `Authorization: Bearer <CRON_SECRET>`) pings both endpoints every 5 min (needs repo secrets
-  `APP_URL`, `CRON_SECRET`). Instant settlement at match end does not depend on crons.
-  On Pro, restore `*/5` and `* * * * *` in `vercel.json`.
+- **Crons (2026-10-29):** `vercel.json` runs `/api/indexer/run` and `/api/arena/settle` every
+  minute with `CRON_SECRET` as bearer. cron-job.org and the GitHub Actions workflow are gone.
+  Instant settlement at match end does not depend on crons. Each run takes a Postgres lease
+  (`job_locks`), so a user's post-bet sync or an instant settle can never overlap the cron.
 - **Magic:** allowed origins set (the free plan accepted several): `https://patoli.bet`,
   `https://www.patoli.bet`, `https://patoli.vercel.app`, `http://localhost`.
 - **GitHub secrets** `APP_URL` + `CRON_SECRET` set; the cron workflow ran green (manual run #3).

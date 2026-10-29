@@ -1,27 +1,56 @@
 "use client";
 
 import { useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMe } from "@/providers/MeProvider";
 import type { FeedItem, MoneyRow, PublicProfile } from "@/types/social";
 import { LEAGUE_BY_ID, isLeagueId } from "@/lib/polymarket/leagues";
 import type { TicketData } from "@/components/Ticket";
 
+interface FeedPage {
+  items: FeedItem[];
+  /** Cursor for the next page (inclusive; the server computes it from its sources' tails), null at the end */
+  nextBefore?: string | null;
+  demo: boolean;
+}
+
+/**
+ * The feed, newest first, in pages: the server answers with the items at or before `before` and the
+ * cursor for the page after. Every loaded page refreshes every 30 s (from the newest down, so new
+ * picks always appear at the top); older pages load on scroll. No page cap: the server only knows
+ * a `before` cursor, so dropping the newest page would make it unrecoverable.
+ */
 export function useFeed(scope: "all" | "following") {
   const { getToken } = useMe();
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ["feed", scope],
     refetchInterval: 30_000,
-    queryFn: async (): Promise<{ items: FeedItem[]; demo: boolean }> => {
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }): Promise<FeedPage> => {
       // The token is optional: it unlocks "following" and marks which picks the viewer already 🔥'd.
       const headers: Record<string, string> = {};
       const t = await getToken();
       if (t) headers.authorization = `Bearer ${t}`;
-      const r = await fetch(`/api/feed?scope=${scope}`, { headers });
+      const r = await fetch(`/api/feed?scope=${scope}${pageParam ? `&before=${encodeURIComponent(pageParam)}` : ""}`, { headers });
       if (!r.ok) throw new Error("feed");
       return r.json();
     },
+    getNextPageParam: (last) => last.nextBefore ?? undefined,
   });
+}
+
+/** Pages → one list, repeats (the inclusive cursor row) dropped by id. */
+export function flattenFeed(pages: FeedPage[] | undefined): FeedItem[] {
+  const seen = new Set<string>();
+  const out: FeedItem[] = [];
+  for (const p of pages ?? []) {
+    for (const it of p.items) {
+      if (seen.has(it.id)) continue;
+      seen.add(it.id);
+      out.push(it);
+    }
+  }
+  return out;
 }
 
 export function useUsers(q: string, scope?: "rail") {
@@ -86,14 +115,15 @@ export function useReact() {
 
 /**
  * Records a Súbaseee/Bájeseee after the order filled. The server only counts it once the indexer
- * has the viewer's fill (usePlaceBet pulls it at 1.5 s / 6 s / 15 s), so we retry on 202.
+ * has the viewer's fill (usePlaceBet pulls it at 1.5 s / 6 s / 15 s), so we retry on 202 — past
+ * the next cron tick too, in case Polymarket's trade feed lags.
  */
 export function useRecordTail() {
   const { getToken } = useMe();
   const qc = useQueryClient();
   return useCallback(
     async (betId: string, side: "tail" | "fade"): Promise<boolean> => {
-      for (const delay of [2_500, 5_000, 8_000, 12_000, 20_000]) {
+      for (const delay of [2_500, 5_000, 8_000, 12_000, 20_000, 35_000, 70_000]) {
         await new Promise((r) => setTimeout(r, delay));
         const t = await getToken();
         if (!t) return false;

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TopBar from "./TopBar";
-import GameCard, { type Selection } from "./GameCard";
-import BetSheet from "./BetSheet";
+import GameCard from "./GameCard";
+import { openBet } from "@/lib/bet-store";
 import { LEAGUES, isLeagueId, type LeagueId } from "@/lib/polymarket/leagues";
 import { useGames, usePrices, useScores } from "@/hooks/useGames";
 import { cn } from "@/lib/cn";
@@ -23,7 +23,6 @@ export default function SportsBoard() {
   const ligaParam = sp.get("liga");
   const league: LeagueId = isLeagueId(ligaParam) ? ligaParam : "ligamx";
   const focusSlug = sp.get("partido");
-  const [sel, setSel] = useState<Selection | null>(null);
 
   const games = useGames(league);
   const ordered = useMemo(() => {
@@ -57,7 +56,7 @@ export default function SportsBoard() {
   return (
     <>
       <TopBar title="Deportes" />
-      <div className="sticky z-20 border-b border-hairline bg-[rgba(31,31,41,0.85)] backdrop-blur-xl" style={{ top: "var(--top-h)" }}>
+      <div className="sticky z-20 border-b border-hairline bg-[rgba(31,31,41,0.85)] backdrop-blur-xl" style={{ top: "calc(var(--top-h) + var(--safe-t))" }}>
         <div ref={railRef} className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-3">
           {LEAGUES.map((l) => (
             <button
@@ -85,7 +84,7 @@ export default function SportsBoard() {
         ) : (
           ordered.map((g, i) => (
             <div key={g.id} className={cn(g.slug === focusSlug && "rounded-[18px] ring-2 ring-accent/70")}>
-              <GameCard game={g} prices={prices.data} score={scores.data?.[g.slug]} onPick={setSel} index={i} />
+              <GameCard game={g} prices={prices.data} score={scores.data?.[g.slug]} onPick={openBet} index={i} />
             </div>
           ))
         )}
@@ -93,8 +92,6 @@ export default function SportsBoard() {
           Precios en vivo de Polymarket · tu precio ya incluye comisiones · prematch y en vivo
         </p>
       </section>
-
-      <BetSheet selection={sel} onClose={() => setSel(null)} />
     </>
   );
 }
