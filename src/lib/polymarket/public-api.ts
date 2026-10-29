@@ -1,4 +1,5 @@
 import { CLOB_API_URL, DATA_API_URL, PATOLI_BUILDER_CODE, PATOLI_BUILDER_FEE_BPS, isBuilderCodeValid } from "./constants";
+import { isV2Position } from "./protocol";
 
 /**
  * Polymarket's public endpoints, called straight from the browser. CORS is open on clob and
@@ -34,6 +35,12 @@ export interface Position {
   curPrice: number;
   redeemable: boolean;
   negativeRisk: boolean;
+  /**
+   * Protocol V2 position (a PositionManager id: `asset` = condition id + outcome index), redeemed
+   * through the Router one outcome at a time. The Data API row carries no protocol field, so this
+   * is derived from the ids (see protocol.ts). CTF positions redeem through the collateral adapters.
+   */
+  v2: boolean;
   endDate?: string;
   slug?: string;
 }
@@ -195,6 +202,7 @@ export function toPosition(r: V2Position): Position {
     curPrice: Number(r.current_price),
     redeemable: !!r.redeemable,
     negativeRisk: !!r.negative_risk,
+    v2: isV2Position(r.condition_id, r.token_id),
     endDate: r.end_date,
     slug: r.event_slug,
   };

@@ -22,6 +22,7 @@ import { useUsdcBalance } from "@/hooks/useUsdcBalance";
 import { formatUsd } from "@/lib/polymarket/odds";
 import { shortAddress, signed } from "@/lib/format";
 import { POLYMARKET_PROFILE_URL } from "@/lib/polymarket/constants";
+import { redeemTargetsFrom } from "@/lib/polymarket/v2";
 import { SESSION_STEP_LABEL } from "@/lib/polymarket/session";
 import { cn } from "@/lib/cn";
 import FeedCard from "./FeedCard";
@@ -133,10 +134,8 @@ export default function ProfileScreen() {
             : "Enviado al puente de Polymarket. En unos minutos aparece en tu saldo como pUSD.",
         );
       } else {
-        const targets = redeemables.map((p) => ({ conditionId: p.conditionId as `0x${string}`, negRisk: !!p.negativeRisk }));
-        // one call per market even if several outcomes are held
-        const seen = new Set<string>();
-        await redeem(targets.filter((t) => (seen.has(t.conditionId) ? false : (seen.add(t.conditionId), true))));
+        // CTF: one call per market even if both outcomes are held; Protocol V2: one per position.
+        await redeem(redeemTargetsFrom(redeemables));
         qc.invalidateQueries({ queryKey: ["positions"] });
       }
       await refetch();

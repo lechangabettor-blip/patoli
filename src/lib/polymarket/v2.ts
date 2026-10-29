@@ -1,6 +1,8 @@
 import { createPublicClient, encodeFunctionData, erc20Abi, http, parseAbi, type Chain } from "viem";
 import { polygon } from "viem/chains";
 import type { DepositWalletCall } from "@polymarket/builder-relayer-client";
+import type { Position } from "./public-api";
+import { v2ConditionBytes31, v2OutcomeIndex } from "./protocol";
 import {
   COLLATERAL_OFFRAMP_ADDRESS,
   COLLATERAL_ONRAMP_ADDRESS,
@@ -62,9 +64,102 @@ const ctfAdapterAbi = parseAbi([
   "function redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets)",
 ]);
 
-export interface RedeemTarget {
-  conditionId: `0x${string}`;
-  negRisk: boolean;
+export type RedeemTarget =
+  | { kind: "ctf"; conditionId: `0x${string}`; negRisk: boolean }
+  | { kind: "v2"; conditionId: `0x${string}`; positionId: string; outcomeIndex: number };
+
+/**
+ * Redeem targets from Data API positions. CTF: one per market (the adapter redeems both outcomes
+ * in one call). Protocol V2: one per held position (the Router redeems one outcome per call); the
+ * outcome index comes from the position id itself, so the pair can never disagree on-chain.
+ */
+export function redeemTargetsFrom(positions: Position[]): RedeemTarget[] {
+  const out: RedeemTarget[] = [];
+  const seen = new Set<string>();
+  for (const p of positions) {
+    const conditionId = p.conditionId.toLowerCase() as `0x${string}`;
+    const key = p.v2 ? `v2:${p.asset}` : `ctf:${conditionId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(p.v2 ? { kind: "v2", conditionId, positionId: p.asset, outcomeIndex: v2OutcomeIndex(p.asset) } : { kind: "ctf", conditionId, negRisk: !!p.negativeRisk });
+  }
+  return out;
+}
+
+type CtfTarget = Extract<RedeemTarget, { kind: "ctf" }>;
+type V2Target = Extract<RedeemTarget, { kind: "v2" }>;
+
+/** Polygon could not be read: not a failed redemption (AutoSettle does not count it as one). */
+export const RPC_READ_ERROR = "RpcReadError";
+const rpcReadError = () => Object.assign(new Error("No pudimos leer tus posiciones en Polygon. Intenta de nuevo."), { name: RPC_READ_ERROR });
+
+const routerAbi = parseAbi(["function redeem(bytes31 conditionId, uint256 outcomeIndex, uint256 amount)"]);
+const positionManagerReadAbi = parseAbi([
+  "function balanceOf(address owner, uint256 id) view returns (uint256)",
+  "function getPayout(uint256 positionId, uint256 amount) view returns (uint256)",
+]);
+
+/**
+ * Gasless redemption as one relayer batch PER PROTOCOL (a batch is atomic: a revert on one side
+ * must never hold the other side's winnings). Order: CTF adapters, then the Protocol V2 Router.
+ * Batches that would carry no call are omitted.
+ */
+export async function buildRedeemBatches(wallet: `0x${string}`, targets: RedeemTarget[]): Promise<DepositWalletCall[][]> {
+  const ctf = targets.filter((t): t is CtfTarget => t.kind === "ctf");
+  const v2 = targets.filter((t): t is V2Target => t.kind === "v2");
+  const batches: DepositWalletCall[][] = [];
+  if (ctf.length) batches.push(await buildCtfRedeemCalls(wallet, ctf));
+  if (v2.length) {
+    const calls = await buildV2RedeemCalls(wallet, v2);
+    if (calls.length) batches.push(calls);
+  }
+  return batches;
+}
+
+/**
+ * Redeem resolved Protocol V2 positions → pUSD through the Router:
+ * `redeem(bytes31 conditionId, outcomeIndex, amount)`, one call per held position, the amount read
+ * from PositionManager right now (never the Data API's rounded size: the Router reverts on
+ * amount > balance). Positions already emptied produce no call. The Router needs the wallet's
+ * PositionManager operator approval (granted at activation; re-granted here when missing).
+ */
+async function buildV2RedeemCalls(wallet: `0x${string}`, targets: V2Target[]): Promise<DepositWalletCall[]> {
+  // Value and readiness are decided on-chain, not by the Data API's mark: `getPayout(positionId,
+  // balance)` is exactly what the Router would mint. It reverts while the condition is unresolved
+  // and returns 0 for a loser — either would make the atomic batch fail or waste a relayer
+  // transaction, so such positions are left out until they are worth a call.
+  const balanceCalls = targets.map((t) => ({ address: V2_POSITION_MANAGER_ADDRESS, abi: positionManagerReadAbi, functionName: "balanceOf" as const, args: [wallet, BigInt(t.positionId)] as const }));
+  // `balanceOf` cannot revert, so a failed balance leg (or a transport error) means Polygon could not
+  // be read: say so rather than pretend nothing is held. `getPayout` legs may revert (unresolved).
+  const balances = await publicClient.multicall({ contracts: balanceCalls, allowFailure: true }).catch(() => null);
+  if (!balances || balances.some((b) => b.status !== "success")) throw rpcReadError();
+  const candidates = targets.map((t, i) => ({ t, amount: balances[i].result as bigint })).filter((x) => x.amount > 0n);
+  if (candidates.length === 0) return [];
+  const payoutCalls = candidates.map(({ t, amount }) => ({ address: V2_POSITION_MANAGER_ADDRESS, abi: positionManagerReadAbi, functionName: "getPayout" as const, args: [BigInt(t.positionId), amount] as const }));
+  const payouts = await publicClient.multicall({ contracts: payoutCalls, allowFailure: true }).catch(() => null);
+  if (!payouts) throw rpcReadError();
+  const held = candidates.filter((_, i) => payouts[i].status === "success" && (payouts[i].result as bigint) > 0n);
+  if (held.length === 0) return [];
+  const redeems: DepositWalletCall[] = [];
+  for (const { t, amount } of held) {
+    try {
+      redeems.push({
+        target: V2_ROUTER_ADDRESS,
+        value: "0",
+        data: encodeFunctionData({ abi: routerAbi, functionName: "redeem", args: [v2ConditionBytes31(t.conditionId), BigInt(t.outcomeIndex), amount] }),
+      });
+    } catch (e) {
+      console.warn("[patoli] V2 redeem target skipped", t.conditionId, e); // a malformed row must not block the others
+    }
+  }
+  if (redeems.length === 0) return [];
+  const approved = await publicClient
+    .readContract({ address: V2_POSITION_MANAGER_ADDRESS, abi: erc1155Abi, functionName: "isApprovedForAll", args: [wallet, V2_ROUTER_ADDRESS] })
+    .catch(() => false);
+  const approval: DepositWalletCall[] = approved
+    ? []
+    : [{ target: V2_POSITION_MANAGER_ADDRESS, value: "0", data: encodeFunctionData({ abi: erc1155Abi, functionName: "setApprovalForAll", args: [V2_ROUTER_ADDRESS, true] }) }];
+  return [...approval, ...redeems];
 }
 
 /**
@@ -72,7 +167,7 @@ export interface RedeemTarget {
  * redeems whatever the wallet holds of both outcomes. Includes the operator
  * approval for the adapter when the wallet hasn't granted it yet.
  */
-export async function buildRedeemCalls(wallet: `0x${string}`, targets: RedeemTarget[]): Promise<DepositWalletCall[]> {
+async function buildCtfRedeemCalls(wallet: `0x${string}`, targets: CtfTarget[]): Promise<DepositWalletCall[]> {
   const calls: DepositWalletCall[] = [];
   const adapters = new Set(targets.map((t) => (t.negRisk ? NEG_RISK_CTF_COLLATERAL_ADAPTER_ADDRESS : CTF_COLLATERAL_ADAPTER_ADDRESS)));
   for (const adapter of adapters) {

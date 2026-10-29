@@ -73,9 +73,6 @@ interface Section {
   defaultOpen: boolean;
 }
 
-/** A line somebody is really selling on both sides: a sane price and enough dollars behind it (order book at load time, so rows never jump with live ticks). */
-const sellable = (o: GameOutcome) => o.price > 0.01 && o.price < 0.97 && (o.depth === undefined || o.depth >= MIN_DEPTH_USD);
-const alive = (m: GameMarket) => m.outcomes.length >= 2 && m.outcomes.slice(0, 2).every(sellable);
 /** Most liquid line; if that one is lopsided (or liquidity is unknown), the line closest to even. */
 function mainOf(ms: DetailMarket[]): DetailMarket {
   const even = (m: DetailMarket) => Math.abs((m.outcomes[0]?.price ?? 0.5) - 0.5);
@@ -84,7 +81,13 @@ function mainOf(ms: DetailMarket[]): DetailMarket {
   return [...ms].sort((a, b) => even(a) - even(b))[0];
 }
 
-function buildSections(markets: DetailMarket[]): Section[] {
+function buildSections(markets: DetailMarket[], lenient = false): Section[] {
+  // A line somebody is really selling on both sides: a sane price and enough dollars behind it (order
+  // book at load time, so rows never jump with live ticks). Canary pages (Protocol V2 mirrors of v1
+  // events, see GameDetail.canary) have near-empty books: there, anything with an ask is shown so the
+  // V2 path can be exercised with a tiny order; the sheet still gates the stake against the depth.
+  const sellable = (o: GameOutcome) => o.price > 0.01 && o.price < 0.97 && (lenient || o.depth === undefined || o.depth >= MIN_DEPTH_USD);
+  const alive = (m: GameMarket) => m.outcomes.length >= 2 && (lenient ? m.outcomes.some(sellable) : m.outcomes.slice(0, 2).every(sellable));
   const map = new Map<string, Section>();
   for (const m of markets) {
     if (m.stat === "blocks") continue; // not on the menu (LeChanga)
@@ -119,7 +122,7 @@ function buildSections(markets: DetailMarket[]): Section[] {
       for (const m of s.markets) byPlayer.set(m.subject ?? "", [...(byPlayer.get(m.subject ?? "") ?? []), m]);
       s.compact = [...byPlayer.values()].map(mainOf);
     } else {
-      s.markets = s.markets.map((m) => ({ ...m, outcomes: m.outcomes.filter(sellable) })).filter((m) => m.outcomes.length >= 2 || (m.group === "doble" && m.outcomes.length >= 1));
+      s.markets = s.markets.map((m) => ({ ...m, outcomes: m.outcomes.filter(sellable) })).filter((m) => m.outcomes.length >= 2 || ((lenient || m.group === "doble") && m.outcomes.length >= 1));
       if (s.markets.length === 0) continue;
       s.compact = s.markets;
     }
@@ -156,7 +159,7 @@ export default function GameDetailScreen({ slug }: { slug: string }) {
     openBet({ game: { ...detail.game, markets: [] }, market: m, outcome: o, price: o.price, source: p.source });
   }, [detail, status, slug]);
 
-  const sections = useMemo(() => (detail ? buildSections(detail.markets) : []), [detail]);
+  const sections = useMemo(() => (detail ? buildSections(detail.markets, detail.canary) : []), [detail]);
   const chips = useMemo(() => CHIPS.filter((c) => c.id === "todos" || sections.some((s) => s.markets.some(c.test))), [sections]);
   const active = CHIPS.find((c) => c.id === chip) ?? CHIPS[0];
   const visible = useMemo(

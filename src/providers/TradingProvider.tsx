@@ -18,7 +18,7 @@ import {
 } from "@/lib/polymarket/constants";
 import {
   batchDeadline,
-  buildRedeemCalls,
+  buildRedeemBatches,
   buildUnwrapCalls,
   buildV2ApprovalCalls,
   buildWrapCalls,
@@ -164,6 +164,9 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   // One wrap batch per (wallet, amount) at a time: AutoSettle, the bet sheet, the tip sheet and the
   // Convertir card can all ask for the same USDC.e within a second of each other.
   const wrapInFlight = useRef<{ key: string; p: Promise<void> } | null>(null);
+  // One cobro per wallet at a time: AutoSettle, the Cobrar button and a second tab would otherwise
+  // read the same balances and the later batch would revert (Router: amount > balance).
+  const redeemInFlight = useRef<{ wallet: string; p: Promise<string | undefined> } | null>(null);
 
   // Keep a DID token ready for the remote signer while logged in (15-min lifespan, refreshed every 10).
   useEffect(() => {
@@ -378,11 +381,35 @@ export function TradingProvider({ children }: { children: ReactNode }) {
     async (targets: RedeemTarget[]) => {
       if (!relayClient || !walletAddress) throw new Error("Primero activa tu cuenta");
       if (targets.length === 0) return undefined;
-      const calls = await buildRedeemCalls(walletAddress, targets);
-      const resp = await relayClient.executeDepositWalletBatch(calls, walletAddress, batchDeadline());
-      const result = await confirmed(resp, "El cobro");
-      forgetCollateralSync();
-      return result.transactionHash;
+      // One relayer batch per protocol (CTF adapters first, then the Protocol V2 Router): a batch is
+      // atomic, so a revert on one side must never hold the other side's winnings. Nothing to send
+      // (every V2 position already emptied) = no signature, no relayer transaction.
+      if (redeemInFlight.current?.wallet === walletAddress) return redeemInFlight.current.p;
+      const p = (async () => {
+        const batches = await buildRedeemBatches(walletAddress, targets);
+        let hash: string | undefined;
+        let failure: unknown;
+        try {
+          for (const calls of batches) {
+            try {
+              const resp = await relayClient.executeDepositWalletBatch(calls, walletAddress, batchDeadline());
+              hash = (await confirmed(resp, "El cobro")).transactionHash ?? hash;
+            } catch (e) {
+              failure ??= e; // the other protocol's batch is independent: keep going, report after
+            }
+          }
+        } finally {
+          if (hash) forgetCollateralSync();
+        }
+        if (failure) throw failure;
+        return hash;
+      })();
+      redeemInFlight.current = { wallet: walletAddress, p };
+      try {
+        return await p;
+      } finally {
+        redeemInFlight.current = null;
+      }
     },
     [relayClient, walletAddress],
   );

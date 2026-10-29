@@ -1,8 +1,10 @@
 import "server-only";
 import { GAMMA_API_URL } from "./constants";
 import type { FeeSchedule } from "./odds";
-import { LEAGUES, LEAGUE_BY_ID, type LeagueId, type League } from "./leagues";
+import type { ProtocolVersion } from "./protocol";
+import { LEAGUE_BY_ID, PROTOCOL_PREFIX, leagueOfSlug, type LeagueId, type League } from "./leagues";
 import { ttlCache } from "@/lib/ttl-cache";
+import { alertOps } from "@/lib/alert";
 import { liq, marketCore, parseTeams, parsed, sameTeam, shortTeam, threeWayOutcomes, toIso, type GammaMarket, type Teams } from "./gamma-raw";
 
 export { sameTeam, shortTeam } from "./gamma-raw";
@@ -42,6 +44,11 @@ export interface GameMarket {
   tickSize: number;
   minOrderSize: number;
   acceptingOrders: boolean;
+  /**
+   * Polymarket protocol: "v1" = CTF outcome tokens on the CTF exchange, "v2" = Protocol V2 positions
+   * (ExchangeV3, PositionManager, Router). Decides how an order is keyed and how winnings are redeemed.
+   */
+  version: ProtocolVersion;
   liquidity: number;
   /** Polymarket's taker fee for this market: per share = rate · (p·(1−p))^exponent */
   fee: FeeSchedule;
@@ -76,17 +83,27 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
 
   const cfg = LEAGUE_BY_ID[league];
   // Soccer shows "Ambos anotan" where US sports show the spread (LeChanga, 2026-10-16).
+  // Gamma serves one protocol per request and hides Protocol V2 unless asked (2026-10-29), so each
+  // market type is fetched for both versions; the row limit applies per request.
   const [ml, alts, totals] = await Promise.all([
-    fetchMarkets(cfg.tagId, "moneyline", "gameStartTime", true, 200),
-    fetchMarkets(cfg.tagId, cfg.threeWay ? "both_teams_to_score" : "spreads", "liquidityNum", false, 100),
-    fetchMarkets(cfg.tagId, "totals", "liquidityNum", false, 100),
+    fetchBothVersions(cfg.tagId, "moneyline", "gameStartTime", true, 200),
+    fetchBothVersions(cfg.tagId, cfg.threeWay ? "both_teams_to_score" : "spreads", "liquidityNum", false, 100),
+    fetchBothVersions(cfg.tagId, "totals", "liquidityNum", false, 100),
   ]);
 
-  const slugRe = new RegExp(`^${cfg.slugPrefix}-[a-z0-9]+-[a-z0-9]+-\\d{4}-\\d{2}-\\d{2}(-\\d)?$`);
+  const slugRe = new RegExp(`^(polyv2-?)?${cfg.slugPrefix}-[a-z0-9]+-[a-z0-9]+-\\d{4}-\\d{2}-\\d{2}(-\\d)?$`);
   const byGame = new Map<string, { ml: GammaMarket[]; alt?: GammaMarket; total?: GammaMarket }>();
+  let unmatched = 0; // scheduled-game moneylines (gameStartTime set) whose event slug follows a convention we do not know
+  const sourceEvent = new Map<string, string>(); // V2 canary slug → the v1 event id it mirrors
   const bucket = (m: GammaMarket) => {
     const slug = baseSlug(m);
-    if (!slug || !slugRe.test(slug)) return null;
+    if (!slug || !slugRe.test(slug)) {
+      // Futures are typed "moneyline" too (NFL season-series winners) but carry no gameStartTime.
+      if (slug && m.sportsMarketType === "moneyline" && m.gameStartTime) unmatched++;
+      return null;
+    }
+    const src = m.marketMetadata?.polyv2SourceEventId;
+    if (src != null) sourceEvent.set(slug, String(src));
     let b = byGame.get(slug);
     if (!b) {
       b = { ml: [] };
@@ -142,25 +159,74 @@ export async function fetchGames(league: LeagueId, limit = 40): Promise<Game[]> 
     });
   }
 
-  games.sort((a, b) => a.startTime.localeCompare(b.startTime) || a.slug.localeCompare(b.slug));
-  cache.set(league, games);
-  return games.slice(0, limit);
+  // Protocol V2 canaries mirror v1 events (slug prefix `polyv2-`, or `polyv2SourceEventId` naming
+  // the v1 event): same game, ids on another exchange. Of two copies on the board the bettable one
+  // stays — an open moneyline with more liquidity, v1 on a tie — so the board follows the money
+  // whichever protocol Polymarket moves it to. Ops hears the first time a V2 copy wins.
+  const bettability = (g: Game) => {
+    const ml = g.markets.find((m) => m.kind === "moneyline");
+    return !ml || !ml.acceptingOrders ? -1 : ml.liquidity;
+  };
+  const byId = new Map(games.map((g) => [g.id, g]));
+  const bySlug = new Map(games.map((g) => [g.slug, g]));
+  const dropped = new Set<string>();
+  for (const g of games) {
+    if (!g.markets.some((m) => m.version === "v2")) continue;
+    const src = sourceEvent.get(g.slug);
+    const twin = bySlug.get(g.slug.replace(PROTOCOL_PREFIX, "")) ?? (src ? byId.get(src) : undefined);
+    if (!twin || twin === g) {
+      // A canary copy whose v1 original already left the board (the game started and its moneyline
+      // closed) is a leftover, not a new listing: V2 orphans stay only before kickoff.
+      const canary = PROTOCOL_PREFIX.test(g.slug) || !!src;
+      if (canary && !twin && Date.parse(g.startTime) < Date.now()) dropped.add(g.slug);
+      continue;
+    }
+    const loser = bettability(g) > bettability(twin) ? twin : g;
+    dropped.add(loser.slug);
+    if (loser === twin) void alertOps("protocol-v2-twin-won", `${league}: the V2 copy of ${twin.slug} replaced its v1 twin on the board`, 24 * 60 * 60_000).catch(() => {});
+  }
+  const board = games.filter((g) => !dropped.has(g.slug));
+  board.sort((a, b) => a.startTime.localeCompare(b.startTime) || a.slug.localeCompare(b.slug));
+  // The day Polymarket lists a league's games as Protocol V2 (tentatively from 2026-11-02) ops
+  // should hear it once, without waiting for a player to notice anything — and hear it too when a
+  // whole slate arrives under a slug convention the board rules reject.
+  const v2Games = board.filter((g) => g.markets.some((m) => m.version === "v2")).length;
+  if (v2Games > 0) void alertOps("protocol-v2-on-board", `${v2Games} Protocol V2 game(s) on the ${league} board`, 24 * 60 * 60_000).catch(() => {});
+  if (unmatched > 0 && (board.length === 0 || unmatched >= 10)) {
+    void alertOps(`board-unmatched-slugs:${league}`, `${league}: ${unmatched} moneyline(s) rejected by the slug rule, ${board.length} game(s) shown — new slug convention?`, 6 * 60 * 60_000).catch(() => {});
+  }
+  cache.set(league, board);
+  return board.slice(0, limit);
 }
 
 export async function fetchGameBySlug(slug: string): Promise<Game | null> {
-  const league = LEAGUES.find((l) => slug.startsWith(`${l.slugPrefix}-`))?.id;
+  const league = leagueOfSlug(slug);
   if (!league) return null;
   const games = await fetchGames(league, 200);
   return games.find((g) => g.slug === slug) ?? null;
 }
 
-async function fetchMarkets(
-  tagId: string,
-  type: "moneyline" | "spreads" | "totals" | "both_teams_to_score",
-  order: string,
-  ascending: boolean,
-  limit: number,
-): Promise<GammaMarket[]> {
+type BoardType = "moneyline" | "spreads" | "totals" | "both_teams_to_score";
+
+/**
+ * Both protocols of one market type, as two requests (a combined `version=v1&version=v2` call is
+ * capped at 100 rows). Each leg is a complete board for its protocol, so one failed or slow leg
+ * must never blank the other: a failed leg contributes nothing and alerts ops; only both failing
+ * fails the board.
+ */
+async function fetchBothVersions(tagId: string, type: BoardType, order: string, ascending: boolean, limit: number): Promise<GammaMarket[]> {
+  const versions = ["v1", "v2"] as const;
+  const legs = await Promise.allSettled(versions.map((version) => fetchMarkets(tagId, type, order, ascending, limit, version)));
+  if (legs.every((l) => l.status === "rejected")) throw (legs[0] as PromiseRejectedResult).reason;
+  const out: GammaMarket[] = [];
+  legs.forEach((l, i) => {
+    if (l.status === "fulfilled") out.push(...l.value);
+    else void alertOps(`gamma-list-${versions[i]}`, `Gamma ${type} list (tag ${tagId}, ${versions[i]}) failed: ${String(l.reason).slice(0, 120)}`, 60 * 60_000).catch(() => {});
+  });
+  return out;
+}
+
+async function fetchMarkets(tagId: string, type: BoardType, order: string, ascending: boolean, limit: number, version: ProtocolVersion): Promise<GammaMarket[]> {
   const params = new URLSearchParams({
     tag_id: tagId,
     sports_market_types: type,
@@ -169,10 +235,12 @@ async function fetchMarkets(
     order,
     ascending: String(ascending),
     limit: String(limit),
+    version,
   });
   const res = await fetch(`${GAMMA_API_URL}/markets?${params}`, {
     headers: { accept: "application/json" },
     cache: "no-store", // payloads exceed Next's 2 MB data-cache limit; we cache in memory
+    signal: AbortSignal.timeout(8_000), // a hung leg must not hold the board either
   });
   if (!res.ok) throw new Error(`Gamma ${type} ${res.status}`);
   const data = (await res.json()) as GammaMarket[];

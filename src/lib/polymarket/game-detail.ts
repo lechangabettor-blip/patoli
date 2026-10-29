@@ -1,8 +1,8 @@
 import "server-only";
 import { CLOB_API_URL, GAMMA_API_URL } from "./constants";
-import { LEAGUES, LEAGUE_BY_ID, type LeagueId } from "./leagues";
+import { LEAGUE_BY_ID, PROTOCOL_PREFIX, leagueOfSlug, type LeagueId } from "./leagues";
 import { ttlCache } from "@/lib/ttl-cache";
-import { marketCore, parseTeams, parsed, threeWayOutcomes, toIso, type GammaEventRef, type GammaMarket, type Teams } from "./gamma-raw";
+import { dominantVersion, marketCore, parseTeams, parsed, threeWayOutcomes, toIso, type GammaEventRef, type GammaMarket, type Teams } from "./gamma-raw";
 import { sameTeam, shortTeam, type Game, type GameMarket, type GameOutcome, type MarketKind, type Period } from "./gamma";
 
 /**
@@ -32,6 +32,12 @@ export interface GameDetail {
   markets: DetailMarket[];
   /** Total count before trimming non-trading markets (for "N mercados") */
   offered: number;
+  /**
+   * A Protocol V2 canary: a `polyv2-` mirror of a v1 event (Gamma points at the source event). Its
+   * books are bot-thin, so the page relaxes its depth rules to let the V2 path be exercised. A real
+   * V2 game (no source event) keeps the normal rules whatever its slug looks like.
+   */
+  canary: boolean;
 }
 
 interface GammaEvent extends GammaEventRef {
@@ -46,17 +52,27 @@ const STAT_LABEL: Record<string, string> = { points: "Puntos", rebounds: "Rebote
 export async function fetchGameDetail(slug: string): Promise<GameDetail | null> {
   const hit = cache.get(slug);
   if (hit !== undefined) return hit;
-  const league = LEAGUES.find((l) => slug.startsWith(`${l.slugPrefix}-`))?.id;
+  const league = leagueOfSlug(slug);
   if (!league) return null;
-  const [main, more] = await Promise.all([fetchEvent(slug), fetchEvent(`${slug}-more-markets`)]);
+  const [main, more] = await Promise.all([fetchEvent(slug), fetchEvent(`${slug}-more-markets`, true)]);
   return cache.set(slug, main ? await withBooks(build(league, main, more)) : null);
 }
 
-async function fetchEvent(slug: string): Promise<GammaEvent | null> {
-  const r = await fetch(`${GAMMA_API_URL}/events?slug=${encodeURIComponent(slug)}`, { headers: { accept: "application/json" }, cache: "no-store" });
-  if (!r.ok) return null;
-  const j = (await r.json()) as GammaEvent[];
-  return Array.isArray(j) && j[0] ? j[0] : null;
+/**
+ * One event with its markets. The single-object endpoint serves both protocols without a `version`
+ * flag — the list endpoint hides Protocol V2 events unless asked (verified 2026-10-29) — including
+ * the soccer `-more-markets` companions and finished events. 404 = no such event.
+ */
+async function fetchEvent(slug: string, optional = false): Promise<GammaEvent | null> {
+  const r = await fetch(`${GAMMA_API_URL}/events/slug/${encodeURIComponent(slug)}`, { headers: { accept: "application/json" }, cache: "no-store" });
+  if (r.status === 404) return null; // no such event: a cacheable answer
+  if (!r.ok) {
+    if (optional) return null; // a companion the page can live without
+    throw new Error(`Gamma events/slug ${r.status}`); // the route answers 502, uncached; the client retries
+  }
+  const j = (await r.json()) as GammaEvent | GammaEvent[] | null;
+  const ev = Array.isArray(j) ? j[0] : j;
+  return ev && typeof ev === "object" && typeof ev.slug === "string" ? ev : null;
 }
 
 function build(league: LeagueId, ev: GammaEvent, more: GammaEvent | null): GameDetail {
@@ -102,12 +118,14 @@ function build(league: LeagueId, ev: GammaEvent, more: GammaEvent | null): GameD
     if (dm) markets.push(dm);
   }
   for (const period of Object.keys(threeWay) as Period[]) {
-    const merged = mergeThreeWay(threeWay[period], { home, away, homeRaw, awayRaw }, period);
+    const ms = dominantVersion(threeWay[period]); // Ganador and Doble oportunidad from one exchange only
+    const merged = mergeThreeWay(ms, { home, away, homeRaw, awayRaw }, period);
     if (merged) markets.push(merged);
-    const doble = dobleOportunidad(threeWay[period], { home, away, homeRaw, awayRaw }, period);
+    const doble = dobleOportunidad(ms, { home, away, homeRaw, awayRaw }, period);
     if (doble) markets.push(doble);
   }
-  return { game, markets, offered };
+  const canary = PROTOCOL_PREFIX.test(game.slug) && all.some((m) => m.marketMetadata?.polyv2SourceEventId != null);
+  return { game, markets, offered, canary };
 }
 
 /**
@@ -164,13 +182,16 @@ async function withBooks(detail: GameDetail): Promise<GameDetail> {
   } catch {
     return detail; // Gamma prices stay; the client still quotes live
   }
+  // Canary V2 mirrors carry bot midpoints with no relation to their one-sided books; the stale-ask
+  // rule would zero the only line the V2 path can be exercised on.
+  const canary = detail.canary;
   for (const m of detail.markets) {
     for (const o of m.outcomes) {
       const b = book.get(o.tokenId);
       if (!b) continue;
       // A best ask far above the market's midpoint is a stale one-sided book (someone asking 83¢ for a
       // −5.5 handicap): treat it as nothing for sale rather than show a trap price.
-      const stale = b.ask > 0 && o.price > 0 && b.ask - o.price > 0.2;
+      const stale = !canary && b.ask > 0 && o.price > 0 && b.ask - o.price > 0.2;
       o.depth = stale ? 0 : Math.round(b.depth);
       o.price = b.ask > 0 && !stale ? b.ask : 0; // 0 = nobody selling
     }

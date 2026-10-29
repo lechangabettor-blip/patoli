@@ -18,6 +18,7 @@ export interface MarketInfo {
 export async function POST(req: NextRequest) {
   await connection();
   const body = (await req.json().catch(() => ({}))) as { conditionIds?: string[] };
+  // ≤ 50 ids per request: on a mixed-version lookup Gamma answers at most 50 rows PER protocol (2026-10-29).
   const ids = [...new Set((body.conditionIds ?? []).filter((c) => /^0x[0-9a-f]{64}$/i.test(c)).map((c) => c.toLowerCase()))].slice(0, 50);
   const out: Record<string, MarketInfo> = {};
   if (ids.length === 0) return NextResponse.json(out);
@@ -30,6 +31,10 @@ export async function POST(req: NextRequest) {
   if (missing.length) {
     const u = new URL(`${GAMMA_API_URL}/markets`);
     for (const c of missing) u.searchParams.append("condition_ids", c);
+    // Gamma lists CTF markets only unless both protocol versions are requested (2026-10-29).
+    u.searchParams.append("version", "v1");
+    u.searchParams.append("version", "v2");
+    u.searchParams.set("limit", "100");
     const r = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(5_000) }).catch(() => null);
     const ms = r?.ok ? ((await r.json()) as { conditionId: string; question: string; gameStartTime?: string; events?: { title?: string; slug?: string }[] }[]) : [];
     for (const m of ms) {

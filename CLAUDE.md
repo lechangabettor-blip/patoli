@@ -48,10 +48,20 @@ before adding features); decision history in `MVP-PLAN.md` next to it.
 - `/terminos` exists; `error.tsx` / `global-error.tsx` show "Reintentar"; iOS top safe area
   (`--safe-t`); sheets scroll internally; the feed paginates on scroll; search is debounced.
 - Verified Polymarket facts (2026-10-29, `LeChangaHQ/5-lechanga-bet/PATOLI-RESEARCH-2026-10-29.md`):
-  both SDKs we use are DEPRECATED in favour of `@polymarket/client` (viem); Protocol V2 markets
-  (`version: "v2"`; they carry `clobTokenIds` AND `positionIds`) tentatively become the default
-  for NEW markets on 2026-11-02 — `parsed()` hides them and alerts ops until the v2 path ships
-  (build recipe: HQ `PATOLI-RESEARCH-2026-10-29.md` §2); GTD expiration ≥ 3 min ahead
+  both SDKs we use are DEPRECATED in favour of `@polymarket/client` (viem); **Protocol V2 markets
+  are supported end to end since 2026-10-29 night** (tentatively the default for NEW markets from
+  2026-11-02): `version: "v2"` on Gamma is the only tell (v1 markets carry unrelated `positionIds`
+  too) → `parsed()` picks ids by version and `marketCore` stamps `GameMarket.version`; orders key
+  the outcome as `positionID` (clob-client-v2 routes to ExchangeV3, domain version 3); the indexer
+  resolves V2 conditions with `PositionManager.getPayout(positionId, 1e6)` (reverts while
+  unresolved) and keeps CTF `payoutNumerators` for v1; redemption goes through the Router
+  (`redeem(bytes31, outcomeIndex, amount)`, one call per held position, amount read on-chain) in a
+  SEPARATE relayer batch from CTF adapter calls; a position/market is V2 iff
+  `id >> 8 << 8 === conditionId` (`src/lib/polymarket/protocol.ts`). **Gamma hides V2 from every
+  LIST call unless `version=v2` is passed** (boards fetch v1 and v2 separately — a combined call is
+  capped at 100 rows; `/events/slug/{slug}` is version-agnostic); `polyv2-` canaries are hidden
+  from the boards while their v1 twin exists but open by URL (`/deportes/partido/polyv2-nba-…`);
+  ops alerts: `protocol-v2-on-board` (V2 games on a board, daily), `protocol-v2-twin-won` (a V2 copy beat its v1 twin), `board-unmatched-slugs:<league>` (a slate rejected by the slug rule), `gamma-list-v1|v2` (one Gamma leg failing; the other still serves the board); the game page relaxes its depth rules only on real canaries (`GameDetail.canary`: `polyv2-` slug + Gamma source event); GTD expiration ≥ 3 min ahead
   (guarded in `placeLimit`); `POST /prices` takes mixed sides in one body; the market websocket
   takes `{operation: subscribe|unsubscribe}` frames (price-socket no longer reconnects); Data API
   v2 `redeemable` includes LOST positions (auto-cobro redeems only value); Unverified builders get
@@ -174,14 +184,25 @@ src/components/            screens + UI primitives
   **collateral adapters**: standard `0xAdA1…FcE1f`, neg-risk `0xadA2…eAab`, calling
   `redeemPositions(pUSD, 0x0, conditionId, [1,2])`; the adapter burns the outcome
   tokens and returns pUSD to the deposit wallet. Needs `setApprovalForAll` on CTF
-  for the adapter (now part of the activation batch; `buildRedeemCalls` adds it on
-  the fly for wallets activated before). "v2" position-based markets use the Router
-  `0x1212…2600` `redeem(bytes31,uint256,uint256)` — not wired yet.
+  for the adapter (now part of the activation batch; `buildRedeemBatches` adds it on
+  the fly for wallets activated before). Protocol V2 positions (wired 2026-10-29) redeem
+  through the Router `0x1212…2600` `redeem(bytes31 conditionId, outcomeIndex, amount)`: one
+  call per held position, amount = `PositionManager.balanceOf` at build time (the Router
+  reverts on amount > balance), PositionManager operator approval for the Router re-granted
+  when missing, and always in its OWN relayer batch after the CTF batch (a batch is atomic: a
+  V2 revert must never hold CTF winnings). Targets come from `redeemTargetsFrom(positions)`
+  (CTF deduped per market, V2 per position; outcome index taken from the position id).
+  AutoSettle gives up on a set after 3 failed batches (manual Cobrar remains).
 - Fully automatic redemption would need Polymarket **session keys** (owner grants a
   scoped signer); for now Perfil shows "Tienes $X listos → Cobrar", one signature.
 
 ## Gotchas learned the hard way
 
+- Gamma LIST endpoints (`/markets?…`, `/events?…`, `condition_ids=`, `slug=`) default to
+  `version=v1` and return NO Protocol V2 rows unless `version=v2` is passed (repeat the param
+  for both; a combined request shares one 100-row cap, so the boards send two requests).
+  Single-object reads (`/events/slug/{slug}`, `/markets/{id}`) serve both protocols. Verified
+  2026-10-29; may change after the 2026-11-02 switch — keep passing `version` explicitly.
 - Gamma `/markets?condition_ids=` drops CLOSED markets unless `closed=true` is
   passed (and open ones disappear when it is). The indexer queries both states;
   otherwise nothing ever settles.

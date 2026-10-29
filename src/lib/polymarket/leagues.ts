@@ -38,3 +38,16 @@ export const LEAGUE_BY_ID: Record<LeagueId, League> = Object.fromEntries(
 export function isLeagueId(v: string | null | undefined): v is LeagueId {
   return !!v && v in LEAGUE_BY_ID;
 }
+
+/**
+ * Polymarket's Protocol V2 canary events mirror v1 events under a `polyv2-` slug prefix (since
+ * 2026-10); other V2 series glue it on without the hyphen (`polyv2bkbsl-…`), so both forms count.
+ */
+export const PROTOCOL_PREFIX = /^polyv2-?/;
+
+/** League of a Gamma event slug, tolerating the Protocol V2 canary prefix (`polyv2-nba-…` → nba). */
+export function leagueOfSlug(slug: string | null | undefined): LeagueId | null {
+  if (!slug) return null;
+  const base = slug.replace(PROTOCOL_PREFIX, "");
+  return LEAGUES.find((l) => base.startsWith(`${l.slugPrefix}-`))?.id ?? null;
+}

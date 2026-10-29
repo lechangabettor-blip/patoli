@@ -2,10 +2,12 @@ import "server-only";
 import type { GammaMarket } from "@/lib/polymarket/gamma-raw";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { CLOB_API_URL, GAMMA_API_URL, PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
-import { LEAGUES } from "@/lib/polymarket/leagues";
+import { leagueOfSlug } from "@/lib/polymarket/leagues";
 import { parseAbi, type ContractFunctionParameters, type Hex } from "viem";
 import { publicClient } from "@/lib/polymarket/v2";
-import { CTF_ADDRESS } from "@/lib/polymarket/constants";
+import { CTF_ADDRESS, V2_POSITION_MANAGER_ADDRESS } from "@/lib/polymarket/constants";
+import { isV2Position, normalizeConditionId, v2OutcomeIndex, v2PositionId } from "@/lib/polymarket/protocol";
+import { outcomeIdsOf } from "@/lib/polymarket/gamma-raw";
 import { withJobLock } from "@/lib/job-lock";
 import { alertOps } from "@/lib/alert";
 
@@ -70,6 +72,23 @@ function kindOf(type: string | undefined): string {
 const empty = (): IndexRunResult => ({ tradesSeen: 0, betsUpserted: 0, marketsUpserted: 0, settled: 0, unknownWallets: [], errors: [] });
 
 /**
+ * The outcome a fill bought. A Protocol V2 position id encodes it (low byte), which beats the
+ * feed; CTF fills trust the feed. A fill without a usable index is skipped and reported instead
+ * of failing the whole upsert (one PostgREST statement) for every other fill in the page.
+ */
+function outcomeIndexOf(t: BuilderTrade, conditionId: string, errors: string[]): number | null {
+  const fromFeed = Number(t.outcomeIndex);
+  if (isV2Position(conditionId, t.assetId)) {
+    const idx = v2OutcomeIndex(t.assetId);
+    if (Number.isFinite(fromFeed) && fromFeed !== idx) errors.push(`fill ${t.id}: feed outcomeIndex ${t.outcomeIndex} differs from the position id outcome ${idx} (using the id)`);
+    return idx;
+  }
+  if (Number.isInteger(fromFeed) && fromFeed >= 0) return fromFeed;
+  errors.push(`fill ${t.id}: no outcome index in the feed`);
+  return null;
+}
+
+/**
  * Steps 1–4 (fetch fills, upsert markets and bets) are idempotent upserts that never touch
  * status/pnl, so they may run concurrently: a user's post-bet sync always lands its fill, even
  * while the cron is busy. Settlement (step 5) writes won/lost and runs under a lease — one
@@ -108,7 +127,7 @@ async function indexOnce(opts: { maxPages?: number }): Promise<IndexRunResult> {
 
   // 2. Markets we don't know yet. A stub (Gamma hiccup → question "Mercado", no outcomes) counts as
   //    unknown, so it is fetched again on every run until Gamma answers and the row gets its data.
-  const conditionIds = [...new Set(confirmed.map((t) => t.market.toLowerCase()))];
+  const conditionIds = [...new Set(confirmed.map((t) => normalizeConditionId(t.market)))];
   const { data: known } = await db.from("markets").select("condition_id, outcomes").in("condition_id", conditionIds);
   const knownSet = new Set((known ?? []).filter((m) => Array.isArray(m.outcomes) && (m.outcomes as unknown[]).length > 0).map((m) => m.condition_id as string));
   const missing = conditionIds.filter((c) => !knownSet.has(c));
@@ -136,23 +155,30 @@ async function indexOnce(opts: { maxPages?: number }): Promise<IndexRunResult> {
   const settledIds = new Set((existing ?? []).filter((b) => b.status !== "open").map((b) => b.id as string));
   const betRows = confirmed
     .filter((t) => !settledIds.has(t.id))
-    .map((t) => ({
-      id: t.id,
-      profile_id: byWallet.get(t.maker.toLowerCase()) ?? null,
-      wallet: t.maker.toLowerCase(),
-      condition_id: t.market.toLowerCase(),
-      token_id: t.assetId,
-      outcome_index: t.outcomeIndex,
-      outcome: t.outcome,
-      side: t.side,
-      size: Number(t.size),
-      price: Number(t.price),
-      usdc: Number(t.sizeUsdc ?? Number(t.size) * Number(t.price)),
-      fee_usdc: Number(t.feeUsdc ?? 0),
-      builder_fee: Number(t.builderFee ?? 0),
-      tx_hash: t.transactionHash ?? null,
-      matched_at: new Date(Number(t.matchTime) * 1000).toISOString(),
-    }));
+    .flatMap((t) => {
+      const conditionId = normalizeConditionId(t.market);
+      const outcomeIndex = outcomeIndexOf(t, conditionId, res.errors);
+      if (outcomeIndex == null) return [];
+      return [
+        {
+          id: t.id,
+          profile_id: byWallet.get(t.maker.toLowerCase()) ?? null,
+          wallet: t.maker.toLowerCase(),
+          condition_id: conditionId,
+          token_id: t.assetId,
+          outcome_index: outcomeIndex,
+          outcome: t.outcome,
+          side: t.side,
+          size: Number(t.size),
+          price: Number(t.price),
+          usdc: Number(t.sizeUsdc ?? Number(t.size) * Number(t.price)),
+          fee_usdc: Number(t.feeUsdc ?? 0),
+          builder_fee: Number(t.builderFee ?? 0),
+          tx_hash: t.transactionHash ?? null,
+          matched_at: new Date(Number(t.matchTime) * 1000).toISOString(),
+        },
+      ];
+    });
   if (betRows.length) {
     const { error } = await db.from("bets").upsert(betRows, { onConflict: "id" });
     if (error) res.errors.push(`bets upsert: ${error.message}`);
@@ -191,6 +217,11 @@ async function fetchMarkets(conditionIds: string[]): Promise<MarketRow[]> {
       const u = new URL(`${GAMMA_API_URL}/markets`);
       for (const c of chunk) u.searchParams.append("condition_ids", c);
       u.searchParams.set("closed", closed);
+      // Gamma answers with CTF markets only unless both protocol versions are requested (verified
+      // 2026-10-29: a Protocol V2 condition id returns nothing without `version=v2`).
+      u.searchParams.append("version", "v1");
+      u.searchParams.append("version", "v2");
+      u.searchParams.set("limit", "100");
       const r = await fetch(u, { cache: "no-store", signal: AbortSignal.timeout(15_000) }).catch(() => null);
       if (!r?.ok) continue;
       const ms = (await r.json()) as GammaMarket[];
@@ -209,13 +240,13 @@ function toMarketRow(m: GammaMarket) {
   let prices: number[] = [];
   try {
     outcomes = JSON.parse(m.outcomes ?? "[]");
-    tokens = JSON.parse(m.clobTokenIds ?? "[]");
+    tokens = outcomeIdsOf(m); // strictly by protocol version: V2 → positionIds, CTF → clobTokenIds
     prices = (JSON.parse(m.outcomePrices ?? "[]") as string[]).map(Number);
   } catch {
     /* ignore */
   }
   const ev = m.events?.[0];
-  const league = LEAGUES.find((l) => ev?.slug?.startsWith(`${l.slugPrefix}-`))?.id ?? null;
+  const league = leagueOfSlug(ev?.slug);
   const resolution = resolveFromPrices(m, prices);
   return {
     condition_id: m.conditionId.toLowerCase(),
@@ -270,26 +301,59 @@ async function resolveOnChain(conditionId: string, outcomeCount: number): Promis
   return null; // partial payouts (not a sports outcome) — leave to Gamma
 }
 
+const positionManagerAbi = parseAbi(["function getPayout(uint256 positionId, uint256 amount) view returns (uint256)"]);
+const ONE_SHARE = 1_000_000n;
+
+/**
+ * Protocol V2 resolution from PositionManager: `getPayout(positionId, one share)` is the pUSD a share
+ * redeems for — 1,000,000 for the winner, 0 for a loser, 1e6/n each on a split — and it REVERTS
+ * while the condition is unresolved (verified 2026-10-29 on resolved and open canaries). Any
+ * reverted leg = not resolved yet; a payout pattern that is neither a single winner nor an even
+ * split is left to Gamma.
+ */
+async function resolveOnChainV2(conditionId: string, outcomeCount: number, errors: string[]): Promise<number | null> {
+  const contracts = Array.from({ length: outcomeCount }, (_, i) => ({
+    address: V2_POSITION_MANAGER_ADDRESS,
+    abi: positionManagerAbi,
+    functionName: "getPayout" as const,
+    args: [BigInt(v2PositionId(conditionId, i)), ONE_SHARE] as const,
+  }));
+  const out = await publicClient.multicall({ contracts, allowFailure: true });
+  if (out.some((r) => r.status !== "success")) return null; // a leg still reverts = not resolved
+  const payouts = out.map((r) => r.result as bigint);
+  const winners = payouts.filter((p) => p === ONE_SHARE).length;
+  if (winners === 1 && payouts.every((p) => p === ONE_SHARE || p === 0n)) return payouts.findIndex((p) => p === ONE_SHARE);
+  // An even split (postponed game) exists only on BinaryModule conditions (module byte 0x01).
+  // NegRiskModule results are 0 or 1e6 per side, and siblings read 0 while the event is derived.
+  const binaryModule = BigInt(conditionId) >> 248n === 1n;
+  if (binaryModule && payouts[0] > 0n && payouts.every((p) => p === payouts[0])) return -1;
+  if (payouts.every((p) => p === 0n)) return null;
+  errors.push(`V2 market ${conditionId} resolved with an unsupported payout vector [${payouts.join(",")}] — settle by hand`);
+  return null;
+}
+
 async function settleResolvedMarkets(errors: string[]): Promise<number> {
   const db = supabaseAdmin();
   // Games run 1.5–3.5 h; nothing resolves before 90 min after kickoff.
   const cutoff = new Date(Date.now() - 90 * 60_000).toISOString();
-  const { data: due } = await db
-    .from("markets")
-    .select("condition_id, outcomes")
-    .is("winning_index", null)
-    .lt("game_start", cutoff)
-    .order("game_start")
-    .limit(50);
+  // Newest games first (what players are waiting on) plus a slice of the oldest, so a market that
+  // Polymarket is slow to resolve keeps being retried without ever pinning the whole window.
+  const dueQuery = (ascending: boolean, limit: number) =>
+    db.from("markets").select("condition_id, outcomes").is("winning_index", null).lt("game_start", cutoff).order("game_start", { ascending }).limit(limit);
+  const [{ data: newest }, { data: oldest }] = await Promise.all([dueQuery(false, 40), dueQuery(true, 10)]);
+  const due = [...new Map([...(newest ?? []), ...(oldest ?? [])].map((d) => [d.condition_id as string, d])).values()];
 
-  // 1. Chain first (instant). 2. Gamma for whatever the chain could not decide.
+  // 1. Chain first (instant): Conditional Tokens for CTF markets, PositionManager for Protocol V2
+  //    (told apart by the stored outcome ids). 2. Gamma for whatever the chain could not decide.
   const resolved: { condition_id: string; winning_index: number; resolved_at: string }[] = [];
   const pending: string[] = [];
-  for (const d of due ?? []) {
+  for (const d of due) {
     const cid = d.condition_id as string;
-    const n = Array.isArray(d.outcomes) ? (d.outcomes as unknown[]).length : 2;
+    const outcomes = Array.isArray(d.outcomes) ? (d.outcomes as { tokenId?: string | null }[]) : [];
+    const n = outcomes.length || 2;
+    const v2 = outcomes.length > 0 && isV2Position(cid, String(outcomes[0]?.tokenId ?? ""));
     try {
-      const w = await resolveOnChain(cid, n || 2);
+      const w = v2 ? await resolveOnChainV2(cid, n, errors) : await resolveOnChain(cid, n);
       if (w != null) resolved.push({ condition_id: cid, winning_index: w, resolved_at: new Date().toISOString() });
       else pending.push(cid);
     } catch {

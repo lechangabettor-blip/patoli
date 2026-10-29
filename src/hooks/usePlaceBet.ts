@@ -7,10 +7,14 @@ import { useTrading } from "@/providers/TradingProvider";
 import { useWallet } from "@/providers/WalletContext";
 import { PATOLI_BUILDER_CODE, isBuilderCodeValid } from "@/lib/polymarket/constants";
 import { clobCache } from "@/lib/polymarket/clob-cache";
+import type { ProtocolVersion } from "@/lib/polymarket/protocol";
 import { useSyncBets } from "@/hooks/useSocial";
 
 interface PlaceBetParams {
+  /** Outcome id: a CTF token id, or the position id of a Protocol V2 market (see `version`). */
   tokenId: string;
+  /** Market protocol. "v2" keys the order by `positionID`, which the SDK signs for ExchangeV3. */
+  version?: ProtocolVersion;
   /** Stake in USDC */
   stake: number;
   negRisk: boolean;
@@ -25,6 +29,7 @@ type PlaceBetResult =
 
 interface PlaceLimitParams {
   tokenId: string;
+  version?: ProtocolVersion;
   /** Limit price (0–1), already on the market's tick */
   price: number;
   /** Shares to buy (stake / price), ≥ the market's minimum */
@@ -43,6 +48,13 @@ type PlaceLimitResult =
 // (approvals on-chain, CLOB balance cache). Cleared when an order fails for a reason those
 // checks would have caught, and by the provider whenever a wrap or redeem changes the balance.
 const NOT_READY = "Primero activa tu cuenta de trading";
+
+/**
+ * How the SDK keys the outcome. `positionID` routes the order to ExchangeV3 (Protocol V2: EIP-712
+ * domain version 3, negRisk ignored); `tokenID` keeps the CTF exchange. clob-client-v2 1.2.0
+ * requires exactly one of the two (verified in dist/order-builder/helpers/orderAsset.js).
+ */
+const orderAsset = (id: string, version: ProtocolVersion | undefined) => (version === "v2" ? { positionID: id } : { tokenID: id });
 
 /**
  * Places a BUY market order (fill-or-kill, capped at the price the user saw) for `stake` USDC on `tokenId`.
@@ -100,7 +112,7 @@ export function usePlaceBet() {
    * `expiresAt` (good-till-date). If it crosses the book it fills right away like a market order.
    */
   const placeLimit = useCallback(
-    async ({ tokenId, price, shares, negRisk, tickSize, expiresAt }: PlaceLimitParams): Promise<PlaceLimitResult> => {
+    async ({ tokenId, version, price, shares, negRisk, tickSize, expiresAt }: PlaceLimitParams): Promise<PlaceLimitResult> => {
       const client = getClobClient();
       if (!client || !sdk) return { ok: false, reason: NOT_READY };
       if (!isBuilderCodeValid(PATOLI_BUILDER_CODE)) return { ok: false, reason: "Patoli aún no tiene su código de builder configurado. Pronto." };
@@ -113,7 +125,7 @@ export function usePlaceBet() {
         await prepare(client, shares * price);
         const px = Math.min(1 - tickSize, Math.max(tickSize, Math.round(price / tickSize) * tickSize));
         const res = await client.createAndPostOrder(
-          { tokenID: tokenId, price: Number(px.toFixed(4)), size: Math.floor(shares * 100) / 100, side: Side.BUY, expiration: expiresAt },
+          { ...orderAsset(tokenId, version), price: Number(px.toFixed(4)), size: Math.floor(shares * 100) / 100, side: Side.BUY, expiration: expiresAt },
           { tickSize: String(tickSize) as TickSize, negRisk },
           OrderType.GTD,
         );
@@ -143,7 +155,7 @@ export function usePlaceBet() {
   );
 
   const placeBet = useCallback(
-    async ({ tokenId, stake, negRisk, tickSize, price }: PlaceBetParams): Promise<PlaceBetResult> => {
+    async ({ tokenId, version, stake, negRisk, tickSize, price }: PlaceBetParams): Promise<PlaceBetResult> => {
       const client = getClobClient();
       if (!client || !sdk) return { ok: false, reason: NOT_READY };
       if (!isBuilderCodeValid(PATOLI_BUILDER_CODE)) {
@@ -160,7 +172,7 @@ export function usePlaceBet() {
         const cap = Math.min(1 - tickSize, Math.max(tickSize, Math.round(price / tickSize) * tickSize));
 
         const res = await client.createAndPostMarketOrder(
-          { tokenID: tokenId, amount: stake, side: Side.BUY, orderType: OrderType.FOK, price: Number(cap.toFixed(4)) },
+          { ...orderAsset(tokenId, version), amount: stake, side: Side.BUY, orderType: OrderType.FOK, price: Number(cap.toFixed(4)) },
           { tickSize: String(tickSize) as TickSize, negRisk },
           OrderType.FOK,
         );

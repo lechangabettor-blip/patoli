@@ -171,6 +171,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
     if (isLimit) {
       const lim = await placeLimit({
         tokenId: selection.outcome.tokenId,
+        version: selection.market.version,
         price,
         shares: limitShares,
         negRisk: selection.market.negRisk,
@@ -187,6 +188,7 @@ function BetBody({ selection, onClose }: { selection: Selection; onClose: () => 
     }
     const res = await placeBet({
       tokenId: selection.outcome.tokenId,
+      version: selection.market.version,
       stake: Math.floor(cost * 100) / 100, // dollars that go to shares; Polymarket adds the fees → ≈ stake leaves
       negRisk: selection.market.negRisk,
       tickSize: tick,

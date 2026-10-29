@@ -1,6 +1,6 @@
 import "server-only";
 import { DEFAULT_FEE } from "./odds";
-import { alertOps } from "@/lib/alert";
+import type { ProtocolVersion } from "./protocol";
 import type { GameMarket, GameOutcome, MarketKind } from "./gamma";
 import { sameTeam, shortTeam } from "./teams";
 
@@ -33,9 +33,11 @@ export interface GammaMarket {
   slug?: string;
   outcomes?: string; // JSON array of labels
   outcomePrices?: string; // JSON array of prices
-  clobTokenIds?: string; // JSON array of token ids
-  positionIds?: string[]; // Protocol V2 position ids (V2 markets populate clobTokenIds with the same numbers)
+  clobTokenIds?: string; // JSON array of token ids (CTF)
+  positionIds?: string[]; // Protocol V2 position ids (v1 markets may carry unrelated ones too)
   version?: string; // "v1" (CTF) | "v2" (Protocol V2 / ExchangeV3)
+  /** Canary V2 events point at the v1 event they mirror. */
+  marketMetadata?: { polyv2SourceEventId?: string | number; polyv2SourceMarketId?: string | number };
   sportsMarketType?: string;
   line?: number | string | null;
   negRisk?: boolean;
@@ -60,33 +62,37 @@ export interface ParsedMarket {
   tokens: string[];
 }
 
-/** Polymarket Protocol V2 market (ExchangeV3 + PositionManager ids). Gamma fills `clobTokenIds` on these too, so `version` is the only reliable tell. */
-export const isProtocolV2 = (m: GammaMarket) => m.version === "v2";
-
 /**
- * V2 markets stay hidden until the v2 trading/settlement path exists (2026-10-29): shown as
- * bettable, their orders would be signed for the CTF exchange and rejected by the CLOB, and the
- * indexer could never resolve them on the old Conditional Tokens contract. Ops hears about the
- * first one that reaches a feed (Polymarket's tentative switch of net-new markets: 2026-11-02).
+ * Polymarket Protocol V2 market (ExchangeV3 + PositionManager ids). Gamma fills `clobTokenIds` on
+ * these too, and most v1 markets carry an unrelated `positionIds`, so `version` is the only
+ * reliable tell (Polymarket: "choose the ID field by version, even when both are present").
  */
-function noteProtocolV2(m: GammaMarket) {
-  void alertOps(
-    "protocol-v2-market-seen",
-    `Protocol V2 market in a feed (hidden until the v2 path ships): ${m.slug ?? m.question} · ${m.conditionId}`,
-    6 * 60 * 60_000,
-  ).catch(() => {});
+export const isProtocolV2 = (m: GammaMarket) => m.version === "v2";
+export const versionOfMarket = (m: GammaMarket): ProtocolVersion => (isProtocolV2(m) ? "v2" : "v1");
+
+/** Outcome ids strictly by protocol (Polymarket: "choose the ID field by version, even when both are present"). */
+export function outcomeIdsOf(m: GammaMarket): string[] {
+  const ids = isProtocolV2(m) ? (Array.isArray(m.positionIds) ? m.positionIds.map(String) : []) : (JSON.parse(m.clobTokenIds ?? "[]") as unknown[]).map(String);
+  return ids.every((t) => /^\d+$/.test(t)) ? ids : [];
 }
 
-/** The three JSON-encoded arrays of a market, or null when they do not line up (or the market is Protocol V2). */
+/** The markets of the protocol most of `ms` belong to (v1 on a tie): a merged 1X2 must never mix exchanges. */
+export function dominantVersion(ms: GammaMarket[]): GammaMarket[] {
+  const v2 = ms.filter(isProtocolV2).length;
+  const keep: ProtocolVersion = v2 > ms.length - v2 ? "v2" : "v1";
+  return ms.filter((m) => versionOfMarket(m) === keep);
+}
+
+/**
+ * The three arrays of a market, or null when they do not line up. Outcome ids follow the protocol
+ * strictly: V2 → `positionIds`, CTF → `clobTokenIds`. A v1 market's `positionIds` are NOT tradable
+ * ids, and a V2 market's `clobTokenIds` merely mirror its positions today — neither is a fallback.
+ */
 export function parsed(m: GammaMarket): ParsedMarket | null {
-  if (isProtocolV2(m)) {
-    noteProtocolV2(m);
-    return null;
-  }
   try {
     const outcomes = JSON.parse(m.outcomes ?? "[]") as string[];
     const prices = (JSON.parse(m.outcomePrices ?? "[]") as string[]).map(Number);
-    const tokens = JSON.parse(m.clobTokenIds ?? "[]") as string[];
+    const tokens = outcomeIdsOf(m);
     if (tokens.length === 0 || outcomes.length !== tokens.length) return null;
     return { outcomes, prices, tokens };
   } catch {
@@ -108,6 +114,7 @@ export function marketCore(m: GammaMarket, kind: MarketKind, line: number | null
     tickSize: Number(m.orderPriceMinTickSize ?? 0.01),
     minOrderSize: Number(m.orderMinSize ?? 5),
     acceptingOrders: m.acceptingOrders !== false,
+    version: versionOfMarket(m),
     liquidity: liq(m),
     fee:
       m.feesEnabled === false
@@ -152,7 +159,8 @@ export function parseTeams(title: string): Teams {
 export function threeWayOutcomes(ms: GammaMarket[], t: Teams): { outcomes: GameOutcome[]; first: GammaMarket; negRisk: boolean } | null {
   type Key = "home" | "draw" | "away";
   const picks: { key: Key; m: GammaMarket }[] = [];
-  for (const m of ms) {
+  // One protocol per merged market: outcomes on two exchanges cannot share a Selection.
+  for (const m of dominantVersion(ms)) {
     const g = (m.groupItemTitle ?? "").toLowerCase();
     const q = m.question.toLowerCase();
     const key: Key | null = /draw|empate|tie/.test(g) || /end in a draw/.test(q) ? "draw" : sameTeam(g || q, t.homeRaw) ? "home" : sameTeam(g || q, t.awayRaw) ? "away" : null;
