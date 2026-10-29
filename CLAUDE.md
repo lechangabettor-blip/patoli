@@ -49,8 +49,9 @@ before adding features); decision history in `MVP-PLAN.md` next to it.
   (`--safe-t`); sheets scroll internally; the feed paginates on scroll; search is debounced.
 - Verified Polymarket facts (2026-10-29, `LeChangaHQ/5-lechanga-bet/PATOLI-RESEARCH-2026-10-29.md`):
   both SDKs we use are DEPRECATED in favour of `@polymarket/client` (viem); Protocol V2 markets
-  (`version: "v2"`, `positionIds`) tentatively become the default for NEW markets on 2026-11-02
-  and our normalisers skip them until a v2 path exists (next job); GTD expiration ≥ 3 min ahead
+  (`version: "v2"`; they carry `clobTokenIds` AND `positionIds`) tentatively become the default
+  for NEW markets on 2026-11-02 — `parsed()` hides them and alerts ops until the v2 path ships
+  (build recipe: HQ `PATOLI-RESEARCH-2026-10-29.md` §2); GTD expiration ≥ 3 min ahead
   (guarded in `placeLimit`); `POST /prices` takes mixed sides in one body; the market websocket
   takes `{operation: subscribe|unsubscribe}` frames (price-socket no longer reconnects); Data API
   v2 `redeemable` includes LOST positions (auto-cobro redeems only value); Unverified builders get

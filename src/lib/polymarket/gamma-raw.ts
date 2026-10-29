@@ -1,5 +1,6 @@
 import "server-only";
 import { DEFAULT_FEE } from "./odds";
+import { alertOps } from "@/lib/alert";
 import type { GameMarket, GameOutcome, MarketKind } from "./gamma";
 import { sameTeam, shortTeam } from "./teams";
 
@@ -33,6 +34,8 @@ export interface GammaMarket {
   outcomes?: string; // JSON array of labels
   outcomePrices?: string; // JSON array of prices
   clobTokenIds?: string; // JSON array of token ids
+  positionIds?: string[]; // Protocol V2 position ids (V2 markets populate clobTokenIds with the same numbers)
+  version?: string; // "v1" (CTF) | "v2" (Protocol V2 / ExchangeV3)
   sportsMarketType?: string;
   line?: number | string | null;
   negRisk?: boolean;
@@ -57,8 +60,29 @@ export interface ParsedMarket {
   tokens: string[];
 }
 
-/** The three JSON-encoded arrays of a market, or null when they do not line up. */
+/** Polymarket Protocol V2 market (ExchangeV3 + PositionManager ids). Gamma fills `clobTokenIds` on these too, so `version` is the only reliable tell. */
+export const isProtocolV2 = (m: GammaMarket) => m.version === "v2";
+
+/**
+ * V2 markets stay hidden until the v2 trading/settlement path exists (2026-10-29): shown as
+ * bettable, their orders would be signed for the CTF exchange and rejected by the CLOB, and the
+ * indexer could never resolve them on the old Conditional Tokens contract. Ops hears about the
+ * first one that reaches a feed (Polymarket's tentative switch of net-new markets: 2026-11-02).
+ */
+function noteProtocolV2(m: GammaMarket) {
+  void alertOps(
+    "protocol-v2-market-seen",
+    `Protocol V2 market in a feed (hidden until the v2 path ships): ${m.slug ?? m.question} · ${m.conditionId}`,
+    6 * 60 * 60_000,
+  ).catch(() => {});
+}
+
+/** The three JSON-encoded arrays of a market, or null when they do not line up (or the market is Protocol V2). */
 export function parsed(m: GammaMarket): ParsedMarket | null {
+  if (isProtocolV2(m)) {
+    noteProtocolV2(m);
+    return null;
+  }
   try {
     const outcomes = JSON.parse(m.outcomes ?? "[]") as string[];
     const prices = (JSON.parse(m.outcomePrices ?? "[]") as string[]).map(Number);
