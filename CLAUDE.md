@@ -26,6 +26,9 @@ before adding features); decision history in `MVP-PLAN.md` next to it.
   as the fallback.
 - Feed paging: `/api/feed` returns `nextBefore` computed from its two sources' tails (inclusive
   cursor, client drops repeats by id); never derive the cursor from the merged list.
+- Link previews: `src/app/u/[handle]/opengraph-image.tsx` renders the record card (next/og,
+  Satori: every box with several children needs `display: flex`, text boxes get ONE template
+  string). `metadataBase` = https://patoli.bet in the root layout.
 - Fee rule: Polymarket's `feeUsdc` INCLUDES the builder fee. Cost of a bet = `usdc + fee_usdc`
   everywhere (indexer P&L, feed stake/odds, rolling windows, `profile_stats.staked`). Migration
   0012 backfilled settled P&L.

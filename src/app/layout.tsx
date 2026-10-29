@@ -18,6 +18,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
+  // Absolute URLs for og:image & co. (the profile preview image) on every host, previews included.
+  metadataBase: new URL("https://patoli.bet"),
   title: {
     default: "Patoli",
     template: "%s · Patoli",

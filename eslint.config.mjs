@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Hardhat project: generated typechain output carries its own eslint-disable headers
+    "arena/typechain-types/**",
+    "arena/artifacts/**",
+    "arena/cache/**",
   ]),
 ]);
 
